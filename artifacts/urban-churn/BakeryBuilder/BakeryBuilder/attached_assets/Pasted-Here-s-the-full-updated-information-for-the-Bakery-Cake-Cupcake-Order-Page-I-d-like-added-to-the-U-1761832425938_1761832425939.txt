@@ -1,0 +1,179 @@
+Here’s the full updated information for the Bakery Cake & Cupcake Order Page I’d like added to the Urban Churn website for our Louise Drive Scoop Shop & Bakery. This will allow guests to easily submit online requests for ice cream cakes and cupcakes, and it will also highlight our seasonal Pumpkin Ice Cream Cake for Thanksgiving.
+
+
+---
+
+Urban Churn – Bakery Cake & Cupcake Order Request Page Details
+
+Page Purpose:
+
+Create an easy-to-use page where customers can order from our bakery at Louise Drive, including:
+
+Pre-stacked and custom ice cream cakes
+
+Cupcakes by the dozen
+
+Seasonal and holiday specials
+
+---
+
+Form Sections & Fields
+
+1. Customer Information
+
+Full Name
+
+Phone Number
+
+Email Address
+
+Preferred Pickup Date
+
+Preferred Pickup Time
+
+How did you hear about us? (optional)
+
+---
+
+2. Order Type
+
+Select one:
+
+Pre-Stacked Ice Cream Cake
+
+Custom Ice Cream Cake
+
+Cupcakes by the Dozen
+
+---
+
+3. Pre-Stacked Ice Cream Cakes
+
+Details (visible when selected):
+
+Price: $65
+
+Size: 2-layer, 7-inch (serves 14–18 people)
+
+Available Flavors:
+
+Cookies ’N Cream
+
+Peanut Butter Cup
+
+Strawberries & Cream
+
+Funfetti
+
+Vanilla
+
+
+
+Add-Ons:
+
+“Happy Birthday” / “Happy Anniversary” topper – +$8.50
+
+Natural color accents (made with all-natural colorings) – +$10
+
+Additional Notes / Requests (text box)
+
+---
+
+4. Custom Ice Cream Cakes
+
+Details (visible when selected):
+
+Starting Price: $75
+
+Size: 2-layer, 7-inch (serves 14–18 people)**
+
+Form Fields:
+
+Cake Flavor (dropdown or text field)
+Examples: Vanilla, Chocolate, Funfetti, Red Velvet, Lemon, etc.
+
+Ice Cream Flavor (dropdown using our current flavor list)
+
+Frosting Type (radio):
+
+Buttercream
+
+Whipped topping (Cool Whip-style)
+
+Filling (optional text field)
+
+Topper (checkbox + short text: birthday, anniversary, etc.) +$8.50
+
+Natural Color Accents (checkbox + color request field) +$10
+
+Special Requests / Comments (textarea)
+
+Optional file upload for inspiration photos (jpg/png/pdf up to 10MB)
+
+---
+
+5. Cupcakes by the Dozen
+
+Details (visible when selected):
+
+Price: $36 per dozen**
+
+Available Flavors:
+
+Vanilla
+
+Funfetti
+
+Cookies ’N Cream
+
+Strawberries ’N Cream
+
+Double Chocolate
+
+Peanut Butter Cup
+
+Pumpkin (seasonal)
+
+
+Special Requests / Comments (textarea)
+
+---
+
+6. Seasonal & Holiday Offerings
+
+Pumpkin Ice Cream Cake for Thanksgiving
+
+Highlight this as a limited-time seasonal special available for pre-order.
+
+Price: $65
+
+Available through Thanksgiving week.
+
+Adam — I can supply photos for the website. Can we feature this alongside our Pumpkin Pies in the holiday section?
+
+---
+
+7. Order Summary Section
+
+Include a short info section (static text on page):
+
+“All cakes and cupcakes are handcrafted at our Louise Drive Scoop Shop & Bakery.”
+
+“Please allow 96 hours (4 days) for all orders.”
+
+“Pre-stacked cakes are available in limited weekly quantities.”
+
+“Custom cakes start at $75; final pricing will be confirmed before invoicing.”
+
+“Orders are not confirmed until we contact you and payment is received.”
+---
+
+8. Confirmation & Submission
+
+On Submit:
+
+Confirmation message:
+“Thank you for your request! Our bakery team will review your order and reach out within 24–48 hours to confirm details and send your invoice.
+Please note that all cake and cupcake orders require a minimum of 96 hours (4 days) lead time for preparation.”
+
+Email copy should route to orders@urbanchurn.com

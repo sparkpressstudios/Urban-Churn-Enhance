@@ -1,0 +1,5 @@
+ id  |                         name                          |                     slug                      |   tag   | base_price | available | hero_position | sort_order |        published_at        
+-----+-------------------------------------------------------+-----------------------------------------------+---------+------------+-----------+---------------+------------+----------------------------
+ 246 | Pineapple Jalapeño Margarita (NEW + EXCLUSIVE) (Copy) | pineapp-jalapeno-margarita-copy-1777572961952 | limited |       7.99 | f         |          NULL |          0 | 2026-04-30 18:16:01.966924
+(1 row)
+

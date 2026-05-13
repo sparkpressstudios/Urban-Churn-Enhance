@@ -1,0 +1,132 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: gift-cards
+    description: Gift card operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /gift-cards/purchase:
+    post:
+      operationId: purchaseGiftCard
+      tags: [gift-cards]
+      summary: Purchase a digital gift card
+      description: Creates a new digital gift card, charges the buyer, activates the card, and sends it to the recipient via email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GiftCardPurchaseRequest"
+      responses:
+        "201":
+          description: Gift card purchased successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GiftCardPurchaseResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Payment failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    GiftCardPurchaseRequest:
+      type: object
+      properties:
+        sourceId:
+          type: string
+          description: Square Web Payments SDK tokenized card nonce
+        amountCents:
+          type: integer
+          minimum: 500
+          maximum: 50000
+          description: Gift card amount in cents ($5–$500)
+        buyerName:
+          type: string
+          maxLength: 200
+        buyerEmail:
+          type: string
+          format: email
+          maxLength: 254
+        buyerPhone:
+          type: string
+          maxLength: 30
+        recipientName:
+          type: string
+          maxLength: 200
+        recipientEmail:
+          type: string
+          format: email
+          maxLength: 254
+        personalMessage:
+          type: string
+          maxLength: 500
+      required:
+        - sourceId
+        - amountCents
+        - buyerName
+        - buyerEmail
+        - recipientName
+        - recipientEmail
+    GiftCardPurchaseResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        orderNumber:
+          type: string
+      required:
+        - success
+        - orderNumber
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        orderNumber:
+          type: string
+      required:
+        - error
+

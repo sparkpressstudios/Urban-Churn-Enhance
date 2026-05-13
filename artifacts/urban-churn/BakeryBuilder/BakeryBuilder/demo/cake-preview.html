@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Cake Renderer Demo - Urban Churn Bakery</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/public.css">
+    <style>
+        body {
+            font-family: 'Lato', sans-serif;
+            background: linear-gradient(135deg, #FFF8E1 0%, #FFE082 100%);
+            margin: 0;
+            padding: 20px;
+        }
+        .demo-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .demo-header {
+            text-align: center;
+            padding: 40px 20px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        .demo-header h1 {
+            font-family: 'Playfair Display', serif;
+            color: #E91E63;
+            font-size: 2.5em;
+            margin: 0 0 10px 0;
+        }
+        .demo-header p {
+            color: #3E2723;
+            font-size: 1.2em;
+            margin: 0;
+        }
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .demo-card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+        }
+        .demo-card h2 {
+            font-family: 'Playfair Display', serif;
+            color: #3E2723;
+            font-size: 1.8em;
+            margin: 0 0 20px 0;
+            text-align: center;
+        }
+        .preview-container {
+            background: #FFF8E1;
+            border-radius: 12px;
+            padding: 30px;
+            min-height: 350px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .controls {
+            background: #F5F5F5;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #3E2723;
+        }
+        .control-group select, .control-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #E0E0E0;
+            border-radius: 8px;
+            font-family: 'Lato', sans-serif;
+            font-size: 1em;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: #E91E63;
+        }
+        .color-picker {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .color-option {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .color-option:hover {
+            transform: scale(1.1);
+        }
+        .color-option.selected {
+            border-color: #3E2723;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #3E2723;
+        }
+        .btn-update {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #E91E63 0%, #C2185B 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-family: 'Lato', sans-serif;
+            font-size: 1.1em;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 15px;
+            box-shadow: 0 4px 12px rgba(233, 30, 99, 0.3);
+            transition: all 0.3s ease;
+        }
+        .btn-update:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(233, 30, 99, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <div class="demo-header">
+            <h1>🎂 Realistic SVG Cake Renderer</h1>
+            <p>Interactive cake builder with frosting drips, textures & decorative elements</p>
+        </div>
+        
+        <div class="demo-grid">
+            <!-- Two-Layer Cake Demo -->
+            <div class="demo-card">
+                <h2>Two-Layer Ice Cream Cake</h2>
+                <div class="preview-container">
+                    <div id="cake-preview" style="width: 100%;"></div>
+                </div>
+                
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Cake Layer Flavor</label>
+                        <select id="cake-flavor">
+                            <option value="vanilla">Vanilla</option>
+                            <option value="chocolate">Chocolate</option>
+                            <option value="funfetti">Funfetti</option>
+                            <option value="red-velvet">Red Velvet</option>
+                            <option value="lemon">Lemon</option>
+                            <option value="strawberry">Strawberry</option>
+                        </select>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label>Ice Cream Layer Flavor</label>
+                        <select id="ice-cream-flavor">
+                            <option value="cookies-n-cream">Cookies 'N Cream</option>
+                            <option value="vanilla">Vanilla</option>
+                            <option value="chocolate">Chocolate</option>
+                            <option value="peanut-butter">Peanut Butter</option>
+                            <option value="mint-chocolate">Mint Chocolate</option>
+                            <option value="strawberry">Strawberry</option>
+                        </select>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label>Frosting Color</label>
+                        <div class="color-picker">
+                            <div class="color-option selected" data-color="#E91E63" style="background: #E91E63;"></div>
+                            <div class="color-option" data-color="#8BC34A" style="background: #8BC34A;"></div>
+                            <div class="color-option" data-color="#FF9800" style="background: #FF9800;"></div>
+                            <div class="color-option" data-color="#2196F3" style="background: #2196F3;"></div>
+                            <div class="color-option" data-color="#9C27B0" style="background: #9C27B0;"></div>
+                            <div class="color-option" data-color="#FFFFFF" style="background: #FFFFFF; border: 2px solid #E0E0E0;"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-group checkbox-group">
+                        <input type="checkbox" id="add-sprinkles">
+                        <label for="add-sprinkles" style="margin: 0;">Add Sprinkles</label>
+                    </div>
+                    
+                    <div class="control-group checkbox-group">
+                        <input type="checkbox" id="add-topper">
+                        <label for="add-topper" style="margin: 0;">Add Topper</label>
+                    </div>
+                    
+                    <div class="control-group" id="topper-text-group" style="display: none;">
+                        <label>Topper Message</label>
+                        <input type="text" id="topper-text" placeholder="Happy Birthday" maxlength="20">
+                    </div>
+                    
+                    <button class="btn-update" onclick="updateCakePreview()">Update Preview</button>
+                </div>
+            </div>
+            
+            <!-- Cupcakes Demo -->
+            <div class="demo-card">
+                <h2>Cupcakes by the Dozen</h2>
+                <div class="preview-container">
+                    <div id="cupcakes-preview" style="width: 100%;"></div>
+                </div>
+                
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Cupcake Flavor</label>
+                        <select id="cupcake-flavor">
+                            <option value="vanilla">Vanilla</option>
+                            <option value="chocolate">Chocolate</option>
+                            <option value="funfetti">Funfetti</option>
+                            <option value="strawberry">Strawberries 'N Cream</option>
+                            <option value="cookies-n-cream">Cookies 'N Cream</option>
+                            <option value="peanut-butter">Peanut Butter Cup</option>
+                        </select>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label>Quantity</label>
+                        <select id="cupcake-quantity">
+                            <option value="6">6 cupcakes</option>
+                            <option value="12" selected>12 cupcakes (1 dozen)</option>
+                            <option value="18">18 cupcakes</option>
+                            <option value="24">24 cupcakes (2 dozen)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="control-group checkbox-group">
+                        <input type="checkbox" id="cupcake-topper">
+                        <label for="cupcake-topper" style="margin: 0;">Add Cherry Topper</label>
+                    </div>
+                    
+                    <button class="btn-update" onclick="updateCupcakesPreview()">Update Preview</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="demo-card">
+            <h2>✨ Features of the SVG Cake Renderer</h2>
+            <ul style="font-size: 1.1em; line-height: 1.8; color: #3E2723;">
+                <li><strong>Realistic Visual Design:</strong> Gradients, shadows, and highlights create 3D cake layers</li>
+                <li><strong>Frosting Drips:</strong> Algorithmically generated frosting drips for natural appearance</li>
+                <li><strong>Layer Textures:</strong> Subtle texture lines give cakes realistic depth</li>
+                <li><strong>Animated Assembly:</strong> Smooth staggered animations show cakes being built layer by layer</li>
+                <li><strong>Customizable Colors:</strong> Frosting colors adapt to flavor selections and custom choices</li>
+                <li><strong>Decorative Elements:</strong> Sprinkles, toppers, and swirls add personality</li>
+                <li><strong>SVG Scalability:</strong> Crisp rendering at any size without image files</li>
+                <li><strong>Lightweight:</strong> Pure SVG and JavaScript - no external dependencies or images needed</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script src="assets/js/cake-renderer.js"></script>
+    <script>
+        // Initialize cake preview
+        updateCakePreview();
+        updateCupcakesPreview();
+        
+        // Color picker handler
+        document.querySelectorAll('.color-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+        
+        // Topper checkbox handler
+        document.getElementById('add-topper').addEventListener('change', function() {
+            document.getElementById('topper-text-group').style.display = this.checked ? 'block' : 'none';
+        });
+        
+        function updateCakePreview() {
+            const container = document.getElementById('cake-preview');
+            const cakeFlavor = document.getElementById('cake-flavor').value;
+            const iceCreamFlavor = document.getElementById('ice-cream-flavor').value;
+            const frostingColor = document.querySelector('.color-option.selected').dataset.color;
+            const hasSprinkles = document.getElementById('add-sprinkles').checked;
+            const hasTopper = document.getElementById('add-topper').checked;
+            const topperText = document.getElementById('topper-text').value || 'Happy Birthday';
+            
+            CakeRenderer.renderCake($(container), {
+                cakeFlavor: cakeFlavor,
+                iceCreamFlavor: iceCreamFlavor,
+                frostingType: 'buttercream',
+                frostingColor: frostingColor,
+                hasTopper: hasTopper,
+                topperText: topperText,
+                hasSprinkles: hasSprinkles
+            });
+        }
+        
+        function updateCupcakesPreview() {
+            const container = document.getElementById('cupcakes-preview');
+            const flavor = document.getElementById('cupcake-flavor').value;
+            const quantity = parseInt(document.getElementById('cupcake-quantity').value);
+            const hasTopper = document.getElementById('cupcake-topper').checked;
+            
+            CakeRenderer.renderCupcakes($(container), quantity, flavor, hasTopper);
+        }
+        
+        // Simple jQuery replacement for the demo
+        function $(element) {
+            if (typeof element === 'string') {
+                element = document.querySelector(element);
+            }
+            return {
+                html: function(content) {
+                    if (element) element.innerHTML = content;
+                    return this;
+                },
+                find: function(selector) {
+                    return $(element ? element.querySelector(selector) : null);
+                },
+                addClass: function(className) {
+                    if (element) element.classList.add(className);
+                    return this;
+                }
+            };
+        }
+    </script>
+</body>
+</html>

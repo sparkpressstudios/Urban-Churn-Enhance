@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Urban Churn Bakery Orders - Plugin Demo</title>
+    <link rel="stylesheet" href="assets/css/public.css">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+            font-family: 'Lato', sans-serif;
+        }
+        .demo-header {
+            background: linear-gradient(135deg, #E91E63 0%, #C2185B 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .demo-header h1 {
+            margin: 0 0 10px 0;
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5em;
+        }
+        .demo-header p {
+            margin: 0;
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        .demo-notice {
+            background: #FFF3E0;
+            border-left: 4px solid #FF9800;
+            padding: 15px 20px;
+            margin: 20px auto;
+            max-width: 1400px;
+        }
+        .demo-notice strong {
+            color: #E65100;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-header">
+        <h1>🧁 Urban Churn Bakery Orders Plugin Demo</h1>
+        <p>Interactive WordPress Plugin with Animated Visual Effects</p>
+    </div>
+    
+    <div class="demo-notice">
+        <strong>Demo Mode:</strong> This is a demonstration of the WordPress plugin functionality. 
+        In production, install this plugin in WordPress and use the shortcode <code>[bakery_order_form]</code> on any page.
+        Form submissions in this demo will show success messages but won't actually save or send emails.
+    </div>
+    
+    <div class="ucbo-wrapper">
+        
+        <div class="ucbo-seasonal-banner">
+            <div class="ucbo-seasonal-content">
+                <h3>🎃 Seasonal Special: Pumpkin Ice Cream Cake</h3>
+                <p>Limited-time Thanksgiving special! Pre-order our delicious Pumpkin Ice Cream Cake for just $65. Available through Thanksgiving week.</p>
+            </div>
+        </div>
+        
+        <div class="ucbo-form-container">
+            <div class="ucbo-form-left">
+                <div class="ucbo-header">
+                    <h1>Order Your Custom Bakery Treats</h1>
+                    <p class="ucbo-subtitle">Handcrafted at Urban Churn Louise Drive Scoop Shop & Bakery</p>
+                </div>
+                
+                <form id="ucbo-order-form" class="ucbo-form">
+                    
+                    <!-- Step 1: Customer Information -->
+                    <div class="ucbo-accordion-step" data-step="1">
+                        <div class="ucbo-accordion-header active">
+                            <div class="ucbo-step-indicator">
+                                <span class="ucbo-step-number">1</span>
+                                <span class="ucbo-step-checkmark">✓</span>
+                            </div>
+                            <h2>Customer Information</h2>
+                            <span class="ucbo-accordion-icon">▼</span>
+                        </div>
+                        <div class="ucbo-accordion-content active">
+                            <div class="ucbo-form-group">
+                                <label for="customer_name">Full Name <span class="required">*</span></label>
+                                <input type="text" id="customer_name" name="customer_name" required>
+                            </div>
+                            
+                            <div class="ucbo-form-row">
+                                <div class="ucbo-form-group">
+                                    <label for="customer_phone">Phone Number <span class="required">*</span></label>
+                                    <input type="tel" id="customer_phone" name="customer_phone" required>
+                                </div>
+                                
+                                <div class="ucbo-form-group">
+                                    <label for="customer_email">Email Address <span class="required">*</span></label>
+                                    <input type="email" id="customer_email" name="customer_email" required>
+                                </div>
+                            </div>
+                            
+                            <div class="ucbo-form-row">
+                                <div class="ucbo-form-group">
+                                    <label for="pickup_date">Preferred Pickup Date <span class="required">*</span></label>
+                                    <input type="date" id="pickup_date" name="pickup_date" required>
+                                </div>
+                                
+                                <div class="ucbo-form-group">
+                                    <label for="pickup_time">Preferred Pickup Time <span class="required">*</span></label>
+                                    <input type="time" id="pickup_time" name="pickup_time" required>
+                                </div>
+                            </div>
+                            
+                            <div class="ucbo-form-group">
+                                <label for="referral">How did you hear about us?</label>
+                                <input type="text" id="referral" name="referral" placeholder="Optional">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Step 2: Order Type -->
+                    <div class="ucbo-accordion-step" data-step="2">
+                        <div class="ucbo-accordion-header">
+                            <div class="ucbo-step-indicator">
+                                <span class="ucbo-step-number">2</span>
+                                <span class="ucbo-step-checkmark">✓</span>
+                            </div>
+                            <h2>Order Type</h2>
+                            <span class="ucbo-accordion-icon">▼</span>
+                        </div>
+                        <div class="ucbo-accordion-content">
+                            <div class="ucbo-order-types">
+                                <label class="ucbo-order-type-card">
+                                    <input type="radio" name="order_type" value="Pre-Stacked Ice Cream Cake" required>
+                                    <div class="ucbo-card-content">
+                                        <h3>Pre-Stacked Ice Cream Cake</h3>
+                                        <p class="ucbo-price">$65</p>
+                                        <p class="ucbo-description">2-layer, 7-inch (serves 14–18 people)</p>
+                                    </div>
+                                </label>
+                                
+                                <label class="ucbo-order-type-card">
+                                    <input type="radio" name="order_type" value="Custom Ice Cream Cake" required>
+                                    <div class="ucbo-card-content">
+                                        <h3>Custom Ice Cream Cake</h3>
+                                        <p class="ucbo-price">Starting at $75</p>
+                                        <p class="ucbo-description">2-layer, 7-inch (serves 14–18 people)</p>
+                                    </div>
+                                </label>
+                                
+                                <label class="ucbo-order-type-card">
+                                    <input type="radio" name="order_type" value="Cupcakes by the Dozen" required>
+                                    <div class="ucbo-card-content">
+                                        <h3>Cupcakes by the Dozen</h3>
+                                        <p class="ucbo-price">$36 per dozen</p>
+                                        <p class="ucbo-description">12 delicious cupcakes</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Step 3: Custom Options (Dynamic based on order type) -->
+                    <div class="ucbo-accordion-step" data-step="3">
+                        <div class="ucbo-accordion-header">
+                            <div class="ucbo-step-indicator">
+                                <span class="ucbo-step-number">3</span>
+                                <span class="ucbo-step-checkmark">✓</span>
+                            </div>
+                            <h2>Customize Your Order</h2>
+                            <span class="ucbo-accordion-icon">▼</span>
+                        </div>
+                        <div class="ucbo-accordion-content">
+                            
+                            <div id="no-order-type-message" class="ucbo-no-selection-message">
+                                <div class="ucbo-message-icon">📝</div>
+                                <p>Please choose an Order Type in Step 2 to continue.</p>
+                            </div>
+                            
+                            <div id="pre-stacked-options" class="ucbo-order-options" style="display: none;">
+                                <div class="ucbo-form-group">
+                                    <label for="pre_stacked_flavor">Choose Your Flavor <span class="required">*</span></label>
+                                    <div class="ucbo-flavor-cards">
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="pre_stacked_flavor" value="Cookies 'N Cream" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍪</div>
+                                                <h4>Cookies 'N Cream</h4>
+                                                <p>Classic cookies with vanilla</p>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="pre_stacked_flavor" value="Peanut Butter Cup" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🥜</div>
+                                                <h4>Peanut Butter Cup</h4>
+                                                <p>Rich peanut butter</p>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="pre_stacked_flavor" value="Strawberries & Cream" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍓</div>
+                                                <h4>Strawberries & Cream</h4>
+                                                <p>Sweet and fruity</p>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="pre_stacked_flavor" value="Funfetti" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🎉</div>
+                                                <h4>Funfetti</h4>
+                                                <p>Colorful celebration</p>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="pre_stacked_flavor" value="Vanilla" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">�</div>
+                                                <h4>Vanilla</h4>
+                                                <p>Classic & timeless</p>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="custom-cake-options" class="ucbo-order-options" style="display: none;">
+                                <div class="ucbo-form-group">
+                                    <label for="cake_flavor">Cake Flavor <span class="required">*</span></label>
+                                    <div class="ucbo-flavor-cards">
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cake_flavor" value="Vanilla" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍰</div>
+                                                <h4>Vanilla</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cake_flavor" value="Chocolate" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍫</div>
+                                                <h4>Chocolate</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cake_flavor" value="Red Velvet" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">❤️</div>
+                                                <h4>Red Velvet</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cake_flavor" value="Funfetti" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🎉</div>
+                                                <h4>Funfetti</h4>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="ucbo-form-group">
+                                    <label for="ice_cream_flavor">Ice Cream Flavor <span class="required">*</span></label>
+                                    <div class="ucbo-flavor-cards">
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="ice_cream_flavor" value="Cookies 'N Cream" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍪</div>
+                                                <h4>Cookies 'N Cream</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="ice_cream_flavor" value="Peanut Butter Cup" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🥜</div>
+                                                <h4>Peanut Butter Cup</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="ice_cream_flavor" value="Strawberries & Cream" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍓</div>
+                                                <h4>Strawberries & Cream</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="ice_cream_flavor" value="Funfetti" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🎉</div>
+                                                <h4>Funfetti</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="ice_cream_flavor" value="Vanilla" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">�</div>
+                                                <h4>Vanilla</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="ice_cream_flavor" value="Chocolate" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍫</div>
+                                                <h4>Chocolate</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="ice_cream_flavor" value="Mint Chocolate Chip" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍃</div>
+                                                <h4>Mint Chocolate Chip</h4>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="ucbo-form-group">
+                                    <label>Frosting Type <span class="required">*</span></label>
+                                    <div class="ucbo-radio-group">
+                                        <label class="ucbo-radio-label">
+                                            <input type="radio" name="frosting_type" value="Buttercream">
+                                            <span>Buttercream</span>
+                                        </label>
+                                        <label class="ucbo-radio-label">
+                                            <input type="radio" name="frosting_type" value="Whipped Topping">
+                                            <span>Whipped Topping (Cool Whip-style)</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="ucbo-form-group">
+                                    <label for="filling">Filling (Optional)</label>
+                                    <div class="ucbo-flavor-cards ucbo-filling-cards">
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="filling" value="">
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🚫</div>
+                                                <h4>No Filling</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="filling" value="Raspberry Jam">
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍓</div>
+                                                <h4>Raspberry Jam</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="filling" value="Chocolate Ganache">
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍫</div>
+                                                <h4>Chocolate Ganache</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="filling" value="Cherry Filling">
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍒</div>
+                                                <h4>Cherry Filling</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="filling" value="Salted Caramel">
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🧈</div>
+                                                <h4>Salted Caramel</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="filling" value="Peanut Butter">
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🥜</div>
+                                                <h4>Peanut Butter</h4>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="cupcakes-options" class="ucbo-order-options" style="display: none;">
+                                <div class="ucbo-form-group">
+                                    <label>Number of Dozens <span class="required">*</span></label>
+                                    <div class="ucbo-quantity-selector">
+                                        <button type="button" class="ucbo-qty-btn ucbo-qty-minus" data-item="cupcakes">−</button>
+                                        <input type="number" id="cupcake_quantity" name="cupcake_quantity" value="1" min="1" max="10" readonly>
+                                        <button type="button" class="ucbo-qty-btn ucbo-qty-plus" data-item="cupcakes">+</button>
+                                        <span class="ucbo-qty-label">dozen (12 cupcakes each)</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="ucbo-form-group">
+                                    <label for="cupcake_flavor">Choose Your Flavor <span class="required">*</span></label>
+                                    <div class="ucbo-flavor-cards">
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cupcake_flavor" value="Vanilla" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🧁</div>
+                                                <h4>Vanilla</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cupcake_flavor" value="Funfetti" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🎉</div>
+                                                <h4>Funfetti</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cupcake_flavor" value="Cookies 'N Cream" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍪</div>
+                                                <h4>Cookies 'N Cream</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cupcake_flavor" value="Strawberries 'N Cream" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍓</div>
+                                                <h4>Strawberries 'N Cream</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cupcake_flavor" value="Double Chocolate" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🍫</div>
+                                                <h4>Double Chocolate</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cupcake_flavor" value="Peanut Butter Cup" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🥜</div>
+                                                <h4>Peanut Butter Cup</h4>
+                                            </div>
+                                        </label>
+                                        <label class="ucbo-flavor-card">
+                                            <input type="radio" name="cupcake_flavor" value="Pumpkin (seasonal)" required>
+                                            <div class="ucbo-flavor-card-content">
+                                                <div class="ucbo-flavor-icon">🎃</div>
+                                                <h4>Pumpkin</h4>
+                                                <span class="ucbo-seasonal-badge">Seasonal</span>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="addons-section" style="display: none;">
+                                <h3 style="margin-top: 20px; margin-bottom: 15px; font-size: 1.2em;">Add-Ons</h3>
+                                
+                                <div class="ucbo-addon-group">
+                                    <label class="ucbo-checkbox-label">
+                                        <input type="checkbox" name="topper" id="topper_checkbox">
+                                        <span>Add Topper (+$8.50)</span>
+                                    </label>
+                                    <div id="topper_text_container" style="display: none;">
+                                        <label for="topper_text" style="font-size: 0.9em; color: #666; display: block; margin-bottom: 5px;">Topper Message (will appear in handwriting style)</label>
+                                        <div class="ucbo-input-with-counter">
+                                            <input type="text" id="topper_text" name="topper_text" placeholder="e.g., Happy Birthday, Happy Anniversary" maxlength="30">
+                                            <span class="ucbo-char-counter"><span id="topper_char_count">0</span>/30</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="ucbo-addon-group">
+                                    <label class="ucbo-checkbox-label">
+                                        <input type="checkbox" name="color_accents" id="color_accents_checkbox">
+                                        <span>Natural Color Accents (+$10.00)</span>
+                                    </label>
+                                    <div id="color_request_container" style="display: none;">
+                                        <div class="ucbo-input-with-counter">
+                                            <input type="text" id="color_request" name="color_request" placeholder="Preferred colors (all-natural colorings)" maxlength="50">
+                                            <span class="ucbo-char-counter"><span id="color_char_count">0</span>/50</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Step 4: Special Requests -->
+                    <div class="ucbo-accordion-step" data-step="4">
+                        <div class="ucbo-accordion-header">
+                            <div class="ucbo-step-indicator">
+                                <span class="ucbo-step-number">4</span>
+                                <span class="ucbo-step-checkmark">✓</span>
+                            </div>
+                            <h2>Special Requests</h2>
+                            <span class="ucbo-accordion-icon">▼</span>
+                        </div>
+                        <div class="ucbo-accordion-content">
+                            <div class="ucbo-form-group">
+                                <label for="special_requests">Additional Notes / Requests</label>
+                                <textarea id="special_requests" name="special_requests" rows="4" placeholder="Any special requests or additional details..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="ucbo-form-section ucbo-info-section">
+                        <h3>Order Information</h3>
+                        <ul>
+                            <li>All cakes and cupcakes are handcrafted at our Louise Drive Scoop Shop & Bakery.</li>
+                            <li>Please allow <strong>96 hours (4 days)</strong> for all orders.</li>
+                            <li>Pre-stacked cakes are available in limited weekly quantities.</li>
+                            <li>Custom cakes start at $75; final pricing will be confirmed before invoicing.</li>
+                            <li>Orders are not confirmed until we contact you and payment is received.</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="ucbo-form-actions">
+                        <button type="submit" class="ucbo-submit-btn">
+                            <span class="ucbo-btn-text">Submit Order Request</span>
+                            <span class="ucbo-btn-loading" style="display: none;">Submitting...</span>
+                        </button>
+                    </div>
+                </form>
+                
+                <div id="ucbo-success-message" class="ucbo-success-message" style="display: none;">
+                    <div class="ucbo-success-icon">✓</div>
+                    <h2>Thank you for your request!</h2>
+                    <p>Our bakery team will review your order and reach out within 24–48 hours to confirm details and send your invoice.</p>
+                    <p><strong>Please note:</strong> All cake and cupcake orders require a minimum of 96 hours (4 days) lead time for preparation.</p>
+                    <p style="margin-top: 20px;"><button onclick="location.reload()" style="padding: 10px 20px; background: #E91E63; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1em;">Start New Order</button></p>
+                </div>
+            </div>
+            
+            <div class="ucbo-form-right">
+                <div class="ucbo-visual-builder">
+                    <h3>Your Creation</h3>
+                    <div class="ucbo-preview-container">
+                        <div id="ucbo-cake-preview" class="ucbo-cake-preview">
+                            <div class="ucbo-placeholder-icon">🎂</div>
+                            <p class="ucbo-placeholder-text">Select your order type to see a preview</p>
+                        </div>
+                    </div>
+                    
+                    <div class="ucbo-price-summary">
+                        <h4>Price Summary 
+                            <span class="ucbo-info-tooltip">
+                                <span class="ucbo-info-icon">ⓘ</span>
+                                <span class="ucbo-tooltip-content">
+                                    <strong>Price Breakdown:</strong><br>
+                                    Base prices include all standard ingredients and preparation.<br><br>
+                                    <strong>Custom Cakes:</strong> Starting at $75 (may vary based on complexity)<br>
+                                    <strong>Pre-Stacked Cakes:</strong> Fixed at $65<br>
+                                    <strong>Cupcakes:</strong> $36 per dozen<br><br>
+                                    Final pricing confirmed before payment.
+                                </span>
+                            </span>
+                        </h4>
+                        <div class="ucbo-price-line">
+                            <span>Base Price:</span>
+                            <span id="ucbo-base-price">$0.00</span>
+                        </div>
+                        <div id="ucbo-quantity-price" class="ucbo-price-line" style="display: none;">
+                            <span>Quantity:</span>
+                            <span id="ucbo-quantity-display">1x</span>
+                        </div>
+                        <div id="ucbo-topper-price" class="ucbo-price-line" style="display: none;">
+                            <span>Topper:</span>
+                            <span>+$8.50</span>
+                        </div>
+                        <div id="ucbo-color-price" class="ucbo-price-line" style="display: none;">
+                            <span>Color Accents:</span>
+                            <span>+$10.00</span>
+                        </div>
+                        <div class="ucbo-price-total">
+                            <span>Total:</span>
+                            <span id="ucbo-total-price">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="assets/js/public.js"></script>
+    <script>
+        var ucboData = {
+            ajaxUrl: 'demo-handler.php',
+            nonce: 'demo-nonce',
+            leadTimeHours: 96
+        };
+        
+        $(document).ready(function() {
+            $('#ucbo-order-form').off('submit').on('submit', function(e) {
+                e.preventDefault();
+                
+                const submitBtn = $('.ucbo-submit-btn');
+                submitBtn.prop('disabled', true);
+                $('.ucbo-btn-text').hide();
+                $('.ucbo-btn-loading').show();
+                
+                setTimeout(function() {
+                    $('#ucbo-order-form').fadeOut(400, function() {
+                        $('#ucbo-success-message').fadeIn(400);
+                    });
+                    
+                    $('html, body').animate({
+                        scrollTop: $('.ucbo-form-container').offset().top - 20
+                    }, 500);
+                }, 1500);
+            });
+        });
+    </script>
+</body>
+</html>

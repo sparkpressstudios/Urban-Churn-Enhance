@@ -1,0 +1,13 @@
+.git
+.gitignore
+.replit
+.cache
+.config
+.local
+demo/
+attached_assets/
+README.md
+replit.md
+MICRO_INTERACTIONS_AND_OPTIMIZATIONS.md
+VISUALIZATION_SYSTEM.md
+.export-ignore

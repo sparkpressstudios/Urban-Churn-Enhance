@@ -1,0 +1,346 @@
+<?php
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class UCBO_Public {
+    
+    private static $instance = null;
+    
+    public static function get_instance() {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+    
+    private function __construct() {
+        add_shortcode('bakery_order_form', array($this, 'render_order_form'));
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
+        
+        UCBO_Form_Handler::get_instance();
+    }
+    
+    public function enqueue_scripts() {
+        if (!is_singular() && !is_page()) {
+            return;
+        }
+        
+        global $post;
+        if (!is_a($post, 'WP_Post') || !has_shortcode($post->post_content, 'bakery_order_form')) {
+            return;
+        }
+        
+        wp_enqueue_style(
+            'ucbo-public-styles',
+            UCBO_PLUGIN_URL . 'assets/css/public.css',
+            array(),
+            UCBO_VERSION
+        );
+        
+        wp_enqueue_style(
+            'google-fonts-playfair',
+            'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Lato:wght@300;400;700&display=swap',
+            array(),
+            null
+        );
+        
+        wp_enqueue_script(
+            'ucbo-cake-renderer',
+            UCBO_PLUGIN_URL . 'assets/js/cake-renderer.js',
+            array('jquery'),
+            UCBO_VERSION,
+            true
+        );
+        
+        wp_enqueue_script(
+            'ucbo-public-script',
+            UCBO_PLUGIN_URL . 'assets/js/public.js',
+            array('jquery', 'ucbo-cake-renderer'),
+            UCBO_VERSION,
+            true
+        );
+        
+        $settings = get_option('ucbo_settings');
+        $lead_time_hours = isset($settings['lead_time_hours']) ? $settings['lead_time_hours'] : 96;
+        
+        wp_localize_script('ucbo-public-script', 'ucboData', array(
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('ucbo_submit_order_nonce'),
+            'leadTimeHours' => $lead_time_hours,
+        ));
+    }
+    
+    public function render_order_form($atts) {
+        ob_start();
+        
+        $settings = get_option('ucbo_settings');
+        $seasonal_pumpkin_enabled = isset($settings['seasonal_pumpkin_enabled']) ? $settings['seasonal_pumpkin_enabled'] : true;
+        ?>
+        
+        <div class="ucbo-wrapper">
+            
+            <?php if ($seasonal_pumpkin_enabled): ?>
+            <div class="ucbo-seasonal-banner">
+                <div class="ucbo-seasonal-content">
+                    <h3>🎃 Seasonal Special: Pumpkin Ice Cream Cake</h3>
+                    <p>Limited-time Thanksgiving special! Pre-order our delicious Pumpkin Ice Cream Cake for just $65. Available through Thanksgiving week.</p>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <div class="ucbo-form-container">
+                <div class="ucbo-form-left">
+                    <div class="ucbo-header">
+                        <h1>Order Your Custom Bakery Treats</h1>
+                        <p class="ucbo-subtitle">Handcrafted at Urban Churn Louise Drive Scoop Shop & Bakery</p>
+                    </div>
+                    
+                    <form id="ucbo-order-form" class="ucbo-form">
+                        
+                        <div class="ucbo-form-section">
+                            <h2>Customer Information</h2>
+                            
+                            <div class="ucbo-form-group">
+                                <label for="customer_name">Full Name <span class="required">*</span></label>
+                                <input type="text" id="customer_name" name="customer_name" required>
+                            </div>
+                            
+                            <div class="ucbo-form-row">
+                                <div class="ucbo-form-group">
+                                    <label for="customer_phone">Phone Number <span class="required">*</span></label>
+                                    <input type="tel" id="customer_phone" name="customer_phone" required>
+                                </div>
+                                
+                                <div class="ucbo-form-group">
+                                    <label for="customer_email">Email Address <span class="required">*</span></label>
+                                    <input type="email" id="customer_email" name="customer_email" required>
+                                </div>
+                            </div>
+                            
+                            <div class="ucbo-form-row">
+                                <div class="ucbo-form-group">
+                                    <label for="pickup_date">Preferred Pickup Date <span class="required">*</span></label>
+                                    <input type="date" id="pickup_date" name="pickup_date" required>
+                                </div>
+                                
+                                <div class="ucbo-form-group">
+                                    <label for="pickup_time">Preferred Pickup Time <span class="required">*</span></label>
+                                    <input type="time" id="pickup_time" name="pickup_time" required>
+                                </div>
+                            </div>
+                            
+                            <div class="ucbo-form-group">
+                                <label for="referral">How did you hear about us?</label>
+                                <input type="text" id="referral" name="referral" placeholder="Optional">
+                            </div>
+                        </div>
+                        
+                        <div class="ucbo-form-section">
+                            <h2>Order Type</h2>
+                            
+                            <div class="ucbo-order-types">
+                                <label class="ucbo-order-type-card">
+                                    <input type="radio" name="order_type" value="Pre-Stacked Ice Cream Cake" required>
+                                    <div class="ucbo-card-content">
+                                        <h3>Pre-Stacked Ice Cream Cake</h3>
+                                        <p class="ucbo-price">$65</p>
+                                        <p class="ucbo-description">2-layer, 7-inch (serves 14–18 people)</p>
+                                    </div>
+                                </label>
+                                
+                                <label class="ucbo-order-type-card">
+                                    <input type="radio" name="order_type" value="Custom Ice Cream Cake" required>
+                                    <div class="ucbo-card-content">
+                                        <h3>Custom Ice Cream Cake</h3>
+                                        <p class="ucbo-price">Starting at $75</p>
+                                        <p class="ucbo-description">2-layer, 7-inch (serves 14–18 people)</p>
+                                    </div>
+                                </label>
+                                
+                                <label class="ucbo-order-type-card">
+                                    <input type="radio" name="order_type" value="Cupcakes by the Dozen" required>
+                                    <div class="ucbo-card-content">
+                                        <h3>Cupcakes by the Dozen</h3>
+                                        <p class="ucbo-price">$36 per dozen</p>
+                                        <p class="ucbo-description">12 delicious cupcakes</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div id="pre-stacked-options" class="ucbo-form-section ucbo-order-options" style="display: none;">
+                            <h2>Pre-Stacked Cake Options</h2>
+                            
+                            <div class="ucbo-form-group">
+                                <label for="pre_stacked_flavor">Choose Your Flavor <span class="required">*</span></label>
+                                <select id="pre_stacked_flavor" name="flavor">
+                                    <option value="">Select a flavor...</option>
+                                    <option value="Cookies 'N Cream">Cookies 'N Cream</option>
+                                    <option value="Peanut Butter Cup">Peanut Butter Cup</option>
+                                    <option value="Strawberries & Cream">Strawberries & Cream</option>
+                                    <option value="Funfetti">Funfetti</option>
+                                    <option value="Vanilla">Vanilla</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div id="custom-cake-options" class="ucbo-form-section ucbo-order-options" style="display: none;">
+                            <h2>Custom Cake Options</h2>
+                            
+                            <div class="ucbo-form-row">
+                                <div class="ucbo-form-group">
+                                    <label for="cake_flavor">Cake Flavor <span class="required">*</span></label>
+                                    <input type="text" id="cake_flavor" name="cake_flavor" placeholder="e.g., Vanilla, Chocolate, Red Velvet">
+                                </div>
+                                
+                                <div class="ucbo-form-group">
+                                    <label for="ice_cream_flavor">Ice Cream Flavor <span class="required">*</span></label>
+                                    <select id="ice_cream_flavor" name="ice_cream_flavor">
+                                        <option value="">Select ice cream flavor...</option>
+                                        <option value="Cookies 'N Cream">Cookies 'N Cream</option>
+                                        <option value="Peanut Butter Cup">Peanut Butter Cup</option>
+                                        <option value="Strawberries & Cream">Strawberries & Cream</option>
+                                        <option value="Funfetti">Funfetti</option>
+                                        <option value="Vanilla">Vanilla</option>
+                                        <option value="Chocolate">Chocolate</option>
+                                        <option value="Mint Chocolate Chip">Mint Chocolate Chip</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="ucbo-form-group">
+                                <label>Frosting Type <span class="required">*</span></label>
+                                <div class="ucbo-radio-group">
+                                    <label class="ucbo-radio-label">
+                                        <input type="radio" name="frosting_type" value="Buttercream">
+                                        <span>Buttercream</span>
+                                    </label>
+                                    <label class="ucbo-radio-label">
+                                        <input type="radio" name="frosting_type" value="Whipped Topping">
+                                        <span>Whipped Topping (Cool Whip-style)</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="ucbo-form-group">
+                                <label for="filling">Filling (Optional)</label>
+                                <input type="text" id="filling" name="filling" placeholder="e.g., Raspberry jam, Chocolate ganache">
+                            </div>
+                        </div>
+                        
+                        <div id="cupcakes-options" class="ucbo-form-section ucbo-order-options" style="display: none;">
+                            <h2>Cupcake Options</h2>
+                            
+                            <div class="ucbo-form-group">
+                                <label for="cupcake_flavor">Choose Your Flavor <span class="required">*</span></label>
+                                <select id="cupcake_flavor" name="flavor">
+                                    <option value="">Select a flavor...</option>
+                                    <option value="Vanilla">Vanilla</option>
+                                    <option value="Funfetti">Funfetti</option>
+                                    <option value="Cookies 'N Cream">Cookies 'N Cream</option>
+                                    <option value="Strawberries 'N Cream">Strawberries 'N Cream</option>
+                                    <option value="Double Chocolate">Double Chocolate</option>
+                                    <option value="Peanut Butter Cup">Peanut Butter Cup</option>
+                                    <option value="Pumpkin (seasonal)">Pumpkin (seasonal)</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div id="addons-section" class="ucbo-form-section" style="display: none;">
+                            <h2>Add-Ons</h2>
+                            
+                            <div class="ucbo-addon-group">
+                                <label class="ucbo-checkbox-label">
+                                    <input type="checkbox" name="topper" id="topper_checkbox">
+                                    <span>Add Topper (+$8.50)</span>
+                                </label>
+                                <div id="topper_text_container" style="display: none;">
+                                    <input type="text" id="topper_text" name="topper_text" placeholder="e.g., Happy Birthday, Happy Anniversary">
+                                </div>
+                            </div>
+                            
+                            <div class="ucbo-addon-group">
+                                <label class="ucbo-checkbox-label">
+                                    <input type="checkbox" name="color_accents" id="color_accents_checkbox">
+                                    <span>Natural Color Accents (+$10.00)</span>
+                                </label>
+                                <div id="color_request_container" style="display: none;">
+                                    <input type="text" id="color_request" name="color_request" placeholder="Preferred colors (all-natural colorings)">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="ucbo-form-section">
+                            <h2>Special Requests</h2>
+                            <div class="ucbo-form-group">
+                                <label for="special_requests">Additional Notes / Requests</label>
+                                <textarea id="special_requests" name="special_requests" rows="4" placeholder="Any special requests or additional details..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="ucbo-form-section ucbo-info-section">
+                            <h3>Order Information</h3>
+                            <ul>
+                                <li>All cakes and cupcakes are handcrafted at our Louise Drive Scoop Shop & Bakery.</li>
+                                <li>Please allow <strong>96 hours (4 days)</strong> for all orders.</li>
+                                <li>Pre-stacked cakes are available in limited weekly quantities.</li>
+                                <li>Custom cakes start at $75; final pricing will be confirmed before invoicing.</li>
+                                <li>Orders are not confirmed until we contact you and payment is received.</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="ucbo-form-actions">
+                            <button type="submit" class="ucbo-submit-btn">
+                                <span class="ucbo-btn-text">Submit Order Request</span>
+                                <span class="ucbo-btn-loading" style="display: none;">Submitting...</span>
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <div id="ucbo-success-message" class="ucbo-success-message" style="display: none;">
+                        <div class="ucbo-success-icon">✓</div>
+                        <h2>Thank you for your request!</h2>
+                        <p>Our bakery team will review your order and reach out within 24–48 hours to confirm details and send your invoice.</p>
+                        <p><strong>Please note:</strong> All cake and cupcake orders require a minimum of 96 hours (4 days) lead time for preparation.</p>
+                    </div>
+                </div>
+                
+                <div class="ucbo-form-right">
+                    <div class="ucbo-visual-builder">
+                        <h3>Your Creation</h3>
+                        <div class="ucbo-preview-container">
+                            <div id="ucbo-cake-preview" class="ucbo-cake-preview">
+                                <div class="ucbo-placeholder-icon">🎂</div>
+                                <p class="ucbo-placeholder-text">Select your order type to see a preview</p>
+                            </div>
+                        </div>
+                        
+                        <div class="ucbo-price-summary">
+                            <h4>Price Summary</h4>
+                            <div class="ucbo-price-line">
+                                <span>Base Price:</span>
+                                <span id="ucbo-base-price">$0.00</span>
+                            </div>
+                            <div id="ucbo-topper-price" class="ucbo-price-line" style="display: none;">
+                                <span>Topper:</span>
+                                <span>+$8.50</span>
+                            </div>
+                            <div id="ucbo-color-price" class="ucbo-price-line" style="display: none;">
+                                <span>Color Accents:</span>
+                                <span>+$10.00</span>
+                            </div>
+                            <div class="ucbo-price-total">
+                                <span>Total:</span>
+                                <span id="ucbo-total-price">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <?php
+        return ob_get_clean();
+    }
+}

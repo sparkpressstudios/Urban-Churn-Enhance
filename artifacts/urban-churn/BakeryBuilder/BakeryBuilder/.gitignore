@@ -1,0 +1,16 @@
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+node_modules/
+.env
+.env.local
+wp-config.php
+wp-content/uploads/
+wp-content/cache/

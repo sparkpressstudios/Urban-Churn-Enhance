@@ -1,0 +1,2346 @@
+:root {
+    --bakery-pink: #E91E63;
+    --mint-green: #8BC34A;
+    --warm-orange: #FF9800;
+    --cream-bg: #FFF8E1;
+    --chocolate-brown: #3E2723;
+    --fresh-green: #4CAF50;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&display=swap');
+
+* {
+    box-sizing: border-box;
+}
+
+/* Mobile scrolling optimization */
+html, body {
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Performance optimizations for mobile */
+* {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+}
+
+/* GPU acceleration for animations */
+.ucbo-cake-layer,
+.ucbo-flavor-card,
+.ucbo-accordion-content,
+.ucbo-cupcake,
+.ucbo-confetti {
+    will-change: transform;
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+}
+
+/* =============================
+   Cupcakes (CSS/HTML structure)
+   ============================= */
+.cupcake {
+    width: 60px;
+    margin: 0 auto 10px;
+    position: relative;
+    font-size: 0;
+    animation: popIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.cupcake .cake {
+    width: 60px;
+    height: 12px;
+    background-color: #322421;
+    /* base cake color */
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+}
+
+.cupcake .cup {
+    width: 60px;
+    height: 0;
+    border: solid;
+    border-width: 40px 0 0 0;
+    border-color: #A4D2DE transparent transparent;
+    border-bottom-left-radius: 26px 40px;
+    border-bottom-right-radius: 26px 40px;
+    position: relative;
+    display: inline-block;
+    z-index: 0;
+}
+
+.cupcake .cup span {
+    height: 10px;
+    width: 15px;
+    display: inline-block;
+    background-color: #A4D2DE;
+    position: relative;
+    top: -42px;
+    border-radius: 50%;
+    margin: 0;
+}
+
+.cupcake .cup span:after {
+    content: "";
+    top: 6px;
+    position: absolute;
+    width: 1px;
+    height: 30px;
+    background-color: rgba(255, 255, 255, 0.6);
+    transform: rotate(0deg);
+}
+
+.cupcake .cup span:first-child:after {
+    background-color: transparent;
+}
+
+.cupcake .frosting span {
+    display: block;
+    position: relative;
+    height: 6px;
+    margin: auto;
+    background-color: #FFF8E1;
+    /* buttercream */
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+    border-top: 1px solid #FFECB3;
+}
+
+/* Add a rounded cap to the very top frosting for a more realistic dollop */
+.cupcake .frosting .top {
+    position: relative;
+}
+
+.cupcake .frosting .top::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: -4px;
+    width: 22px;
+    height: 12px;
+    background: radial-gradient(ellipse at 50% 30%, #FFFDF3 0%, #FFF8E1 60%, #FFE9A8 100%);
+    border-radius: 50% 50% 45% 45% / 65% 65% 35% 35%;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 2px 2px rgba(0, 0, 0, 0.06);
+}
+
+.cupcake .frosting .bottom {
+    width: 51px;
+}
+
+.cupcake .frosting .middle {
+    width: 39px;
+}
+
+.cupcake .frosting .top {
+    width: 27px;
+}
+
+/* Flavor variants (cake color) */
+.cupcake.vanilla .cake {
+    background-color: #FFFBEA;
+}
+
+.cupcake.chocolate .cake {
+    background-color: #6D4C41;
+}
+
+.cupcake.strawberry .cake {
+    background-color: #FFB3D9;
+}
+
+.cupcake.funfetti .cake {
+    background:
+        radial-gradient(circle, #E91E63 1.5px, transparent 1.5px) 0 0 / 12px 12px,
+        radial-gradient(circle, #2196F3 1.5px, transparent 1.5px) 6px 6px / 12px 12px,
+        radial-gradient(circle, #FFC107 1.5px, transparent 1.5px) 3px 9px / 12px 12px,
+        radial-gradient(circle, #4CAF50 1.5px, transparent 1.5px) 9px 3px / 12px 12px,
+        radial-gradient(circle, #9C27B0 1.5px, transparent 1.5px) 2px 5px / 12px 12px,
+        #FFFBEA;
+}
+
+.cupcake.cookies-cream .cake {
+    background:
+        radial-gradient(circle, #3E2723 1.5px, transparent 1.5px) 0 0 / 10px 10px,
+        radial-gradient(circle, #3E2723 1.5px, transparent 1.5px) 5px 5px / 10px 10px,
+        #F5F5F5;
+}
+
+/* Additional flavors */
+.cupcake.red-velvet .cake {
+    background-color: #B71C1C;
+}
+
+.cupcake.peanut-butter .cake {
+    background-color: #D4A574;
+}
+
+.cupcake.pumpkin .cake {
+    background-color: #FF9800;
+}
+
+.cupcake.pumpkin-spice .cake {
+    background-color: #E8985E;
+}
+
+.cupcake.mint-chip .cake {
+    background-color: #B2DFDB;
+}
+
+.cupcake.lemon .cake {
+    background-color: #FFF9C4;
+}
+
+.ucbo-wrapper {
+    font-family: 'Lato', sans-serif;
+    color: var(--chocolate-brown);
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.ucbo-seasonal-accordion {
+    background: #F5F5F5;
+    border-radius: 12px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.ucbo-seasonal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 30px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.ucbo-seasonal-header:hover {
+    background: #ECECEC;
+}
+
+.ucbo-seasonal-header h3 {
+    font-family: 'Playfair Display', serif;
+    color: #444444;
+    margin: 0;
+    font-size: 1.6em;
+    flex: 1;
+}
+
+.ucbo-seasonal-icon {
+    font-size: 1.2em;
+    color: #444444;
+    transition: transform 0.3s ease;
+    margin-left: 15px;
+}
+
+.ucbo-seasonal-accordion.active .ucbo-seasonal-icon {
+    transform: rotate(180deg);
+}
+
+.ucbo-seasonal-content {
+    padding: 0 30px 20px 30px;
+    color: #444444;
+    font-size: 1.1em;
+}
+
+.ucbo-seasonal-content p {
+    margin: 0;
+    line-height: 1.6;
+}
+
+.ucbo-form-container {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 40px;
+    background: white;
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.ucbo-header h1 {
+    font-family: 'Playfair Display', serif;
+    color: var(--bakery-pink);
+    font-size: 2.5em;
+    margin: 0 0 10px 0;
+    animation: fadeInUp 0.6s ease-out;
+}
+
+.ucbo-subtitle {
+    color: var(--chocolate-brown);
+    font-size: 1.1em;
+    margin: 0 0 30px 0;
+    opacity: 0.8;
+    animation: fadeInUp 0.6s ease-out 0.1s backwards;
+}
+
+.ucbo-form-section {
+    margin-bottom: 35px;
+    animation: fadeInUp 0.6s ease-out;
+}
+
+.ucbo-form-section h2 {
+    font-family: 'Playfair Display', serif;
+    color: var(--chocolate-brown);
+    font-size: 1.8em;
+    margin: 0 0 20px 0;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--cream-bg);
+}
+
+/* Accordion Styles */
+.ucbo-accordion-step {
+    margin-bottom: 20px;
+    border: 2px solid #E0E0E0;
+    border-radius: 12px;
+    background: white;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.ucbo-accordion-step.completed {
+    border-color: var(--fresh-green);
+}
+
+.ucbo-accordion-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 20px 25px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #F5F5F5 0%, #FAFAFA 100%);
+    transition: all 0.3s ease;
+    user-select: none;
+}
+
+.ucbo-accordion-header:hover {
+    background: linear-gradient(135deg, #EEEEEE 0%, #F5F5F5 100%);
+}
+
+.ucbo-accordion-header.active {
+    background: linear-gradient(135deg, rgba(233, 30, 99, 0.08) 0%, rgba(233, 30, 99, 0.12) 100%);
+}
+
+.ucbo-accordion-header.completed {
+    background: linear-gradient(135deg, rgba(76, 175, 80, 0.08) 0%, rgba(76, 175, 80, 0.12) 100%);
+}
+
+.ucbo-accordion-header.disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.ucbo-step-indicator {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+}
+
+.ucbo-step-number {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 40px;
+    height: 40px;
+    background: white;
+    border: 3px solid #E0E0E0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.1em;
+    color: var(--chocolate-brown);
+    transition: all 0.3s ease;
+}
+
+.ucbo-accordion-header.active .ucbo-step-number {
+    border-color: var(--bakery-pink);
+    background: var(--bakery-pink);
+    color: white;
+    transform: scale(1.1);
+}
+
+.ucbo-step-checkmark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 40px;
+    height: 40px;
+    background: var(--fresh-green);
+    border: 3px solid var(--fresh-green);
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.3em;
+    color: white;
+    animation: scaleIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.ucbo-accordion-header.completed .ucbo-step-number {
+    display: none;
+}
+
+.ucbo-accordion-header.completed .ucbo-step-checkmark {
+    display: flex;
+}
+
+.ucbo-accordion-header h2 {
+    flex: 1;
+    margin: 0;
+    padding: 0;
+    border: none;
+    font-size: 1.5em;
+    color: var(--chocolate-brown);
+}
+
+.ucbo-accordion-icon {
+    font-size: 1.2em;
+    color: var(--chocolate-brown);
+    transition: transform 0.3s ease;
+}
+
+.ucbo-accordion-header.active .ucbo-accordion-icon {
+    transform: rotate(180deg);
+}
+
+.ucbo-accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease, padding 0.4s ease;
+    padding: 0 25px;
+}
+
+.ucbo-accordion-content.active {
+    max-height: none;
+    padding: 25px;
+    animation: fadeInDown 0.4s ease;
+}
+
+/* Flavor Cards */
+.ucbo-flavor-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.ucbo-flavor-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.ucbo-flavor-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ucbo-flavor-card-content {
+    border: 2px solid #E0E0E0;
+    border-radius: 12px;
+    padding: 15px 10px;
+    text-align: center;
+    background: white;
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    position: relative;
+}
+
+.ucbo-flavor-card:hover .ucbo-flavor-card-content {
+    border-color: var(--bakery-pink);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(233, 30, 99, 0.2);
+}
+
+.ucbo-flavor-card input:checked+.ucbo-flavor-card-content {
+    border-color: var(--bakery-pink);
+    background: linear-gradient(135deg, rgba(233, 30, 99, 0.08) 0%, rgba(233, 30, 99, 0.15) 100%);
+    box-shadow: 0 4px 16px rgba(233, 30, 99, 0.3);
+    transform: scale(1.05);
+    animation: cardSelect 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.ucbo-flavor-card input:checked+.ucbo-flavor-card-content::after {
+    content: '✓';
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 24px;
+    height: 24px;
+    background: var(--fresh-green);
+    border-radius: 50%;
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: checkmarkPop 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.ucbo-flavor-icon {
+    font-size: 2.5em;
+    margin-bottom: 8px;
+    filter: grayscale(0.3);
+    transition: all 0.3s ease;
+}
+
+.ucbo-flavor-icon i {
+    font-size: 1em;
+}
+
+.ucbo-flavor-card:hover .ucbo-flavor-icon,
+.ucbo-flavor-card input:checked+.ucbo-flavor-card-content .ucbo-flavor-icon {
+    filter: grayscale(0);
+    transform: scale(1.1);
+}
+
+.ucbo-flavor-card-content h4 {
+    margin: 0;
+    font-size: 0.95em;
+    font-weight: 600;
+    color: var(--chocolate-brown);
+}
+
+.ucbo-flavor-card-content p {
+    margin: 5px 0 0 0;
+    font-size: 0.8em;
+    color: #666;
+}
+
+.ucbo-seasonal-badge {
+    display: inline-block;
+    background: var(--warm-orange);
+    color: white;
+    font-size: 0.65em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+    font-weight: 600;
+}
+
+/* Filling Cards - Smaller */
+.ucbo-filling-cards {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+}
+
+.ucbo-filling-cards .ucbo-flavor-card-content {
+    padding: 10px 8px;
+}
+
+.ucbo-filling-cards .ucbo-flavor-icon {
+    font-size: 2em;
+}
+
+.ucbo-filling-cards h4 {
+    font-size: 0.85em;
+}
+
+/* Size Cards for Baked Cakes */
+.ucbo-size-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.ucbo-size-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.ucbo-size-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ucbo-size-card-content {
+    border: 2px solid #E0E0E0;
+    border-radius: 12px;
+    padding: 20px 15px;
+    text-align: center;
+    background: white;
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    position: relative;
+}
+
+.ucbo-size-card:hover .ucbo-size-card-content {
+    border-color: var(--bakery-pink);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(233, 30, 99, 0.2);
+}
+
+.ucbo-size-card input:checked+.ucbo-size-card-content {
+    border-color: var(--bakery-pink);
+    background: linear-gradient(135deg, rgba(233, 30, 99, 0.08) 0%, rgba(233, 30, 99, 0.15) 100%);
+    box-shadow: 0 4px 16px rgba(233, 30, 99, 0.3);
+    transform: scale(1.03);
+    animation: cardSelect 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.ucbo-size-card input:checked+.ucbo-size-card-content::after {
+    content: '✓';
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 24px;
+    height: 24px;
+    background: var(--fresh-green);
+    border-radius: 50%;
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: checkmarkPop 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.ucbo-size-card-content h4 {
+    margin: 0 0 8px 0;
+    font-size: 1.3em;
+    font-weight: 700;
+    color: var(--chocolate-brown);
+}
+
+.ucbo-size-price {
+    margin: 0 0 5px 0;
+    font-size: 1.4em;
+    font-weight: 700;
+    color: var(--bakery-pink);
+}
+
+.ucbo-size-serves {
+    margin: 0;
+    font-size: 0.85em;
+    color: #666;
+}
+
+/* Topper Cards - Same styling as filling cards */
+.ucbo-topper-cards {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+}
+
+.ucbo-topper-cards .ucbo-flavor-card-content {
+    padding: 12px 8px;
+}
+
+.ucbo-topper-cards .ucbo-flavor-icon {
+    font-size: 2em;
+}
+
+.ucbo-topper-cards h4 {
+    font-size: 0.85em;
+}
+
+/* Baked cupcake styling */
+.cupcake.baked .cake {
+    border-radius: 10px 10px 0 0;
+}
+
+.cupcake.baked.smores .cake {
+    background-color: #8D6E63;
+}
+
+.cupcake.baked.carrot .cake {
+    background-color: #E65100;
+}
+
+.cupcake.baked.marble .cake {
+    background: linear-gradient(45deg, #F5E6D3 0%, #5D4037 50%, #F5E6D3 100%);
+}
+
+.cupcake.baked.almond .cake {
+    background-color: #D7CCC8;
+}
+
+.cupcake.baked.caramel .cake {
+    background-color: #D2691E;
+}
+
+/* Quantity Selector */
+.ucbo-quantity-selector {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.ucbo-qty-btn {
+    width: 40px;
+    height: 40px;
+    border: 2px solid var(--bakery-pink);
+    background: white;
+    color: var(--bakery-pink);
+    font-size: 1.5em;
+    font-weight: 700;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ucbo-qty-btn:hover {
+    background: var(--bakery-pink);
+    color: white;
+    transform: scale(1.1);
+}
+
+.ucbo-qty-btn:active {
+    transform: scale(0.95);
+}
+
+.ucbo-quantity-selector input[type="number"] {
+    width: 60px;
+    height: 40px;
+    text-align: center;
+    font-size: 1.2em;
+    font-weight: 700;
+    border: 2px solid #E0E0E0;
+    border-radius: 8px;
+    color: var(--chocolate-brown);
+}
+
+.ucbo-qty-label {
+    font-size: 0.9em;
+    color: #666;
+}
+
+/* Character Counter */
+.ucbo-input-with-counter {
+    position: relative;
+}
+
+.ucbo-input-with-counter input {
+    width: 100%;
+    padding-right: 60px;
+}
+
+.ucbo-char-counter {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8em;
+    color: #999;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.ucbo-char-counter.warning {
+    color: var(--warm-orange);
+}
+
+.ucbo-char-counter.limit {
+    color: var(--bakery-pink);
+}
+
+/* Price Breakdown Tooltip */
+.ucbo-info-tooltip {
+    position: relative;
+    display: inline-block;
+    margin-left: 5px;
+}
+
+.ucbo-info-icon {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    background: #E0E0E0;
+    color: #666;
+    border-radius: 50%;
+    font-size: 0.7em;
+    text-align: center;
+    line-height: 18px;
+    cursor: help;
+    transition: all 0.3s ease;
+}
+
+.ucbo-info-icon:hover {
+    background: var(--bakery-pink);
+    color: white;
+    transform: scale(1.1);
+}
+
+.ucbo-tooltip-content {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    background: var(--chocolate-brown);
+    color: white;
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 0.85em;
+    line-height: 1.6;
+    width: 280px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    transition: all 0.3s ease;
+    margin-bottom: 10px;
+}
+
+.ucbo-tooltip-content::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 8px solid transparent;
+    border-top-color: var(--chocolate-brown);
+}
+
+.ucbo-info-tooltip:hover .ucbo-tooltip-content {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Cake Layer Tooltips */
+.ucbo-cake-layer {
+    cursor: pointer;
+    position: relative;
+}
+
+.ucbo-cake-layer::before {
+    content: attr(data-flavor);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 10;
+}
+
+.ucbo-cake-layer:hover::before {
+    opacity: 1;
+}
+
+/* No Selection Message */
+.ucbo-no-selection-message {
+    text-align: center;
+    padding: 40px 20px;
+    background: linear-gradient(135deg, rgba(255, 152, 0, 0.05) 0%, rgba(255, 152, 0, 0.1) 100%);
+    border: 2px dashed #FFB74D;
+    border-radius: 12px;
+    animation: fadeIn 0.4s ease;
+}
+
+.ucbo-message-icon {
+    font-size: 3em;
+    margin-bottom: 15px;
+    opacity: 0.7;
+}
+
+.ucbo-no-selection-message p {
+    margin: 0;
+    font-size: 1.1em;
+    color: var(--chocolate-brown);
+    font-weight: 500;
+}
+
+.ucbo-form-group {
+    margin-bottom: 20px;
+}
+
+.ucbo-form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--chocolate-brown);
+}
+
+.ucbo-form-group .required {
+    color: var(--bakery-pink);
+}
+
+.ucbo-form-group input[type="text"],
+.ucbo-form-group input[type="email"],
+.ucbo-form-group input[type="tel"],
+.ucbo-form-group input[type="date"],
+.ucbo-form-group input[type="time"],
+.ucbo-form-group select,
+.ucbo-form-group textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #E0E0E0;
+    border-radius: 8px;
+    font-family: 'Lato', sans-serif;
+    font-size: 1em;
+    transition: all 0.3s ease;
+}
+
+.ucbo-form-group input:focus,
+.ucbo-form-group select:focus,
+.ucbo-form-group textarea:focus {
+    outline: none;
+    border-color: var(--bakery-pink);
+    box-shadow: 0 0 0 3px rgba(233, 30, 99, 0.1);
+}
+
+.ucbo-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.ucbo-order-types {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+}
+
+.ucbo-order-type-card {
+    position: relative;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.ucbo-order-type-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ucbo-card-content {
+    border: 2px solid #E0E0E0;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    background: white;
+    transition: all 0.3s ease;
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.ucbo-order-type-card:hover .ucbo-card-content {
+    border-color: var(--bakery-pink);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(233, 30, 99, 0.2);
+}
+
+.ucbo-order-type-card input:checked+.ucbo-card-content {
+    border-color: var(--bakery-pink);
+    background: linear-gradient(135deg, rgba(233, 30, 99, 0.05) 0%, rgba(233, 30, 99, 0.1) 100%);
+    box-shadow: 0 4px 16px rgba(233, 30, 99, 0.25);
+    animation: pulse 0.5s ease;
+}
+
+.ucbo-card-content h3 {
+    font-family: 'Playfair Display', serif;
+    color: var(--chocolate-brown);
+    font-size: 1.3em;
+    margin: 0 0 10px 0;
+    line-height: 1.3;
+}
+
+.ucbo-price {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: var(--bakery-pink);
+    margin: 10px 0;
+}
+
+.ucbo-description {
+    font-size: 0.9em;
+    color: #666;
+    margin: 0;
+}
+
+.ucbo-radio-group {
+    display: flex;
+    gap: 20px;
+}
+
+.ucbo-radio-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 400;
+}
+
+.ucbo-radio-label input[type="radio"] {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--bakery-pink);
+}
+
+.ucbo-addon-group {
+    margin-bottom: 20px;
+}
+
+.ucbo-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.ucbo-checkbox-label input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    accent-color: var(--bakery-pink);
+}
+
+#topper_text_container,
+#color_request_container {
+    margin-left: 32px;
+    margin-top: 10px;
+}
+
+#topper_text_container input,
+#color_request_container input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid #E0E0E0;
+    border-radius: 8px;
+    font-family: 'Lato', sans-serif;
+}
+
+.ucbo-info-section {
+    background: var(--cream-bg);
+    padding: 20px;
+    border-radius: 12px;
+}
+
+.ucbo-info-section h3 {
+    font-family: 'Playfair Display', serif;
+    color: var(--chocolate-brown);
+    margin: 0 0 15px 0;
+}
+
+.ucbo-info-section ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.ucbo-info-section li {
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+
+.ucbo-form-actions {
+    margin-top: 30px;
+}
+
+.ucbo-submit-btn {
+    width: 100%;
+    padding: 18px 32px;
+    background: linear-gradient(135deg, var(--bakery-pink) 0%, #C2185B 100%);
+    color: white;
+    font-family: 'Lato', sans-serif;
+    font-size: 1.2em;
+    font-weight: 700;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(233, 30, 99, 0.3);
+}
+
+.ucbo-submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(233, 30, 99, 0.4);
+}
+
+.ucbo-submit-btn:active {
+    transform: translateY(0);
+}
+
+.ucbo-submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.ucbo-form-right {
+    position: sticky;
+    top: 20px;
+    height: fit-content;
+}
+
+.ucbo-visual-builder {
+    background: var(--cream-bg);
+    border-radius: 16px;
+    padding: 25px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.ucbo-visual-builder h3 {
+    font-family: 'Playfair Display', serif;
+    color: var(--chocolate-brown);
+    font-size: 1.6em;
+    margin: 0 0 20px 0;
+    text-align: center;
+}
+
+.ucbo-preview-container {
+    background: white;
+    border-radius: 12px;
+    padding: 30px;
+    margin-bottom: 20px;
+    min-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ucbo-cake-preview {
+    text-align: center;
+    width: 100%;
+}
+
+.ucbo-placeholder-icon {
+    font-size: 5em;
+    margin-bottom: 15px;
+    opacity: 0.3;
+    animation: float 3s ease-in-out infinite;
+}
+
+.ucbo-placeholder-text {
+    color: #999;
+    font-size: 1em;
+}
+
+.ucbo-cake-layer {
+    width: 100%;
+    height: 80px;
+    border-radius: 8px;
+    margin: 10px 0;
+    position: relative;
+    transform-origin: bottom;
+    animation: stackLayer 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Cake Base Layer Styles */
+.ucbo-cake-base {
+    background: linear-gradient(135deg, #FFFFFF 0%, #F5F5F5 100%);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    height: 90px;
+    border: 1px solid #E0E0E0;
+}
+
+.ucbo-cake-base.vanilla {
+    background: linear-gradient(135deg, #FFF9E6 0%, #FFE5B4 100%);
+}
+
+.ucbo-cake-base.chocolate {
+    background: linear-gradient(135deg, #5D4037 0%, #4E342E 100%);
+}
+
+.ucbo-cake-base.red-velvet {
+    background: linear-gradient(135deg, #B71C1C 0%, #8B0000 100%);
+}
+
+.ucbo-cake-base.funfetti {
+    background: linear-gradient(135deg, #FFF9E6 0%, #FFE5B4 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+.ucbo-cake-base.funfetti::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        radial-gradient(circle, #E91E63 2px, transparent 2px),
+        radial-gradient(circle, #2196F3 2px, transparent 2px),
+        radial-gradient(circle, #FFC107 2px, transparent 2px),
+        radial-gradient(circle, #4CAF50 2px, transparent 2px),
+        radial-gradient(circle, #9C27B0 2px, transparent 2px);
+    background-size: 25px 25px;
+    background-position: 0 0, 12px 12px, 6px 18px, 18px 6px, 3px 9px;
+    opacity: 0.6;
+}
+
+/* Ice Cream Layer Styles */
+.ucbo-cake-middle {
+    background: linear-gradient(135deg, #FFFFFF 0%, #F5F5F5 100%);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    height: 85px;
+    border: 1px solid #E0E0E0;
+}
+
+.ucbo-cake-middle.cookies-cream {
+    background: linear-gradient(135deg, #F5F5F5 0%, #E0E0E0 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+.ucbo-cake-middle.cookies-cream::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: radial-gradient(circle, #3E2723 3px, transparent 3px);
+    background-size: 20px 20px;
+    background-position: 0 0, 10px 10px;
+    opacity: 0.4;
+}
+
+.ucbo-cake-middle.peanut-butter {
+    background: linear-gradient(135deg, #D4A574 0%, #C19A6B 100%);
+}
+
+.ucbo-cake-middle.strawberry {
+    background: linear-gradient(135deg, #FFB3D9 0%, #FF80AB 100%);
+}
+
+.ucbo-cake-middle.vanilla {
+    background: linear-gradient(135deg, #FFFBEA 0%, #FFF4D6 100%);
+}
+
+.ucbo-cake-middle.chocolate {
+    background: linear-gradient(135deg, #6D4C41 0%, #5D4037 100%);
+}
+
+.ucbo-cake-middle.mint-chip {
+    background: linear-gradient(135deg, #B2DFDB 0%, #80CBC4 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+.ucbo-cake-middle.mint-chip::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: radial-gradient(circle, #3E2723 2px, transparent 2px);
+    background-size: 18px 18px;
+    background-position: 0 0, 9px 9px;
+    opacity: 0.5;
+}
+
+.ucbo-cake-middle.funfetti {
+    background: linear-gradient(135deg, #FFFBEA 0%, #FFF4D6 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+.ucbo-cake-middle.funfetti::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        radial-gradient(circle, #E91E63 2px, transparent 2px),
+        radial-gradient(circle, #2196F3 2px, transparent 2px),
+        radial-gradient(circle, #FFC107 2px, transparent 2px),
+        radial-gradient(circle, #4CAF50 2px, transparent 2px);
+    background-size: 22px 22px;
+    background-position: 0 0, 11px 11px, 5px 16px, 16px 5px;
+    opacity: 0.7;
+}
+
+/* Frosting Layer Styles */
+.ucbo-cake-frosting {
+    background: linear-gradient(135deg, #FFFFFF 0%, #F5F5F5 100%);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    height: 25px;
+    border-radius: 12px 12px 4px 4px;
+    border: 1px solid #E0E0E0;
+}
+
+.ucbo-cake-frosting.buttercream {
+    background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
+    border-bottom: 3px solid #FFD54F;
+}
+
+.ucbo-cake-frosting.whipped {
+    background: linear-gradient(135deg, #FAFAFA 0%, #F5F5F5 100%);
+    border-bottom: 2px solid #E0E0E0;
+}
+
+.ucbo-cake-frosting.buttercream-pink {
+    background: linear-gradient(135deg, #F8BBD0 0%, #F48FB1 100%);
+}
+
+.ucbo-cake-frosting.buttercream-chocolate {
+    background: linear-gradient(135deg, #6D4C41 0%, #5D4037 100%);
+}
+
+.ucbo-cake-frosting.with-sprinkles {
+    position: relative;
+    overflow: hidden;
+}
+
+.ucbo-cake-frosting.with-sprinkles::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        linear-gradient(45deg, #E91E63 1px, transparent 1px),
+        linear-gradient(-45deg, #2196F3 1px, transparent 1px),
+        linear-gradient(90deg, #FFC107 1px, transparent 1px),
+        linear-gradient(0deg, #4CAF50 1px, transparent 1px);
+    background-size: 8px 8px, 8px 8px, 10px 10px, 10px 10px;
+    background-position: 0 0, 4px 4px, 2px 2px, 6px 6px;
+    opacity: 0.6;
+}
+
+/* Filling Layer Styles */
+.ucbo-cake-filling {
+    width: 100%;
+    height: 12px;
+    margin: 0;
+    border-radius: 8px;
+    position: relative;
+    transform-origin: center;
+    animation: stackLayer 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.ucbo-cake-filling.raspberry {
+    background: linear-gradient(135deg, #C2185B 0%, #AD1457 100%);
+}
+
+.ucbo-cake-filling.chocolate-ganache {
+    background: linear-gradient(135deg, #4E342E 0%, #3E2723 100%);
+}
+
+.ucbo-cake-filling.cherry {
+    background: linear-gradient(135deg, #D32F2F 0%, #C62828 100%);
+}
+
+.ucbo-cake-filling.caramel {
+    background: linear-gradient(135deg, #D4A574 0%, #C19A6B 100%);
+}
+
+.ucbo-cake-filling.peanut-butter {
+    background: linear-gradient(135deg, #8D6E63 0%, #795548 100%);
+}
+
+/* Physical Cake Topper */
+.ucbo-physical-topper {
+    position: absolute;
+    top: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #F5F5F5 0%, #E0E0E0 100%);
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: 700;
+    color: #333;
+    text-align: center;
+    box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    z-index: 20;
+    white-space: nowrap;
+    animation: popIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    border: 2px solid #BDBDBD;
+}
+
+/* Physical topper stick */
+.ucbo-physical-topper::after {
+    content: '';
+    position: absolute;
+    bottom: -15px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 3px;
+    height: 20px;
+    background: linear-gradient(180deg, #8B4513 0%, #654321 100%);
+    border-radius: 2px;
+}
+
+/* No Frosting Style */
+.ucbo-cake-frosting.no-frosting {
+    display: none;
+}
+
+.ucbo-cupcake-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 60px));
+    gap: 12px;
+    justify-content: center;
+    max-width: 280px;
+    margin: 0 auto;
+    animation: fadeIn 0.6s ease;
+}
+
+.ucbo-cupcake {
+    width: 60px;
+    margin: 0 auto;
+    position: relative;
+    font-size: 0;
+    animation: popIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    animation-delay: calc(var(--index) * 0.05s);
+}
+
+/* Cake Part */
+.ucbo-cupcake-cake {
+    width: 60px;
+    height: 12px;
+    background-color: #322421;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+}
+
+/* Cup/Wrapper at bottom */
+.ucbo-cupcake-cup {
+    width: 60px;
+    height: 0;
+    border: solid;
+    border-width: 28px 0 0 0;
+    border-color: #A4D2DE transparent transparent;
+    border-bottom-left-radius: 26px 28px;
+    border-bottom-right-radius: 26px 28px;
+    position: relative;
+    display: inline-block;
+    z-index: 0;
+}
+
+.ucbo-cupcake-cup span {
+    height: 10px;
+    width: 15px;
+    display: inline-block;
+    background-color: #A4D2DE;
+    position: relative;
+    top: -30px;
+    border-radius: 50%;
+    margin: 0;
+}
+
+.ucbo-cupcake-cup span:after {
+    content: "";
+    top: 6px;
+    position: absolute;
+    width: 1px;
+    height: 20px;
+    background-color: rgba(255, 255, 255, 0.6);
+    transform: rotate(0deg);
+}
+
+.ucbo-cupcake-cup span:first-child:after {
+    background-color: transparent;
+}
+
+/* Frosting - Always buttercream color */
+.ucbo-cupcake-frosting span {
+    display: block;
+    position: relative;
+    height: 8px;
+    margin: auto;
+    background-color: #FFF8E1;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+    border-top: 1px solid #FFECB3;
+}
+
+.ucbo-cupcake-frosting .frosting-bottom {
+    width: 51px;
+    /* 0.85 * 60px */
+}
+
+.ucbo-cupcake-frosting .frosting-middle {
+    width: 39px;
+    /* 0.65 * 60px */
+}
+
+.ucbo-cupcake-frosting .frosting-top {
+    width: 27px;
+    /* 0.45 * 60px */
+}
+
+/* Cupcake Cake Flavors */
+.ucbo-cupcake.vanilla .ucbo-cupcake-cake {
+    background-color: #FFFBEA;
+}
+
+.ucbo-cupcake.chocolate .ucbo-cupcake-cake {
+    background-color: #6D4C41;
+}
+
+.ucbo-cupcake.strawberry .ucbo-cupcake-cake {
+    background-color: #FFB3D9;
+}
+
+.ucbo-cupcake.funfetti .ucbo-cupcake-cake {
+    background:
+        radial-gradient(circle, #E91E63 1.5px, transparent 1.5px) 0 0 / 12px 12px,
+        radial-gradient(circle, #2196F3 1.5px, transparent 1.5px) 6px 6px / 12px 12px,
+        radial-gradient(circle, #FFC107 1.5px, transparent 1.5px) 3px 9px / 12px 12px,
+        radial-gradient(circle, #4CAF50 1.5px, transparent 1.5px) 9px 3px / 12px 12px,
+        radial-gradient(circle, #9C27B0 1.5px, transparent 1.5px) 2px 5px / 12px 12px,
+        #FFFBEA;
+}
+
+.ucbo-cupcake.cookies-cream .ucbo-cupcake-cake {
+    background:
+        radial-gradient(circle, #3E2723 1.5px, transparent 1.5px) 0 0 / 10px 10px,
+        radial-gradient(circle, #3E2723 1.5px, transparent 1.5px) 5px 5px / 10px 10px,
+        #F5F5F5;
+}
+
+.ucbo-cupcake.peanut-butter .ucbo-cupcake-cake {
+    background-color: #D4A574;
+}
+
+.ucbo-cupcake.pumpkin .ucbo-cupcake-cake {
+    background-color: #FF9800;
+}
+
+.ucbo-price-summary {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.ucbo-price-summary h4 {
+    font-family: 'Playfair Display', serif;
+    color: var(--chocolate-brown);
+    font-size: 1.3em;
+    margin: 0 0 15px 0;
+}
+
+.ucbo-price-line {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    color: var(--chocolate-brown);
+}
+
+.ucbo-price-total {
+    display: flex;
+    justify-content: space-between;
+    padding: 15px 0 0 0;
+    margin-top: 10px;
+    border-top: 2px solid var(--cream-bg);
+    font-size: 1.3em;
+    font-weight: 700;
+    color: var(--bakery-pink);
+}
+
+.ucbo-success-message {
+    text-align: center;
+    padding: 60px 40px;
+    background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(139, 195, 74, 0.1) 100%);
+    border-radius: 16px;
+    animation: fadeIn 0.6s ease;
+}
+
+.ucbo-success-icon {
+    width: 80px;
+    height: 80px;
+    background: var(--fresh-green);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    font-size: 3em;
+    color: white;
+    animation: scaleIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.ucbo-success-message h2 {
+    font-family: 'Playfair Display', serif;
+    color: var(--chocolate-brown);
+    font-size: 2em;
+    margin: 0 0 15px 0;
+}
+
+.ucbo-success-message p {
+    color: var(--chocolate-brown);
+    font-size: 1.1em;
+    line-height: 1.6;
+    margin: 10px 0;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.02);
+    }
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+@keyframes stackLayer {
+    from {
+        opacity: 0;
+        transform: translateY(-30px) scaleY(0.5);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scaleY(1);
+    }
+}
+
+@keyframes popIn {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) scale(0);
+    }
+
+    70% {
+        transform: translateX(-50%) scale(1.1);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0);
+    }
+
+    to {
+        transform: scale(1);
+    }
+}
+
+@keyframes cardSelect {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.08);
+    }
+
+    100% {
+        transform: scale(1.05);
+    }
+}
+
+@keyframes checkmarkPop {
+    0% {
+        transform: scale(0) rotate(-45deg);
+    }
+
+    70% {
+        transform: scale(1.2) rotate(5deg);
+    }
+
+    100% {
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+.ucbo-pulse {
+    animation: pulse 0.4s ease !important;
+}
+
+.ucbo-price-pulse {
+    animation: pulse 0.5s ease;
+}
+
+.ucbo-btn-pressed {
+    transform: scale(0.9) !important;
+}
+
+/* Mobile Navigation - DISABLED per user request */
+.ucbo-mobile-step-nav {
+    display: none !important;
+    /* Removed - user requested no mobile nav buttons */
+}
+
+@media (max-width: 1024px) {
+    .ucbo-form-container {
+        grid-template-columns: 1fr;
+    }
+
+    .ucbo-form-right {
+        position: relative;
+        top: 0;
+        order: 999;
+        /* Move to bottom on mobile */
+    }
+
+    .ucbo-order-types {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+
+    .ucbo-visual-builder {
+        position: relative;
+        /* Changed from sticky - stays at bottom */
+        top: auto;
+        z-index: 50;
+    }
+}
+
+@media (max-width: 768px) {
+    .ucbo-wrapper {
+        padding: 10px;
+    }
+
+    .ucbo-form-container {
+        padding: 20px;
+        padding-bottom: 80px;
+        overflow: visible;
+        display: block;
+    }
+
+    .ucbo-header h1 {
+        font-size: 2em;
+    }
+
+    .ucbo-order-types {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .ucbo-form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .ucbo-radio-group {
+        flex-direction: column;
+    }
+
+    /* Mobile Accordion Optimization */
+    .ucbo-accordion-header h2 {
+        font-size: 1.2em;
+    }
+
+    .ucbo-accordion-header {
+        padding: 15px;
+    }
+
+    .ucbo-accordion-content {
+        padding: 0 15px;
+        overflow: visible;
+    }
+
+    .ucbo-accordion-content.active {
+        padding: 20px 15px;
+        max-height: none;
+        overflow: visible;
+    }
+
+    /* Ensure all form elements are visible on mobile */
+    .ucbo-order-options {
+        overflow: visible;
+        max-height: none;
+    }
+
+    .ucbo-form-group {
+        margin-bottom: 20px;
+        overflow: visible;
+    }
+
+    .ucbo-step-indicator {
+        width: 35px;
+        height: 35px;
+    }
+
+    .ucbo-step-number,
+    .ucbo-step-checkmark {
+        width: 35px;
+        height: 35px;
+        font-size: 1em;
+    }
+
+    /* Mobile Flavor Cards */
+    .ucbo-flavor-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+
+    .ucbo-flavor-card {
+        min-height: 90px;
+        -webkit-tap-highlight-color: rgba(233, 30, 99, 0.1);
+    }
+
+    .ucbo-flavor-card-content {
+        padding: 12px 8px;
+        min-height: 85px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .ucbo-flavor-icon {
+        font-size: 2em;
+        margin-bottom: 5px;
+    }
+
+    .ucbo-flavor-card-content h4 {
+        font-size: 0.85em;
+        line-height: 1.2;
+        margin: 0;
+    }
+
+    .ucbo-flavor-card-content p {
+        font-size: 0.75em;
+    }
+
+    /* Mobile Visual Builder */
+    .ucbo-visual-builder {
+        position: relative;
+        top: 0;
+        margin-bottom: 20px;
+    }
+
+    .ucbo-preview-container {
+        min-height: 250px;
+        padding: 20px;
+    }
+
+    /* Mobile Navigation - DISABLED per user request */
+    .ucbo-mobile-step-nav {
+        display: none !important;
+        /* Removed - user requested no mobile nav buttons */
+    }
+
+    /* Mobile Tooltip */
+    .ucbo-tooltip-content {
+        width: 240px;
+        font-size: 0.75em;
+        left: auto;
+        right: 0;
+        transform: translateY(-10px);
+    }
+
+    .ucbo-info-tooltip:hover .ucbo-tooltip-content {
+        transform: translateY(0);
+    }
+
+    .ucbo-tooltip-content::after {
+        left: auto;
+        right: 20px;
+        transform: none;
+    }
+
+    /* Mobile Quantity Selector */
+    .ucbo-quantity-selector {
+        flex-wrap: wrap;
+    }
+
+    .ucbo-qty-label {
+        width: 100%;
+        margin-top: 5px;
+        text-align: center;
+    }
+
+    /* Mobile Order Type Cards */
+    .ucbo-card-content {
+        padding: 15px;
+        min-height: 120px;
+    }
+
+    .ucbo-card-content h3 {
+        font-size: 1.1em;
+    }
+
+    .ucbo-price {
+        font-size: 1.3em;
+    }
+
+    .ucbo-description {
+        font-size: 0.85em;
+    }
+
+    /* Size Cards Mobile */
+    .ucbo-size-cards {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    /* Topper Cards Mobile */
+    .ucbo-topper-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Extra Small Mobile (phones in portrait) */
+@media (max-width: 480px) {
+    .ucbo-header h1 {
+        font-size: 1.6em;
+    }
+
+    .ucbo-card-content h3 {
+        font-size: 1em;
+    }
+
+    .ucbo-price {
+        font-size: 1.2em;
+    }
+
+    .ucbo-description {
+        font-size: 0.8em;
+    }
+
+    .ucbo-flavor-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .ucbo-topper-cards {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ============================================
+   CONFETTI ANIMATION
+   ============================================ */
+
+.ucbo-confetti {
+    position: fixed;
+    z-index: 99999;
+    pointer-events: none;
+    will-change: transform, opacity;
+}
+
+/* ============================================
+   COLOR SELECTION INTERFACE
+   ============================================ */
+
+.ucbo-color-selection {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.ucbo-color-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border: 2px solid #E0E0E0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.ucbo-color-option:hover {
+    border-color: #E91E63;
+    background: #FFF0F5;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(233, 30, 99, 0.15);
+}
+
+/* Radio button styling for single selection */
+.ucbo-color-option input[type="radio"],
+.ucbo-color-option input[type="checkbox"] {
+    display: none;
+}
+
+.ucbo-color-option input[type="radio"]:checked+.ucbo-color-swatch,
+.ucbo-color-option input[type="checkbox"]:checked+.ucbo-color-swatch {
+    border: 3px solid #E91E63;
+    box-shadow: 0 0 0 2px white, 0 0 0 4px #E91E63;
+}
+
+.ucbo-color-option input[type="radio"]:checked~.ucbo-color-name,
+.ucbo-color-option input[type="checkbox"]:checked~.ucbo-color-name {
+    font-weight: 700;
+    color: #E91E63;
+}
+
+.ucbo-color-swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid #E0E0E0;
+    flex-shrink: 0;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.ucbo-color-name {
+    font-size: 0.9em;
+    color: #333;
+    transition: all 0.3s ease;
+    flex: 1;
+}
+
+/* ============================================
+   UNIFIED FROSTING WRAPPER
+   ============================================ */
+
+/* Unified frosting wrapper that covers left, top, and right */
+.ucbo-frosting-wrapper {
+    position: relative;
+    width: 100%;
+    border-left: 15px solid #FFF8E1;
+    border-right: 15px solid #FFF8E1;
+    border-top: 25px solid #FFF8E1;
+    border-radius: 12px 12px 4px 4px;
+    box-sizing: border-box;
+    background: transparent;
+    animation: fadeInDown 0.5s ease;
+    box-shadow:
+        -2px 0 4px rgba(0, 0, 0, 0.1),
+        2px 0 4px rgba(0, 0, 0, 0.1),
+        0 -2px 4px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    margin-top: -10px;
+}
+
+.ucbo-frosting-wrapper.buttercream {
+    border-color: #FFF8E1;
+}
+
+.ucbo-frosting-wrapper.whipped {
+    border-color: #FAFAFA;
+}
+
+/* Frosting hover tooltip */
+.ucbo-frosting-wrapper::before {
+    content: attr(data-flavor);
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 100;
+}
+
+.ucbo-frosting-wrapper:hover::before {
+    opacity: 1;
+}
+
+/* Cake Wrapper */
+.ucbo-cake-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 250px;
+    margin: 0 auto;
+}
+
+/* Mobile Color Selection */
+@media (max-width: 768px) {
+    .ucbo-color-selection {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .ucbo-color-option {
+        padding: 8px;
+        gap: 8px;
+    }
+
+    .ucbo-color-swatch {
+        width: 28px;
+        height: 28px;
+    }
+
+    .ucbo-color-name {
+        font-size: 0.85em;
+    }
+}
+
+
+/* SVG Cake Renderer Styles */
+.ucbo-cake-svg,
+.ucbo-cupcakes-svg {
+    width: 100%;
+    height: auto;
+    max-width: 300px;
+    margin: 0 auto;
+    display: block;
+}
+
+.ucbo-cake-svg .cake-layer-bottom,
+.ucbo-cake-svg .cake-layer-top,
+.ucbo-cake-svg .filling-layer,
+.ucbo-cake-svg .top-frosting,
+.ucbo-cake-svg .side-frosting,
+.ucbo-cake-svg .candles,
+.ucbo-cake-svg .cake-topper {
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.ucbo-cake-svg .animate-in {
+    animation: slideUpFade 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Interactive peek: smoothly separate layers on hover/touch */
+.ucbo-cake-svg {
+    cursor: pointer;
+}
+
+.ucbo-cake-svg .cake-layer-bottom,
+.ucbo-cake-svg .cake-layer-top,
+.ucbo-cake-svg .filling-layer,
+.ucbo-cake-svg .top-frosting,
+.ucbo-cake-svg .side-frosting {
+    transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 200ms ease;
+    will-change: transform, opacity;
+}
+
+.ucbo-cake-svg.expanded .top-frosting {
+    transform: translateY(-30px);
+}
+
+.ucbo-cake-svg.expanded .cake-layer-top {
+    transform: translateY(-18px);
+}
+
+.ucbo-cake-svg.expanded .filling-layer {
+    transform: translateY(-10px);
+}
+
+/* Keep bottom anchored; optionally nudge for subtle reveal */
+/* .ucbo-cake-svg.expanded .cake-layer-bottom { transform: translateY(2px); } */
+.ucbo-cake-svg.expanded .side-frosting {
+    opacity: 0.18;
+}
+
+.ucbo-cupcakes-svg .cupcake {
+    opacity: 0;
+    transform: scale(0);
+    animation: popInCupcake 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+}
+
+.cake-topper {
+    opacity: 0;
+    transform: translateY(-10px) scale(0);
+}
+
+.cake-topper.animate-in {
+    animation: popInTopper 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+}
+
+.sprinkles rect {
+    animation: twinkleSprinkle 2s infinite alternate;
+}
+
+@keyframes slideUpFade {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes popInCupcake {
+    0% {
+        opacity: 0;
+        transform: scale(0) rotate(-10deg);
+    }
+
+    70% {
+        transform: scale(1.1) rotate(2deg);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) rotate(0);
+    }
+}
+
+@keyframes popInTopper {
+    0% {
+        opacity: 0;
+        transform: translateY(-10px) scale(0);
+    }
+
+    70% {
+        transform: translateY(0) scale(1.2);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes twinkleSprinkle {
+
+    0%,
+    100% {
+        opacity: 0.6;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+/* ============================================
+   Candle Flame Animations
+   ============================================ */
+.ucbo-cake-svg .flame {
+    transform-origin: center bottom;
+    animation: flame-flicker 1.8s infinite ease-in-out;
+}
+
+.ucbo-cake-svg .flame-glow {
+    transform-origin: center;
+    animation: flame-glow 2.2s infinite ease-in-out;
+}
+
+.ucbo-cake-svg .flame,
+.ucbo-cake-svg .flame-glow {
+    animation-delay: var(--delay, 0ms);
+}
+
+@keyframes flame-flicker {
+    0% {
+        transform: translateY(0px) scale(1);
+        opacity: 0.95;
+    }
+
+    15% {
+        transform: translateY(-0.8px) scale(1.03);
+        opacity: 0.9;
+    }
+
+    30% {
+        transform: translateY(-1.4px) scale(0.98);
+        opacity: 0.85;
+    }
+
+    45% {
+        transform: translateY(-0.4px) scale(1.05) rotate(-1deg);
+        opacity: 0.92;
+    }
+
+    60% {
+        transform: translateY(-1.2px) scale(1.02) rotate(1deg);
+        opacity: 0.88;
+    }
+
+    75% {
+        transform: translateY(-0.6px) scale(0.99);
+        opacity: 0.9;
+    }
+
+    100% {
+        transform: translateY(0px) scale(1);
+        opacity: 0.95;
+    }
+}
+
+@keyframes flame-glow {
+    0% {
+        opacity: 0.35;
+    }
+
+    25% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 0.32;
+    }
+
+    75% {
+        opacity: 0.48;
+    }
+
+    100% {
+        opacity: 0.35;
+    }
+}

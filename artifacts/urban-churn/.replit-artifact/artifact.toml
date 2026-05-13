@@ -1,0 +1,33 @@
+kind = "web"
+previewPath = "/"
+title = "Urban Churn"
+version = "1.0.0"
+id = "artifacts/urban-churn"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+localPort = 20793
+name = "web"
+paths = ["/"]
+
+[services.development]
+run = "pnpm --filter @workspace/urban-churn run dev"
+
+[services.env]
+PORT = "20793"
+BASE_PATH = "/"
+
+[services.production]
+build = ["pnpm", "--filter", "@workspace/urban-churn", "run", "build"]
+publicDir = "artifacts/urban-churn/dist/public"
+serve = "static"
+# NOTE: Static assets are also served by the API server for OG tag injection.
+# This static config remains as a build step and fallback.
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"

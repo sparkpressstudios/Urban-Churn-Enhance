@@ -1,0 +1,31 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /account
+Disallow: /account/
+
+# AI Search Crawlers — allowed
+User-agent: GPTBot
+Allow: /
+Disallow: /admin
+Disallow: /account
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /admin
+Disallow: /account
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+Sitemap: https://urbanchurn.com/api/sitemap.xml
