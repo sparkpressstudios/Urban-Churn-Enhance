@@ -85,27 +85,41 @@ async function send(to: string, subject: string, html: string) {
     return null;
   }
 
-  try {
-    const { data, error } = await resend.emails.send({
-      from: FROM_EMAIL,
-      to,
-      subject,
-      html,
-    });
+  const MAX_RETRIES = 3;
+  const BASE_DELAY_MS = 1000;
 
-    if (error) {
-      console.error(`[EMAIL ERROR] Failed to send to ${to} (Subject: "${subject}"):`, error);
-      db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "failed", errorMessage: String(error) }).catch(() => { });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to,
+        subject,
+        html,
+      });
+
+      if (error) {
+        const isRateLimit = (error as { name?: string }).name === "rate_limit_exceeded";
+        if (isRateLimit && attempt < MAX_RETRIES) {
+          const delay = BASE_DELAY_MS * 2 ** attempt;
+          console.warn(`[EMAIL] Rate limit hit sending to ${to} — retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        console.error(`[EMAIL ERROR] Failed to send to ${to} (Subject: "${subject}"):`, error);
+        db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "failed", errorMessage: String(error) }).catch(() => { });
+        return null;
+      }
+      console.log(`[EMAIL SENT] To: ${to}, Subject: "${subject}", ID: ${data?.id}`);
+      db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "sent", resendId: data?.id ?? null }).catch(() => { });
+      return data;
+    } catch (err) {
+      console.error(`[EMAIL EXCEPTION] Failed to send to ${to} (Subject: "${subject}"):`, err);
+      db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "failed", errorMessage: String(err) }).catch(() => { });
       return null;
     }
-    console.log(`[EMAIL SENT] To: ${to}, Subject: "${subject}", ID: ${data?.id}`);
-    db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "sent", resendId: data?.id ?? null }).catch(() => { });
-    return data;
-  } catch (err) {
-    console.error(`[EMAIL EXCEPTION] Failed to send to ${to} (Subject: "${subject}"):`, err);
-    db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "failed", errorMessage: String(err) }).catch(() => { });
-    return null;
   }
+
+  return null;
 }
 
 // ── Customer Emails ──
