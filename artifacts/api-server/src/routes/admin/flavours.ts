@@ -5,7 +5,7 @@ import { eq, asc, desc, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-const FLAVOUR_TAGS = new Set([
+const FLAVOUR_TAG_VALUES = [
     "classic",
     "limited",
     "seasonal",
@@ -13,7 +13,10 @@ const FLAVOUR_TAGS = new Set([
     "adventurous",
     "bestseller",
     "coming-soon",
-] as const);
+] as const;
+
+type FlavourTag = (typeof FLAVOUR_TAG_VALUES)[number];
+const FLAVOUR_TAGS: ReadonlySet<FlavourTag> = new Set(FLAVOUR_TAG_VALUES);
 
 function parseBasePrice(value: unknown): string | undefined {
     if (value === undefined) return undefined;
@@ -30,17 +33,17 @@ function parsePublishedAt(value: unknown): Date | undefined {
 }
 
 function parseTag(value: unknown): {
-    value: (typeof flavoursTable.$inferInsert)["tag"] | undefined;
+    value: FlavourTag | undefined;
     invalid: boolean;
 } {
     if (value === undefined || value === null) return { value: undefined, invalid: false };
     const normalized = String(value).trim();
     if (!normalized) return { value: undefined, invalid: false };
-    if (!FLAVOUR_TAGS.has(normalized as (typeof flavoursTable.$inferInsert)["tag"])) {
+    if (!FLAVOUR_TAGS.has(normalized as FlavourTag)) {
         return { value: undefined, invalid: true };
     }
     return {
-        value: normalized as (typeof flavoursTable.$inferInsert)["tag"],
+        value: normalized as FlavourTag,
         invalid: false,
     };
 }
