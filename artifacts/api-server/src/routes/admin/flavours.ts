@@ -5,6 +5,16 @@ import { eq, asc, desc, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 
+const FLAVOUR_TAGS = new Set([
+    "classic",
+    "limited",
+    "seasonal",
+    "fan-favorite",
+    "adventurous",
+    "bestseller",
+    "coming-soon",
+] as const);
+
 function parseBasePrice(value: unknown): string | undefined {
     if (value === undefined) return undefined;
     const normalized = String(value).trim().replace(/^\$/, "");
@@ -17,6 +27,22 @@ function parsePublishedAt(value: unknown): Date | undefined {
     const parsed = new Date(String(value));
     if (Number.isNaN(parsed.getTime())) return undefined;
     return parsed;
+}
+
+function parseTag(value: unknown): {
+    value: (typeof flavoursTable.$inferInsert)["tag"] | undefined;
+    invalid: boolean;
+} {
+    if (value === undefined || value === null) return { value: undefined, invalid: false };
+    const normalized = String(value).trim();
+    if (!normalized) return { value: undefined, invalid: false };
+    if (!FLAVOUR_TAGS.has(normalized as (typeof flavoursTable.$inferInsert)["tag"])) {
+        return { value: undefined, invalid: true };
+    }
+    return {
+        value: normalized as (typeof flavoursTable.$inferInsert)["tag"],
+        invalid: false,
+    };
 }
 
 function handleFlavourMutationError(error: any, res: any, context: string) {
@@ -92,6 +118,12 @@ router.post("/", async (req, res) => {
             return;
         }
 
+        const normalizedTag = parseTag(tag);
+        if (normalizedTag.invalid) {
+            res.status(400).json({ error: "tag must be a valid flavour tag" });
+            return;
+        }
+
         const [flavour] = await db
             .insert(flavoursTable)
             .values({
@@ -100,7 +132,7 @@ router.post("/", async (req, res) => {
                 description: description ?? "",
                 htmlContent: htmlContent ?? "",
                 imageUrl: imageUrl ?? null,
-                tag: tag ?? "classic",
+                tag: normalizedTag.value ?? "classic",
                 emoji: emoji ?? "🍦",
                 basePrice: normalizedBasePrice ?? "7.00",
                 available: available ?? true,
@@ -127,7 +159,16 @@ router.put("/bulk/update", async (req, res) => {
 
     const allowed: Record<string, unknown> = { updatedAt: new Date() };
     if (updates.basePrice !== undefined) allowed.basePrice = updates.basePrice;
-    if (updates.tag !== undefined) allowed.tag = updates.tag;
+    if (updates.tag !== undefined) {
+        const normalizedTag = parseTag(updates.tag);
+        if (normalizedTag.invalid) {
+            res.status(400).json({ error: "tag must be a valid flavour tag" });
+            return;
+        }
+        if (normalizedTag.value !== undefined) {
+            allowed.tag = normalizedTag.value;
+        }
+    }
     if (updates.available !== undefined) allowed.available = updates.available;
 
     let updated = 0;
@@ -178,6 +219,12 @@ router.put("/:id", async (req, res) => {
             return;
         }
 
+        const normalizedTag = parseTag(tag);
+        if (normalizedTag.invalid) {
+            res.status(400).json({ error: "tag must be a valid flavour tag" });
+            return;
+        }
+
         const [flavour] = await db
             .update(flavoursTable)
             .set({
@@ -186,7 +233,7 @@ router.put("/:id", async (req, res) => {
                 ...(description !== undefined && { description }),
                 ...(htmlContent !== undefined && { htmlContent }),
                 ...(imageUrl !== undefined && { imageUrl }),
-                ...(tag !== undefined && { tag }),
+                ...(normalizedTag.value !== undefined && { tag: normalizedTag.value }),
                 ...(emoji !== undefined && { emoji }),
                 ...(normalizedBasePrice !== undefined && { basePrice: normalizedBasePrice }),
                 ...(available !== undefined && { available }),
