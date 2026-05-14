@@ -1,15 +1,27 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { flavoursTable, productsTable } from "@workspace/db/schema";
+import { flavourTagEnum, flavoursTable, productsTable } from "@workspace/db/schema";
 import { eq, asc, desc, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
+const flavourTagValues = new Set(flavourTagEnum.enumValues);
 
 function parseBasePrice(value: unknown): string | undefined {
     if (value === undefined) return undefined;
     const normalized = String(value).trim().replace(/^\$/, "");
     if (!normalized) return undefined;
     return normalized;
+}
+
+function parseTag(value: unknown): string | undefined {
+    if (value === undefined || value === null) return undefined;
+    const normalized = String(value).trim();
+    if (!normalized) return undefined;
+    return normalized;
+}
+
+function isValidTag(tag: string): boolean {
+    return flavourTagValues.has(tag as (typeof flavourTagEnum.enumValues)[number]);
 }
 
 function parsePublishedAt(value: unknown): Date | undefined {
@@ -86,6 +98,12 @@ router.post("/", async (req, res) => {
             return;
         }
 
+        const normalizedTag = parseTag(tag);
+        if (normalizedTag !== undefined && !isValidTag(normalizedTag)) {
+            res.status(400).json({ error: "tag must be one of the allowed flavour tag values" });
+            return;
+        }
+
         const parsedPublishedAt = parsePublishedAt(publishedAt);
         if (publishedAt !== undefined && parsedPublishedAt === undefined) {
             res.status(400).json({ error: "publishedAt must be a valid date" });
@@ -100,7 +118,7 @@ router.post("/", async (req, res) => {
                 description: description ?? "",
                 htmlContent: htmlContent ?? "",
                 imageUrl: imageUrl ?? null,
-                tag: tag ?? "classic",
+                tag: normalizedTag ?? "classic",
                 emoji: emoji ?? "🍦",
                 basePrice: normalizedBasePrice ?? "7.00",
                 available: available ?? true,
@@ -125,9 +143,26 @@ router.put("/bulk/update", async (req, res) => {
         return;
     }
 
+    if (!updates || typeof updates !== "object") {
+        res.status(400).json({ error: "updates object is required" });
+        return;
+    }
+
     const allowed: Record<string, unknown> = { updatedAt: new Date() };
-    if (updates.basePrice !== undefined) allowed.basePrice = updates.basePrice;
-    if (updates.tag !== undefined) allowed.tag = updates.tag;
+    const normalizedBulkBasePrice = parseBasePrice(updates.basePrice);
+    if (updates.basePrice !== undefined && normalizedBulkBasePrice === undefined) {
+        res.status(400).json({ error: "basePrice must be a valid number" });
+        return;
+    }
+    if (normalizedBulkBasePrice !== undefined) allowed.basePrice = normalizedBulkBasePrice;
+
+    const normalizedBulkTag = parseTag(updates.tag);
+    if (normalizedBulkTag !== undefined && !isValidTag(normalizedBulkTag)) {
+        res.status(400).json({ error: "tag must be one of the allowed flavour tag values" });
+        return;
+    }
+    if (normalizedBulkTag !== undefined) allowed.tag = normalizedBulkTag;
+
     if (updates.available !== undefined) allowed.available = updates.available;
 
     let updated = 0;
@@ -172,6 +207,12 @@ router.put("/:id", async (req, res) => {
             return;
         }
 
+        const normalizedTag = parseTag(tag);
+        if (normalizedTag !== undefined && !isValidTag(normalizedTag)) {
+            res.status(400).json({ error: "tag must be one of the allowed flavour tag values" });
+            return;
+        }
+
         const parsedPublishedAt = parsePublishedAt(publishedAt);
         if (publishedAt !== undefined && parsedPublishedAt === undefined) {
             res.status(400).json({ error: "publishedAt must be a valid date" });
@@ -186,7 +227,7 @@ router.put("/:id", async (req, res) => {
                 ...(description !== undefined && { description }),
                 ...(htmlContent !== undefined && { htmlContent }),
                 ...(imageUrl !== undefined && { imageUrl }),
-                ...(tag !== undefined && { tag }),
+                ...(normalizedTag !== undefined && { tag: normalizedTag }),
                 ...(emoji !== undefined && { emoji }),
                 ...(normalizedBasePrice !== undefined && { basePrice: normalizedBasePrice }),
                 ...(available !== undefined && { available }),
