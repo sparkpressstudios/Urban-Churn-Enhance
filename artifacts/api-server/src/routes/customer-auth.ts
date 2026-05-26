@@ -464,7 +464,12 @@ router.get("/ice-cream-orders", requireCustomer, async (req, res) => {
         })
         .from(ordersTable)
         .innerJoin(locationsTable, eq(ordersTable.locationId, locationsTable.id))
-        .where(eq(ordersTable.customerEmail, customer.email))
+        .where(
+            and(
+                eq(ordersTable.customerEmail, customer.email),
+                or(isNull(ordersTable.paymentStatus), ne(ordersTable.paymentStatus, "payment_failed")),
+            ),
+        )
         .orderBy(desc(ordersTable.createdAt))
         .limit(50);
 

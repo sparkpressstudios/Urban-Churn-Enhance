@@ -110,3 +110,29 @@ export async function revertUnpaidOrder(
 export function orderIsPaidForFulfillment(paymentStatus: string | null, totalCents: number) {
     return paymentStatus === "paid" || totalCents === 0;
 }
+
+/** Verify managed-stock products have enough quantity before charging the card. */
+export async function assertOrderStockAvailable(
+    items: { productId: number | null; quantity: number; flavourName: string; sizeName: string }[],
+) {
+    const { db } = await import("@workspace/db");
+    const { productsTable } = await import("@workspace/db/schema");
+    const { eq, and } = await import("drizzle-orm");
+
+    for (const item of items) {
+        if (!item.productId) continue;
+        const [product] = await db
+            .select({
+                manageStock: productsTable.manageStock,
+                stockQuantity: productsTable.stockQuantity,
+            })
+            .from(productsTable)
+            .where(eq(productsTable.id, item.productId))
+            .limit(1);
+        if (product?.manageStock && product.stockQuantity < item.quantity) {
+            throw new Error(
+                `STOCK_ERROR:Not enough stock for ${item.flavourName} (${item.sizeName}). Please reduce quantity or remove the item.`,
+            );
+        }
+    }
+}
