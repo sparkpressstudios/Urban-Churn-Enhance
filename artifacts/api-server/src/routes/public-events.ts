@@ -397,6 +397,12 @@ router.post("/events/:id/purchase", async (req, res) => {
                 });
             }
 
+            if (totalCents > 0 && !sourceId) {
+                throw new Error(
+                    "PURCHASE_ERROR:Payment is required to complete this purchase. Please enter your card details.",
+                );
+            }
+
             // Generate order number
             const orderNumber = `EVT-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
@@ -554,8 +560,30 @@ router.post("/events/:id/purchase", async (req, res) => {
         }
 
         if (paymentFailed) {
+            await db.transaction(async (tx) => {
+                await tx
+                    .update(eventOrdersTable)
+                    .set({ status: "cancelled", updatedAt: new Date() })
+                    .where(eq(eventOrdersTable.id, result.order.id));
+
+                await tx
+                    .update(eventTicketsTable)
+                    .set({ status: "cancelled", updatedAt: new Date() })
+                    .where(eq(eventTicketsTable.eventOrderId, result.order.id));
+
+                for (const item of result.validatedItems) {
+                    await tx
+                        .update(eventTicketTypesTable)
+                        .set({
+                            quantitySold: sql`GREATEST(${eventTicketTypesTable.quantitySold} - ${item.quantity}, 0)`,
+                            updatedAt: new Date(),
+                        })
+                        .where(eq(eventTicketTypesTable.id, item.ticketTypeId));
+                }
+            });
+
             res.status(402).json({
-                error: "Payment failed. Your order was created as pending.",
+                error: "Payment failed. Your tickets were not confirmed. Please check your card details and try again.",
                 orderNumber: result.order.orderNumber,
             });
             return;
@@ -682,17 +710,19 @@ router.post("/events/:id/purchase", async (req, res) => {
                 : null) ??
             "TBA";
 
-        sendTicketConfirmation({
-            orderNumber: result.order.orderNumber,
-            customerName,
-            customerEmail,
-            totalCents: result.totalCents,
-            eventTitle: event.title,
-            eventDate: event.eventDate,
-            startTime: event.startTime,
-            venueName: locationName,
-            tickets: result.allTickets,
-        }).catch((e) => console.error("[EMAIL] Ticket confirmation failed:", e));
+        if (result.totalCents === 0 || squarePaymentId) {
+            sendTicketConfirmation({
+                orderNumber: result.order.orderNumber,
+                customerName,
+                customerEmail,
+                totalCents: result.totalCents,
+                eventTitle: event.title,
+                eventDate: event.eventDate,
+                startTime: event.startTime,
+                venueName: locationName,
+                tickets: result.allTickets,
+            }).catch((e) => console.error("[EMAIL] Ticket confirmation failed:", e));
+        }
 
         // Set auth cookie if account was created or logged in
         if (authToken) {

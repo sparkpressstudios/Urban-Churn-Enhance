@@ -85,41 +85,27 @@ async function send(to: string, subject: string, html: string) {
     return null;
   }
 
-  const MAX_RETRIES = 3;
-  const BASE_DELAY_MS = 1000;
+  try {
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to,
+      subject,
+      html,
+    });
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const { data, error } = await resend.emails.send({
-        from: FROM_EMAIL,
-        to,
-        subject,
-        html,
-      });
-
-      if (error) {
-        const isRateLimit = (error as { name?: string }).name === "rate_limit_exceeded";
-        if (isRateLimit && attempt < MAX_RETRIES) {
-          const delay = BASE_DELAY_MS * 2 ** attempt;
-          console.warn(`[EMAIL] Rate limit hit sending to ${to} — retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
-          await new Promise((r) => setTimeout(r, delay));
-          continue;
-        }
-        console.error(`[EMAIL ERROR] Failed to send to ${to} (Subject: "${subject}"):`, error);
-        db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "failed", errorMessage: String(error) }).catch(() => { });
-        return null;
-      }
-      console.log(`[EMAIL SENT] To: ${to}, Subject: "${subject}", ID: ${data?.id}`);
-      db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "sent", resendId: data?.id ?? null }).catch(() => { });
-      return data;
-    } catch (err) {
-      console.error(`[EMAIL EXCEPTION] Failed to send to ${to} (Subject: "${subject}"):`, err);
-      db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "failed", errorMessage: String(err) }).catch(() => { });
+    if (error) {
+      console.error(`[EMAIL ERROR] Failed to send to ${to} (Subject: "${subject}"):`, error);
+      db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "failed", errorMessage: String(error) }).catch(() => { });
       return null;
     }
+    console.log(`[EMAIL SENT] To: ${to}, Subject: "${subject}", ID: ${data?.id}`);
+    db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "sent", resendId: data?.id ?? null }).catch(() => { });
+    return data;
+  } catch (err) {
+    console.error(`[EMAIL EXCEPTION] Failed to send to ${to} (Subject: "${subject}"):`, err);
+    db.insert(sentEmailsLogTable).values({ toEmail: to, subject, status: "failed", errorMessage: String(err) }).catch(() => { });
+    return null;
   }
-
-  return null;
 }
 
 // ── Customer Emails ──
@@ -288,6 +274,65 @@ export async function sendAdminNewOrderAlert(order: {
     </div>`;
 
   return send(ADMIN_EMAIL, `🍦 New Order #${order.orderNumber} — $${(order.totalCents / 100).toFixed(2)}`, html);
+}
+
+export async function sendOrderPaymentFailed(order: {
+  orderNumber: string;
+  customerName: string;
+  customerEmail: string;
+  totalCents: number;
+  detail?: string;
+}) {
+  const detailLine = order.detail
+    ? `<p style="color:#6b7280;font-size:14px">${order.detail}</p>`
+    : "";
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      ${HEADER_HTML}
+      <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 12px 12px">
+        <h2 style="margin-top:0">Payment Not Completed</h2>
+        <p>Hi ${order.customerName},</p>
+        <p>We could not process payment for pre-order <strong>#${order.orderNumber}</strong> ($${(order.totalCents / 100).toFixed(2)}). Your order was <strong>not confirmed</strong> and no items were reserved.</p>
+        ${detailLine}
+        <p>Please return to <a href="${process.env.PUBLIC_URL || "https://urbanchurn.com"}/pre-order" style="color:#A1AB74;font-weight:bold">our pre-order page</a> and try again with a different card, or contact us at <a href="mailto:contact@urbanchurn.com" style="color:#A1AB74">contact@urbanchurn.com</a> or <a href="tel:7172087256" style="color:#A1AB74">(717) 208-7256</a>.</p>
+        ${FOOTER_HTML}
+      </div>
+    </div>`;
+
+  return send(
+    order.customerEmail,
+    `Payment failed — Order #${order.orderNumber} not placed`,
+    html,
+  );
+}
+
+export async function sendAdminPaymentFailedAlert(order: {
+  orderNumber: string;
+  customerName: string;
+  customerEmail: string;
+  totalCents: number;
+  detail?: string;
+}) {
+  if (!ADMIN_EMAIL) return null;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      ${HEADER_HTML}
+      <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 12px 12px">
+        <h2 style="color:#b45309;margin-top:0">⚠️ Payment Failed — Order Cancelled</h2>
+        <ul>
+          <li><strong>Order:</strong> #${order.orderNumber}</li>
+          <li><strong>Customer:</strong> ${order.customerName} (${order.customerEmail})</li>
+          <li><strong>Amount:</strong> $${(order.totalCents / 100).toFixed(2)}</li>
+          ${order.detail ? `<li><strong>Detail:</strong> ${order.detail}</li>` : ""}
+        </ul>
+        <p style="font-size:13px;color:#6b7280">The order was automatically cancelled and inventory was restored. No confirmation email was sent to the customer.</p>
+        ${FOOTER_HTML}
+      </div>
+    </div>`;
+
+  return send(ADMIN_EMAIL, `⚠️ Payment failed — #${order.orderNumber}`, html);
 }
 
 export async function sendAdminLowStockAlert(products: { flavourName: string; sizeName: string; stockQuantity: number }[]) {
@@ -558,7 +603,6 @@ export async function sendEventUpdate(info: {
 // ── Bakery Order Emails ──
 
 const ORDERS_EMAIL = "orders@urbanchurn.com";
-const LOUISE_DRIVE_BAKERY_EMAIL = "louisedriveurbanchurn@gmail.com";
 
 export async function sendBakeryOrderNotification(order: {
   orderNumber: string;
@@ -624,11 +668,10 @@ export async function sendBakeryOrderNotification(order: {
 
   const subject = `🎂 Bakery Order #${order.orderNumber} — ${order.orderType} — $${(order.totalPriceCents / 100).toFixed(2)}`;
 
-  // Send to orders@, contact@, and Louise Drive bakery
+  // Send to both orders@ and contact@
   await Promise.all([
     send(CONTACT_EMAIL, subject, html),
     send(ORDERS_EMAIL, subject, html),
-    send(LOUISE_DRIVE_BAKERY_EMAIL, subject, html),
   ]);
 }
 
