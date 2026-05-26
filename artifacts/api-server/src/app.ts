@@ -8,7 +8,7 @@ import { ogTagsMiddleware } from "./middlewares/og-tags";
 
 const app: Express = express();
 
-// Trust the first proxy (Replit reverse proxy)
+// Trust the first proxy (Railway reverse proxy)
 app.set("trust proxy", 1);
 
 // CORS: whitelist specific origins, keep development permissive, and fail closed in production.

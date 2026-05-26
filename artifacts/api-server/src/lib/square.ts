@@ -133,7 +133,7 @@ export async function getOnlineSalesLocationId(): Promise<string | null> {
     const fromSetting = await getSettingValue("square_online_sales_location_id");
     if (fromSetting) return fromSetting;
 
-    // 2. Environment variable (e.g. SQUARE_LOCATION_ID from Replit secrets)
+    // 2. Environment variable (e.g. SQUARE_LOCATION_ID from Railway)
     if (process.env.SQUARE_LOCATION_ID) return process.env.SQUARE_LOCATION_ID;
 
     // 3. Query Square API for a location named "Online Sales"
