@@ -26,6 +26,8 @@ import * as crypto from "node:crypto";
 import {
     sendOrderConfirmation,
     sendAdminNewOrderAlert,
+    sendOrderPaymentFailed,
+    sendAdminPaymentFailedAlert,
     sendAdminLowStockAlert,
     sendContactFormNotification,
     sendContactFormConfirmation,
@@ -40,6 +42,7 @@ import {
     sendWelcomeEmail,
 } from "../lib/email";
 import { createSquareOrder, createPayment, isSquareConfigured, getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId, linkCustomerToSquareOrder } from "../lib/square";
+import { resolveOrderLineFromCatalog, revertUnpaidOrder } from "../lib/order-payment";
 
 const router: IRouter = Router();
 
@@ -505,14 +508,31 @@ router.post("/orders", async (req, res) => {
     }[] = [];
 
     for (const item of items) {
-        const priceCents = Math.round(item.price * 100);
-        totalCents += priceCents * (item.quantity || 1);
+        const qty = item.quantity || 1;
+        if (!item.flavourName || !item.sizeName) {
+            res.status(400).json({ error: "Each item must include flavourName and sizeName" });
+            return;
+        }
+
+        const resolved = await resolveOrderLineFromCatalog(
+            item.flavourName,
+            item.sizeName,
+            item.productId ?? null,
+        );
+        if (!resolved) {
+            res.status(400).json({
+                error: `Product not found or unavailable: ${item.flavourName} (${item.sizeName})`,
+            });
+            return;
+        }
+
+        totalCents += resolved.priceCents * qty;
         orderItems.push({
-            flavourName: item.flavourName,
-            sizeName: item.sizeName,
-            priceCents,
-            quantity: item.quantity || 1,
-            productId: item.productId || null,
+            flavourName: resolved.flavourName,
+            sizeName: resolved.sizeName,
+            priceCents: resolved.priceCents,
+            quantity: qty,
+            productId: resolved.productId,
         });
     }
 
@@ -642,6 +662,27 @@ router.post("/orders", async (req, res) => {
         }
     }
 
+    const chargeCents = totalCents - discountCents;
+
+    if (chargeCents > 0) {
+        if (!sourceId) {
+            res.status(400).json({
+                error: "Payment is required to complete this order. Please enter your card details.",
+            });
+            return;
+        }
+        const configured = await isSquareConfigured();
+        if (!configured) {
+            res.status(503).json({ error: "Card payments are temporarily unavailable" });
+            return;
+        }
+        const onlineLoc = await getOnlineSalesLocationId();
+        if (!onlineLoc) {
+            res.status(503).json({ error: "Online payments are not configured. Please contact us." });
+            return;
+        }
+    }
+
     // Wrap order creation in a transaction for atomicity (coupon, order, items, stock)
     const { order, savedItems } = await db.transaction(async (tx) => {
         // Increment coupon usage inside transaction so it rolls back if order fails
@@ -745,51 +786,8 @@ router.post("/orders", async (req, res) => {
         pickupDateRange = startStr === endStr ? `Starting ${startStr}` : `${startStr} through ${endStr}`;
     }
 
-    // Send emails (fire and forget, don't block response)
-    sendOrderConfirmation({
-        orderNumber: order.orderNumber,
-        customerName,
-        customerEmail,
-        totalCents: order.totalCents,
-        discountCents: order.discountCents,
-        location: location ?? { name: "", address: "", city: "", state: "", zip: "", phone: "", mapUrl: null },
-        pickupDateRange,
-        items: orderItems,
-    }).catch((e) => console.error("[EMAIL] Order confirmation failed:", e));
+    // Process Square payment before sending confirmation emails
 
-    sendAdminNewOrderAlert({
-        orderNumber: order.orderNumber,
-        customerName,
-        totalCents: order.totalCents,
-        locationName: location?.name ?? "",
-        itemCount: orderItems.length,
-    }).catch((e) => console.error("[EMAIL] Admin alert failed:", e));
-
-    // Check for low stock products after decrementing
-    const lowStockProducts = await db
-        .select({
-            flavourName: flavoursTable.name,
-            sizeName: sizesTable.name,
-            stockQuantity: productsTable.stockQuantity,
-        })
-        .from(productsTable)
-        .innerJoin(flavoursTable, eq(productsTable.flavourId, flavoursTable.id))
-        .innerJoin(sizesTable, eq(productsTable.sizeId, sizesTable.id))
-        .where(
-            and(
-                eq(productsTable.manageStock, true),
-                sql`${productsTable.stockQuantity} <= ${productsTable.lowStockThreshold}`,
-                sql`${productsTable.stockQuantity} > 0`,
-            ),
-        );
-
-    if (lowStockProducts.length > 0) {
-        sendAdminLowStockAlert(lowStockProducts).catch((e) =>
-            console.error("[EMAIL] Low stock alert failed:", e),
-        );
-    }
-
-    // Create Square order and process payment (blocking)
     // Route all online sales to the Online Sales location (not individual POS devices)
     let squareOrderId: string | null = null;
     let squarePaymentId: string | null = null;
@@ -819,7 +817,7 @@ router.post("/orders", async (req, res) => {
 
     // Process payment if sourceId provided
     let paymentErrorDetail = "";
-    if (sourceId && squareOrderId) {
+    if (chargeCents > 0 && sourceId && squareOrderId) {
         try {
             console.log(`[SQUARE] Processing payment: amount=${order.totalCents}c, orderId=${squareOrderId}, sourceId=${sourceId.substring(0, 12)}...`);
             const payment = await createPayment(
@@ -839,8 +837,8 @@ router.post("/orders", async (req, res) => {
             paymentStatus = "payment_failed";
             paymentFailed = true;
         }
-    } else if (sourceId) {
-        // No Square order but sourceId was provided — payment without order link
+    } else if (chargeCents > 0 && sourceId) {
+        // Square order creation failed — attempt payment without order link
         try {
             const payment = await createPayment(
                 order.totalCents,
@@ -873,14 +871,83 @@ router.post("/orders", async (req, res) => {
             .where(eq(ordersTable.id, order.id));
     }
 
+    if (chargeCents > 0 && !paymentFailed && paymentStatus !== "paid") {
+        paymentFailed = true;
+        paymentErrorDetail = paymentErrorDetail || "Payment was not completed.";
+    }
+
     if (paymentFailed) {
+        await revertUnpaidOrder(
+            order.id,
+            couponId,
+            orderItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        );
+
+        sendOrderPaymentFailed({
+            orderNumber: order.orderNumber,
+            customerName,
+            customerEmail: normalizedEmail,
+            totalCents: order.totalCents,
+            detail: paymentErrorDetail,
+        }).catch((e) => console.error("[EMAIL] Payment failed notice failed:", e));
+
+        sendAdminPaymentFailedAlert({
+            orderNumber: order.orderNumber,
+            customerName,
+            customerEmail: normalizedEmail,
+            totalCents: order.totalCents,
+            detail: paymentErrorDetail,
+        }).catch((e) => console.error("[EMAIL] Admin payment failed alert failed:", e));
+
         res.status(402).json({
-            error: "Payment failed. Your order was saved as pending and requires attention.",
+            error: "Payment failed. Your order was not placed. Please check your card details and try again.",
             detail: paymentErrorDetail,
             orderNumber: order.orderNumber,
-            paymentStatus,
+            paymentStatus: "payment_failed",
         });
         return;
+    }
+
+    sendOrderConfirmation({
+        orderNumber: order.orderNumber,
+        customerName,
+        customerEmail: normalizedEmail,
+        totalCents: order.totalCents,
+        discountCents: order.discountCents,
+        location: location ?? { name: "", address: "", city: "", state: "", zip: "", phone: "", mapUrl: null },
+        pickupDateRange,
+        items: orderItems,
+    }).catch((e) => console.error("[EMAIL] Order confirmation failed:", e));
+
+    sendAdminNewOrderAlert({
+        orderNumber: order.orderNumber,
+        customerName,
+        totalCents: order.totalCents,
+        locationName: location?.name ?? "",
+        itemCount: orderItems.length,
+    }).catch((e) => console.error("[EMAIL] Admin alert failed:", e));
+
+    const lowStockProducts = await db
+        .select({
+            flavourName: flavoursTable.name,
+            sizeName: sizesTable.name,
+            stockQuantity: productsTable.stockQuantity,
+        })
+        .from(productsTable)
+        .innerJoin(flavoursTable, eq(productsTable.flavourId, flavoursTable.id))
+        .innerJoin(sizesTable, eq(productsTable.sizeId, sizesTable.id))
+        .where(
+            and(
+                eq(productsTable.manageStock, true),
+                sql`${productsTable.stockQuantity} <= ${productsTable.lowStockThreshold}`,
+                sql`${productsTable.stockQuantity} > 0`,
+            ),
+        );
+
+    if (lowStockProducts.length > 0) {
+        sendAdminLowStockAlert(lowStockProducts).catch((e) =>
+            console.error("[EMAIL] Low stock alert failed:", e),
+        );
     }
 
     // ── Square Customer Sync + Loyalty Accrual (non-blocking) ──
