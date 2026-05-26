@@ -544,6 +544,7 @@ export async function sendEventUpdate(info: {
 // ── Bakery Order Emails ──
 
 const ORDERS_EMAIL = "orders@urbanchurn.com";
+const LOUISE_DRIVE_BAKERY_EMAIL = "louisedriveurbanchurn@gmail.com";
 
 export async function sendBakeryOrderNotification(order: {
   orderNumber: string;
@@ -609,10 +610,11 @@ export async function sendBakeryOrderNotification(order: {
 
   const subject = `🎂 Bakery Order #${order.orderNumber} — ${order.orderType} — $${(order.totalPriceCents / 100).toFixed(2)}`;
 
-  // Send to both orders@ and contact@
+  // Send to orders@, contact@, and Louise Drive bakery
   await Promise.all([
     send(CONTACT_EMAIL, subject, html),
     send(ORDERS_EMAIL, subject, html),
+    send(LOUISE_DRIVE_BAKERY_EMAIL, subject, html),
   ]);
 }
 
