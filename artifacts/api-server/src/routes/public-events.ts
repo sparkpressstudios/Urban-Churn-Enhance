@@ -12,7 +12,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, asc, gte, sql, inArray } from "drizzle-orm";
 import * as crypto from "node:crypto";
-import { refundPayment, getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId, linkCustomerToSquareOrder } from "../lib/square";
+import { refundPayment, isSquareConfigured, getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId, linkCustomerToSquareOrder } from "../lib/square";
 import { chargeBeforeOrderPersist, CheckoutPaymentError } from "../lib/checkout-payment";
 import { respondPaymentError } from "../lib/payment-errors";
 import { sendTicketConfirmation } from "../lib/email";

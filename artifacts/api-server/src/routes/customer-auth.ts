@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import { db } from "@workspace/db";
 import { customersTable, bakeryOrdersTable, wholesaleCustomersTable, eventOrdersTable, eventTicketsTable, eventsTable, ordersTable, orderItemsTable, locationsTable, wooOrderHistoryTable } from "@workspace/db/schema";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, or, isNull, ne } from "drizzle-orm";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { signToken } from "../lib/jwt";
 import { requireCustomer } from "../middlewares/customer-auth";
@@ -464,12 +464,7 @@ router.get("/ice-cream-orders", requireCustomer, async (req, res) => {
         })
         .from(ordersTable)
         .innerJoin(locationsTable, eq(ordersTable.locationId, locationsTable.id))
-        .where(
-            and(
-                eq(ordersTable.customerEmail, customer.email),
-                or(isNull(ordersTable.paymentStatus), ne(ordersTable.paymentStatus, "payment_failed")),
-            ),
-        )
+        .where(eq(ordersTable.customerEmail, customer.email))
         .orderBy(desc(ordersTable.createdAt))
         .limit(50);
 
