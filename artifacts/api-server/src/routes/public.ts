@@ -363,14 +363,6 @@ router.post("/orders", async (req, res) => {
 
     const normalizedEmail = customerEmail.toLowerCase().trim();
 
-    if (sourceId) {
-        const configured = await isSquareConfigured();
-        if (!configured) {
-            res.status(503).json({ error: "Card payments are temporarily unavailable" });
-            return;
-        }
-    }
-
     // ── Account handling ──
     // accountMode: "guest" (default) | "create" | "login"
     let customerId: number | null = null;
