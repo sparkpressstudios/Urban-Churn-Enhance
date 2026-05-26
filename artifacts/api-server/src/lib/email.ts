@@ -108,6 +108,48 @@ async function send(to: string, subject: string, html: string) {
   }
 }
 
+async function sendToMany(recipients: string[], subject: string, html: string) {
+  const to = [...new Set(recipients.map((email) => email.trim()).filter(Boolean))];
+  if (to.length === 0) {
+    console.warn(`[EMAIL SKIPPED] No recipients configured. Subject: ${subject}`);
+    return null;
+  }
+
+  if (!resend) {
+    console.warn(`[EMAIL SKIPPED] No RESEND_API_KEY configured. To: ${to.join(", ")}, Subject: ${subject}`);
+    return null;
+  }
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to,
+      subject,
+      html,
+    });
+
+    if (error) {
+      console.error(`[EMAIL ERROR] Failed to send to ${to.join(", ")} (Subject: "${subject}"):`, error);
+      for (const email of to) {
+        db.insert(sentEmailsLogTable).values({ toEmail: email, subject, status: "failed", errorMessage: String(error) }).catch(() => { });
+      }
+      return null;
+    }
+
+    console.log(`[EMAIL SENT] To: ${to.join(", ")}, Subject: "${subject}", ID: ${data?.id}`);
+    for (const email of to) {
+      db.insert(sentEmailsLogTable).values({ toEmail: email, subject, status: "sent", resendId: data?.id ?? null }).catch(() => { });
+    }
+    return data;
+  } catch (err) {
+    console.error(`[EMAIL EXCEPTION] Failed to send to ${to.join(", ")} (Subject: "${subject}"):`, err);
+    for (const email of to) {
+      db.insert(sentEmailsLogTable).values({ toEmail: email, subject, status: "failed", errorMessage: String(err) }).catch(() => { });
+    }
+    return null;
+  }
+}
+
 // ── Customer Emails ──
 
 export async function sendWelcomeEmail(customer: {
@@ -603,6 +645,8 @@ export async function sendEventUpdate(info: {
 // ── Bakery Order Emails ──
 
 const ORDERS_EMAIL = "orders@urbanchurn.com";
+const LOUISE_DRIVE_BAKERY_EMAIL =
+  process.env.LOUISE_DRIVE_BAKERY_EMAIL || "louisedriveurbanchurn@gmail.com";
 
 export async function sendBakeryOrderNotification(order: {
   orderNumber: string;
@@ -668,11 +712,12 @@ export async function sendBakeryOrderNotification(order: {
 
   const subject = `🎂 Bakery Order #${order.orderNumber} — ${order.orderType} — $${(order.totalPriceCents / 100).toFixed(2)}`;
 
-  // Send to both orders@ and contact@
-  await Promise.all([
-    send(CONTACT_EMAIL, subject, html),
-    send(ORDERS_EMAIL, subject, html),
-  ]);
+  // Keep all bakery staff recipients in one Resend send so every address appears in Resend logs.
+  await sendToMany(
+    [CONTACT_EMAIL, ORDERS_EMAIL, LOUISE_DRIVE_BAKERY_EMAIL],
+    subject,
+    html,
+  );
 }
 
 export async function sendBakeryOrderConfirmation(order: {
