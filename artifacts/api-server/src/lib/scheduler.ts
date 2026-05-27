@@ -896,13 +896,15 @@ async function processRecurringWindows() {
                 new Date(preOrder.preOrderEnd).getTime() - new Date(preOrder.preOrderStart).getTime();
             const intervalDays = (rule.intervalDays as number) || 7;
 
-            const nextStart = new Date(preOrder.preOrderStart);
+            // Next cycle starts after this window's close date (not the original start)
+            const nextStart = new Date(preOrder.preOrderEnd);
             nextStart.setDate(nextStart.getDate() + intervalDays);
 
             const nextEnd = new Date(nextStart.getTime() + originalDuration);
 
-            // Don't create if next start is in the past
-            if (nextStart <= new Date()) continue;
+            const now = new Date();
+            // Don't create if the next window would already be over
+            if (nextEnd <= now) continue;
 
             // Check if a duplicate already exists
             const existing = await db
@@ -937,9 +939,15 @@ async function processRecurringWindows() {
                     pickupEndDate: newPickupEndDate,
                     isRecurring: true,
                     recurringRule: preOrder.recurringRule,
-                    status: "scheduled",
+                    status: nextStart <= now && nextEnd > now ? "open" : "scheduled",
                 })
                 .returning();
+
+            // Prevent this closed instance from spawning duplicates on future cron runs
+            await db
+                .update(productPreOrdersTable)
+                .set({ isRecurring: false, updatedAt: now })
+                .where(eq(productPreOrdersTable.id, preOrder.id));
 
             console.log(
                 `[SCHEDULER] Created recurring pre-order (${created.id}) starting ${nextStart.toISOString()}`,
