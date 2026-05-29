@@ -229,7 +229,14 @@ const ORDER_TYPES = [
 
 function getMinDate(): string {
     const d = new Date();
-    d.setHours(d.getHours() + 96);
+    let businessDaysAdded = 0;
+    while (businessDaysAdded < 4) {
+        d.setDate(d.getDate() + 1);
+        const day = d.getDay();
+        if (day !== 0 && day !== 6) {
+            businessDaysAdded += 1;
+        }
+    }
     return d.toISOString().split("T")[0];
 }
 
@@ -534,7 +541,10 @@ export default function BakeryOrder() {
                                 <div className="bg-white rounded-2xl p-8 md:p-10 shadow-sm space-y-6 animate-[fadeSlideIn_0.4s_ease_both]">
                                     <div>
                                         <h2 className="text-2xl font-black text-[#1a1a1f] mb-1">Your Information</h2>
-                                        <p className="text-[#666] text-sm">We'll use this to contact you about your order.</p>
+                                        <p className="text-[#666] text-sm">We'll use this to review your request and contact you to confirm your order details.</p>
+                                        <p className="text-[#92400e] text-xs mt-2 bg-[#fef3c7] inline-block px-3 py-1 rounded-full font-bold">
+                                            Submission is a request only — this is not a final order.
+                                        </p>
                                     </div>
                                     <div className="grid md:grid-cols-2 gap-5">
                                         <div>
@@ -562,7 +572,7 @@ export default function BakeryOrder() {
                                                 className={inputCls}
                                             />
                                             <p className="text-xs text-[#999] mt-1">
-                                                Minimum 4 days lead time required
+                                                Minimum 4 business days lead time required
                                             </p>
                                         </div>
                                         <div>
@@ -785,6 +795,9 @@ export default function BakeryOrder() {
                                     <div>
                                         <h2 className="text-2xl font-black text-[#1a1a1f] mb-1">Final Details</h2>
                                         <p className="text-[#666] text-sm">Any special requests or inspiration photos?</p>
+                                        <p className="text-[#92400e] text-xs mt-2 bg-[#fef3c7] inline-block px-3 py-1 rounded-full font-bold">
+                                            Do not plan pickup until a staff member confirms your order.
+                                        </p>
                                     </div>
                                     <div>
                                         <label className={labelCls}>Special Requests / Notes</label>
@@ -860,7 +873,7 @@ export default function BakeryOrder() {
                                             onClick={handleSubmit}
                                             className="flex-[2] bg-[#d4a853] text-white py-4 rounded-full font-black text-sm hover:bg-[#c19843] transition-all disabled:opacity-50 relative overflow-hidden group"
                                         >
-                                            <span className="relative z-10">{submitting ? "Submitting…" : `Submit Order — ${formatCents(totalCents)}`}</span>
+                                            <span className="relative z-10">{submitting ? "Submitting…" : `Submit Request — ${formatCents(totalCents)}`}</span>
                                             {!submitting && <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />}
                                         </button>
                                     </div>
@@ -935,7 +948,7 @@ export default function BakeryOrder() {
                                                 <span className="font-black text-[#d4a853] text-lg" key={totalCents} style={{ animation: "pricePulse 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55)", display: "inline-block" }}>{formatCents(totalCents)}</span>
                                             </div>
                                             <p className="text-[10px] text-[#999] leading-snug">
-                                                Final price will be confirmed by our team. No payment is due today.
+                                                Final price will be confirmed by our team. This submission is not a final order, and no payment is due today.
                                             </p>
                                         </div>
                                     ) : (
@@ -947,8 +960,8 @@ export default function BakeryOrder() {
                                 <div className="bg-[#d4a853]/10 rounded-2xl p-5">
                                     <p className="text-xs font-black text-[#d4a853] tracking-wider uppercase mb-2">Please Note</p>
                                     <p className="text-[#666] text-xs leading-relaxed">
-                                        All bakery orders require a minimum <strong>96 hours (4 days)</strong> lead time.
-                                        Our team will review and confirm within 24–48 hours.
+                                        All bakery orders require a minimum <strong>4 business days</strong> lead time.
+                                        Your submission is not a final order. Our team will review and confirm within 1–2 business days.
                                     </p>
                                 </div>
                             </div>
@@ -1295,8 +1308,9 @@ function SuccessScreen({ orderNumber, totalPriceCents, email }: { orderNumber: s
                     </p>
                     <div className="bg-white/10 rounded-2xl p-6 text-left max-w-md mx-auto backdrop-blur-sm" style={{ animation: "fadeSlideIn 0.5s ease 0.6s both" }}>
                         <p className="text-white/80 text-sm leading-relaxed">
-                            Our bakery team will review your order and reach out within <strong>24–48 hours</strong> to confirm details and arrange payment.
-                            Please allow at least <strong>96 hours (4 days)</strong> lead time for all bakery orders.
+                            Our bakery team will review your request and reach out within <strong>1–2 business days</strong> to confirm details and arrange payment.
+                            This submission is <strong>not a final order</strong>. Please do <strong>not</strong> plan pickup until a staff member confirms your order.
+                            Please allow at least <strong>4 business days</strong> lead time for all bakery orders.
                         </p>
                         <p className="text-white/60 text-sm mt-3">A confirmation email has been sent to <strong>{email}</strong>.</p>
                     </div>

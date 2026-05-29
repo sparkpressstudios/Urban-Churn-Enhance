@@ -674,9 +674,9 @@ export async function sendBakeryOrderConfirmation(order: {
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       ${HEADER_HTML}
       <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 12px 12px">
-        <h2 style="margin-top:0">Bakery Order Received! 🎂</h2>
+        <h2 style="margin-top:0">Bakery Request Received! 🎂</h2>
         <p>Hi ${order.customerName},</p>
-        <p>Thank you for your bakery order request! Our bakery team will review your order and reach out within 24–48 hours to confirm details and send your invoice.</p>
+        <p>Thank you for your bakery order request! Our bakery team will review your request and reach out within 1–2 business days to confirm details and send your invoice.</p>
         <div style="background:#f9fafb;padding:16px;border-radius:8px;margin:16px 0">
           <p style="margin:0 0 4px"><strong>Order:</strong> #${order.orderNumber}</p>
           <p style="margin:0 0 4px"><strong>Type:</strong> ${order.orderType}</p>
@@ -684,7 +684,7 @@ export async function sendBakeryOrderConfirmation(order: {
           <p style="margin:0"><strong>Estimated Total:</strong> $${(order.totalPriceCents / 100).toFixed(2)}</p>
         </div>
         <div style="background:#fef3c7;padding:12px;border-radius:8px;font-size:13px;color:#92400e;margin:16px 0">
-          <strong>Please note:</strong> All cake and cupcake orders require a minimum of 96 hours (4 days) lead time for preparation. Orders are not confirmed until we contact you and payment is received.
+          <strong>Important:</strong> This email confirms receipt of your request only. It is <strong>not</strong> a final order confirmation. Do not expect pickup until a staff member confirms your order. All cake and cupcake orders require a minimum of 4 business days lead time for preparation.
         </div>
         ${FOOTER_HTML}
       </div>
