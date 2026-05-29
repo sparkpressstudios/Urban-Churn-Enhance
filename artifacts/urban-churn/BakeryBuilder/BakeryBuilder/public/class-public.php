@@ -69,12 +69,14 @@ class UCBO_Public {
         );
         
         $settings = get_option('ucbo_settings');
-        $lead_time_hours = isset($settings['lead_time_hours']) ? $settings['lead_time_hours'] : 96;
+        $lead_time_hours = isset($settings['lead_time_hours']) ? absint($settings['lead_time_hours']) : 96;
+        $lead_time_business_days = max(1, (int) ceil($lead_time_hours / 24));
         
         wp_localize_script('ucbo-public-script', 'ucboData', array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('ucbo_submit_order_nonce'),
             'leadTimeHours' => $lead_time_hours,
+            'leadTimeBusinessDays' => $lead_time_business_days,
         ));
     }
     
@@ -323,7 +325,7 @@ class UCBO_Public {
                             <h3>Order Information</h3>
                             <ul>
                                 <li>All cakes and cupcakes are handcrafted at our Louise Drive Scoop Shop & Bakery.</li>
-                                <li>Please allow <strong>96 hours (4 days)</strong> for all orders.</li>
+                                <li>Please allow <strong>4 business days</strong> for all orders (weekends not included).</li>
                                 <li>Pre-stacked cakes are available in limited weekly quantities.</li>
                                 <li>Custom cakes start at $75; final pricing will be confirmed before invoicing.</li>
                                 <li>Orders are not confirmed until we contact you and payment is received.</li>
@@ -342,7 +344,8 @@ class UCBO_Public {
                         <div class="ucbo-success-icon">✓</div>
                         <h2>Thank you for your request!</h2>
                         <p>Our bakery team will review your order and reach out within 24–48 hours to confirm details and send your invoice.</p>
-                        <p><strong>Please note:</strong> All cake and cupcake orders require a minimum of 96 hours (4 days) lead time for preparation.</p>
+                        <p><strong>Please note:</strong> This submission is not an order confirmation. Your order is confirmed only when a bakery team member reaches out.</p>
+                        <p>All cake and cupcake orders require a minimum of 4 business days lead time (weekends not included).</p>
                         <p style="margin-top: 20px;"><button onclick="location.reload()" style="padding: 10px 20px; background: #E91E63; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1em;">Start New Order</button></p>
                     </div>
                 </div>

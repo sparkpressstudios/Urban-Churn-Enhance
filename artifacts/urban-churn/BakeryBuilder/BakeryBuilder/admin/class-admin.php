@@ -252,7 +252,7 @@ class UCBO_Admin {
         $value = isset($settings['lead_time_hours']) ? $settings['lead_time_hours'] : 96;
         ?>
         <input type="number" name="ucbo_settings[lead_time_hours]" value="<?php echo esc_attr($value); ?>" min="1" class="small-text">
-        <p class="description"><?php _e('Minimum hours required before pickup date.', 'urban-churn-bakery'); ?></p>
+        <p class="description"><?php _e('Configured in hours and enforced as equivalent business days (weekends excluded). 96 hours = 4 business days.', 'urban-churn-bakery'); ?></p>
         <?php
     }
     
@@ -271,7 +271,7 @@ class UCBO_Admin {
         ?>
         <label>
             <input type="checkbox" name="ucbo_settings[send_customer_confirmation]" value="1" <?php checked($checked, true); ?>>
-            <?php _e('Send order confirmation email to customers', 'urban-churn-bakery'); ?>
+            <?php _e('Send order request receipt email to customers (not a final confirmation)', 'urban-churn-bakery'); ?>
         </label>
         <p class="description"><?php _e('When enabled, customers will receive an email confirmation of their order.', 'urban-churn-bakery'); ?></p>
         <?php
