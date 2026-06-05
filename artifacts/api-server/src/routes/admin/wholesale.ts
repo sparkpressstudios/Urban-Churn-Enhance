@@ -13,6 +13,7 @@ import {
     wholesaleDeliveryRunStopsTable,
     wholesaleCustomerLocationsTable,
     wholesaleVendorLocationsTable,
+    wholesaleCustomerExclusiveFlavoursTable,
     adminUsersTable,
     locationsTable,
     flavoursTable,
@@ -35,6 +36,10 @@ import {
 import { sendWholesaleOrderConfirmed, sendDeliveryRunAssignment, sendWholesaleInvite, sendWholesaleAccountApproved, sendWholesaleWelcomeEmail } from "../../lib/email";
 import { createAndPublishWholesaleInvoice, cancelWholesaleInvoice } from "../../lib/square";
 import { hashPassword } from "../../lib/password";
+import {
+    wholesaleAdminCatalogFilter,
+    type WholesaleCatalogFilter,
+} from "../../lib/wholesale-utils";
 
 const router: IRouter = Router();
 
@@ -52,6 +57,56 @@ function slugifyWholesaleSize(name: string) {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "");
+}
+
+async function syncExclusiveCustomers(flavourId: number, customerIds: number[]) {
+    await db
+        .delete(wholesaleCustomerExclusiveFlavoursTable)
+        .where(eq(wholesaleCustomerExclusiveFlavoursTable.flavourId, flavourId));
+
+    const uniqueIds = [...new Set(customerIds.map(Number).filter((id) => id > 0))];
+    if (uniqueIds.length === 0) return;
+
+    const existing = await db
+        .select({ id: wholesaleCustomersTable.id })
+        .from(wholesaleCustomersTable)
+        .where(inArray(wholesaleCustomersTable.id, uniqueIds));
+
+    if (existing.length === 0) return;
+
+    await db.insert(wholesaleCustomerExclusiveFlavoursTable).values(
+        existing.map((c) => ({
+            wholesaleCustomerId: c.id,
+            flavourId,
+        })),
+    );
+}
+
+async function getExclusiveCustomerMap(flavourIds: number[]) {
+    const map = new Map<number, { id: number; businessName: string }[]>();
+    if (flavourIds.length === 0) return map;
+
+    const rows = await db
+        .select({
+            flavourId: wholesaleCustomerExclusiveFlavoursTable.flavourId,
+            customerId: wholesaleCustomersTable.id,
+            businessName: wholesaleCustomersTable.businessName,
+        })
+        .from(wholesaleCustomerExclusiveFlavoursTable)
+        .innerJoin(
+            wholesaleCustomersTable,
+            eq(
+                wholesaleCustomerExclusiveFlavoursTable.wholesaleCustomerId,
+                wholesaleCustomersTable.id,
+            ),
+        )
+        .where(inArray(wholesaleCustomerExclusiveFlavoursTable.flavourId, flavourIds));
+
+    for (const row of rows) {
+        if (!map.has(row.flavourId)) map.set(row.flavourId, []);
+        map.get(row.flavourId)!.push({ id: row.customerId, businessName: row.businessName });
+    }
+    return map;
 }
 
 async function decrementWholesaleStockForOrder(orderId: number) {
@@ -357,7 +412,18 @@ router.put("/customers/:id", async (req, res) => {
 // ── Wholesale Flavours ──
 // ═══════════════════════════════════════
 
-router.get("/flavours", async (_req, res) => {
+router.get("/flavours", async (req, res) => {
+    const catalog = (req.query.catalog as WholesaleCatalogFilter) || "all";
+    const customerId = req.query.customerId
+        ? Number(req.query.customerId)
+        : undefined;
+
+    const catalogFilter = wholesaleAdminCatalogFilter(
+        catalog,
+        flavoursTable.id,
+        { customerId },
+    );
+
     const rows = await db
         .select({
             wholesaleFlavourId: wholesaleFlavoursTable.id,
@@ -369,6 +435,7 @@ router.get("/flavours", async (_req, res) => {
             description: wholesaleFlavoursTable.description,
             allergens: wholesaleFlavoursTable.allergens,
             isSeasonal: wholesaleFlavoursTable.isSeasonal,
+            isExclusive: wholesaleFlavoursTable.isExclusive,
             active: wholesaleFlavoursTable.active,
             sortOrder: wholesaleFlavoursTable.sortOrder,
             updatedAt: wholesaleFlavoursTable.updatedAt,
@@ -378,10 +445,15 @@ router.get("/flavours", async (_req, res) => {
             wholesaleFlavoursTable,
             eq(wholesaleFlavoursTable.flavourId, flavoursTable.id),
         )
+        .where(catalogFilter ? catalogFilter : undefined)
         .orderBy(
+            asc(sql`COALESCE(${wholesaleFlavoursTable.isExclusive}, false)`),
             asc(sql`COALESCE(${wholesaleFlavoursTable.sortOrder}, ${flavoursTable.sortOrder})`),
             asc(flavoursTable.name),
         );
+
+    const flavourIds = rows.map((r) => r.flavourId);
+    const exclusiveMap = await getExclusiveCustomerMap(flavourIds);
 
     res.json(
         rows.map((row) => ({
@@ -393,6 +465,8 @@ router.get("/flavours", async (_req, res) => {
             description: row.description ?? row.baseDescription ?? "",
             allergens: row.allergens ?? "",
             isSeasonal: row.isSeasonal ?? row.tag === "seasonal",
+            isExclusive: row.isExclusive ?? false,
+            exclusiveCustomers: exclusiveMap.get(row.flavourId) || [],
             active: row.active ?? true,
             sortOrder: row.sortOrder ?? 0,
             updatedAt: row.updatedAt,
@@ -449,12 +523,14 @@ router.post("/flavours", async (req, res) => {
 
 router.put("/flavours/:id", async (req, res) => {
     const id = Number(req.params.id);
-    const { description, allergens, isSeasonal, active, sortOrder } = req.body;
+    const { description, allergens, isSeasonal, isExclusive, active, sortOrder, customerIds } =
+        req.body;
 
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (description !== undefined) updates.description = description;
     if (allergens !== undefined) updates.allergens = allergens;
     if (isSeasonal !== undefined) updates.isSeasonal = !!isSeasonal;
+    if (isExclusive !== undefined) updates.isExclusive = !!isExclusive;
     if (active !== undefined) updates.active = active;
     if (sortOrder !== undefined) updates.sortOrder = sortOrder;
 
@@ -467,6 +543,14 @@ router.put("/flavours/:id", async (req, res) => {
     if (!updated) {
         res.status(404).json({ error: "Wholesale flavour not found" });
         return;
+    }
+
+    if (Array.isArray(customerIds)) {
+        await syncExclusiveCustomers(updated.flavourId, customerIds);
+    } else if (isExclusive === false) {
+        await db
+            .delete(wholesaleCustomerExclusiveFlavoursTable)
+            .where(eq(wholesaleCustomerExclusiveFlavoursTable.flavourId, updated.flavourId));
     }
 
     res.json(updated);
@@ -575,6 +659,151 @@ router.post("/flavours/create-full", async (req, res) => {
     }
 
     res.status(201).json({ flavour, wholesaleFlavour, products: createdProducts });
+});
+
+// Create a client-exclusive flavour with customer assignments
+router.post("/flavours/create-exclusive", async (req, res) => {
+    const {
+        name,
+        description,
+        allergens,
+        isSeasonal,
+        customerIds,
+        sizeIds,
+        defaultPriceCents,
+    } = req.body;
+
+    if (!name || typeof name !== "string") {
+        res.status(400).json({ error: "name is required" });
+        return;
+    }
+    if (!Array.isArray(customerIds) || customerIds.length === 0) {
+        res.status(400).json({ error: "At least one customerId is required for exclusive flavours" });
+        return;
+    }
+
+    let baseSlug = slugifyFlavourName(name);
+    if (!baseSlug) baseSlug = `flavour-${Date.now()}`;
+
+    const [existingSlug] = await db
+        .select({ id: flavoursTable.id })
+        .from(flavoursTable)
+        .where(eq(flavoursTable.slug, baseSlug))
+        .limit(1);
+
+    const slug = existingSlug ? `${baseSlug}-${Date.now().toString(36)}` : baseSlug;
+
+    const [flavour] = await db
+        .insert(flavoursTable)
+        .values({
+            name: name.trim(),
+            slug,
+            description: description || "",
+            tag: isSeasonal ? "seasonal" : "classic",
+            available: true,
+        })
+        .returning();
+
+    const [wholesaleFlavour] = await db
+        .insert(wholesaleFlavoursTable)
+        .values({
+            flavourId: flavour.id,
+            description: description || "",
+            allergens: allergens || "",
+            isSeasonal: isSeasonal === true,
+            isExclusive: true,
+            active: true,
+        })
+        .returning();
+
+    await syncExclusiveCustomers(flavour.id, customerIds);
+
+    const createdProducts: typeof wholesaleProductsTable.$inferSelect[] = [];
+    if (Array.isArray(sizeIds) && sizeIds.length > 0 && defaultPriceCents !== undefined) {
+        const sizes = await db
+            .select()
+            .from(wholesaleSizesTable)
+            .where(inArray(wholesaleSizesTable.id, sizeIds.map(Number)));
+
+        for (const size of sizes) {
+            const [product] = await db
+                .insert(wholesaleProductsTable)
+                .values({
+                    flavourId: flavour.id,
+                    wholesaleSizeId: size.id,
+                    name: size.name,
+                    unitDescription: size.description || "",
+                    priceCents: Number(defaultPriceCents),
+                    sizeCategory: size.sizeCategory,
+                    available: true,
+                })
+                .returning();
+            if (product) createdProducts.push(product);
+        }
+    }
+
+    const exclusiveMap = await getExclusiveCustomerMap([flavour.id]);
+
+    res.status(201).json({
+        flavour,
+        wholesaleFlavour,
+        products: createdProducts,
+        exclusiveCustomers: exclusiveMap.get(flavour.id) || [],
+    });
+});
+
+router.put("/flavours/:id/exclusive-customers", async (req, res) => {
+    const id = Number(req.params.id);
+    const { customerIds } = req.body;
+
+    const [wf] = await db
+        .select()
+        .from(wholesaleFlavoursTable)
+        .where(eq(wholesaleFlavoursTable.id, id))
+        .limit(1);
+
+    if (!wf) {
+        res.status(404).json({ error: "Wholesale flavour not found" });
+        return;
+    }
+
+    if (!Array.isArray(customerIds)) {
+        res.status(400).json({ error: "customerIds array is required" });
+        return;
+    }
+
+    await db
+        .update(wholesaleFlavoursTable)
+        .set({ isExclusive: customerIds.length > 0, updatedAt: new Date() })
+        .where(eq(wholesaleFlavoursTable.id, id));
+
+    await syncExclusiveCustomers(wf.flavourId, customerIds);
+
+    const exclusiveMap = await getExclusiveCustomerMap([wf.flavourId]);
+    res.json({ flavourId: wf.flavourId, exclusiveCustomers: exclusiveMap.get(wf.flavourId) || [] });
+});
+
+router.get("/customers/:id/exclusive-flavours", async (req, res) => {
+    const customerId = Number(req.params.id);
+
+    const rows = await db
+        .select({
+            wholesaleFlavourId: wholesaleFlavoursTable.id,
+            flavourId: flavoursTable.id,
+            flavourName: flavoursTable.name,
+            description: wholesaleFlavoursTable.description,
+            active: wholesaleFlavoursTable.active,
+        })
+        .from(wholesaleCustomerExclusiveFlavoursTable)
+        .innerJoin(flavoursTable, eq(wholesaleCustomerExclusiveFlavoursTable.flavourId, flavoursTable.id))
+        .innerJoin(
+            wholesaleFlavoursTable,
+            eq(wholesaleFlavoursTable.flavourId, flavoursTable.id),
+        )
+        .where(eq(wholesaleCustomerExclusiveFlavoursTable.wholesaleCustomerId, customerId))
+        .orderBy(asc(flavoursTable.name));
+
+    res.json(rows);
 });
 
 // Enable all (or selected) sizes for a flavour with a default price
@@ -741,7 +970,18 @@ router.delete("/sizes/:id", async (req, res) => {
 // ── Wholesale Products ──
 // ═══════════════════════════════════════
 
-router.get("/products", async (_req, res) => {
+router.get("/products", async (req, res) => {
+    const catalog = (req.query.catalog as WholesaleCatalogFilter) || "all";
+    const customerId = req.query.customerId
+        ? Number(req.query.customerId)
+        : undefined;
+
+    const catalogFilter = wholesaleAdminCatalogFilter(
+        catalog,
+        wholesaleProductsTable.flavourId,
+        { customerId },
+    );
+
     const products = await db
         .select({
             id: wholesaleProductsTable.id,
@@ -751,6 +991,7 @@ router.get("/products", async (_req, res) => {
             flavourDescription: wholesaleFlavoursTable.description,
             flavourAllergens: wholesaleFlavoursTable.allergens,
             flavourIsSeasonal: wholesaleFlavoursTable.isSeasonal,
+            flavourIsExclusive: wholesaleFlavoursTable.isExclusive,
             flavourActive: wholesaleFlavoursTable.active,
             wholesaleSizeId: wholesaleProductsTable.wholesaleSizeId,
             name: wholesaleProductsTable.name,
@@ -782,12 +1023,23 @@ router.get("/products", async (_req, res) => {
             wholesaleSizesTable,
             eq(wholesaleProductsTable.wholesaleSizeId, wholesaleSizesTable.id),
         )
+        .where(catalogFilter ? catalogFilter : undefined)
         .orderBy(
+            asc(sql`COALESCE(${wholesaleFlavoursTable.isExclusive}, false)`),
             asc(wholesaleSizesTable.sortOrder),
             asc(wholesaleProductsTable.sortOrder),
         );
 
-    res.json(products);
+    const flavourIds = [...new Set(products.map((p) => p.flavourId))];
+    const exclusiveMap = await getExclusiveCustomerMap(flavourIds);
+
+    res.json(
+        products.map((p) => ({
+            ...p,
+            flavourIsExclusive: p.flavourIsExclusive ?? false,
+            exclusiveCustomers: exclusiveMap.get(p.flavourId) || [],
+        })),
+    );
 });
 
 router.post("/products", async (req, res) => {

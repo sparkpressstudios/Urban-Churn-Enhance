@@ -94,6 +94,7 @@ export const wholesaleFlavoursTable = pgTable(
         description: text("description").notNull().default(""),
         allergens: text("allergens").notNull().default(""),
         isSeasonal: boolean("is_seasonal").notNull().default(false),
+        isExclusive: boolean("is_exclusive").notNull().default(false),
         active: boolean("active").notNull().default(true),
         sortOrder: integer("sort_order").notNull().default(0),
         createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -136,6 +137,22 @@ export const wholesaleProductsTable = pgTable("wholesale_products", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [unique().on(t.flavourId, t.wholesaleSizeId)]);
+
+/** Flavours visible only to specific wholesale customers (in addition to standard catalog). */
+export const wholesaleCustomerExclusiveFlavoursTable = pgTable(
+    "wholesale_customer_exclusive_flavours",
+    {
+        id: serial("id").primaryKey(),
+        wholesaleCustomerId: integer("wholesale_customer_id")
+            .notNull()
+            .references(() => wholesaleCustomersTable.id, { onDelete: "cascade" }),
+        flavourId: integer("flavour_id")
+            .notNull()
+            .references(() => flavoursTable.id, { onDelete: "cascade" }),
+        createdAt: timestamp("created_at").defaultNow().notNull(),
+    },
+    (t) => [unique().on(t.wholesaleCustomerId, t.flavourId)],
+);
 
 export const wholesaleOrdersTable = pgTable("wholesale_orders", {
     id: serial("id").primaryKey(),
@@ -285,6 +302,7 @@ export const wholesaleCustomersRelations = relations(
         orders: many(wholesaleOrdersTable),
         locations: many(wholesaleCustomerLocationsTable),
         vendorLocations: many(wholesaleVendorLocationsTable),
+        exclusiveFlavours: many(wholesaleCustomerExclusiveFlavoursTable),
     }),
 );
 
@@ -304,9 +322,24 @@ export const wholesaleProductsRelations = relations(
 
 export const wholesaleFlavoursRelations = relations(
     wholesaleFlavoursTable,
-    ({ one }) => ({
+    ({ one, many }) => ({
         flavour: one(flavoursTable, {
             fields: [wholesaleFlavoursTable.flavourId],
+            references: [flavoursTable.id],
+        }),
+        exclusiveCustomers: many(wholesaleCustomerExclusiveFlavoursTable),
+    }),
+);
+
+export const wholesaleCustomerExclusiveFlavoursRelations = relations(
+    wholesaleCustomerExclusiveFlavoursTable,
+    ({ one }) => ({
+        customer: one(wholesaleCustomersTable, {
+            fields: [wholesaleCustomerExclusiveFlavoursTable.wholesaleCustomerId],
+            references: [wholesaleCustomersTable.id],
+        }),
+        flavour: one(flavoursTable, {
+            fields: [wholesaleCustomerExclusiveFlavoursTable.flavourId],
             references: [flavoursTable.id],
         }),
     }),
@@ -486,6 +519,9 @@ export type WholesaleCustomer = typeof wholesaleCustomersTable.$inferSelect;
 
 export type InsertWholesaleFlavour = z.infer<typeof insertWholesaleFlavourSchema>;
 export type WholesaleFlavour = typeof wholesaleFlavoursTable.$inferSelect;
+
+export type WholesaleCustomerExclusiveFlavour =
+    typeof wholesaleCustomerExclusiveFlavoursTable.$inferSelect;
 
 export type InsertWholesaleSize = z.infer<typeof insertWholesaleSizeSchema>;
 export type WholesaleSize = typeof wholesaleSizesTable.$inferSelect;

@@ -235,6 +235,9 @@ export default function WholesaleOrderForm() {
                                                     {product.flavourIsSeasonal && (
                                                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200">Seasonal</span>
                                                     )}
+                                                    {product.flavourIsExclusive && (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-200">Exclusive</span>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-3 sm:gap-4 sm:ml-4 justify-between sm:justify-end">

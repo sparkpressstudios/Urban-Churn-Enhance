@@ -20,7 +20,10 @@ import {
     sendWholesalePortalOrderConfirmation,
     sendAdminWholesalePortalOrderAlert,
 } from "../lib/email";
-import { isDateBeforeMinBusinessDays } from "../lib/wholesale-utils";
+import {
+    isDateBeforeMinBusinessDays,
+    wholesaleCustomerCatalogVisibility,
+} from "../lib/wholesale-utils";
 
 const router: IRouter = Router();
 
@@ -91,6 +94,7 @@ router.get("/products", async (req, res) => {
             flavourDescription: wholesaleFlavoursTable.description,
             flavourAllergens: wholesaleFlavoursTable.allergens,
             flavourIsSeasonal: wholesaleFlavoursTable.isSeasonal,
+            flavourIsExclusive: wholesaleFlavoursTable.isExclusive,
             name: wholesaleProductsTable.name,
             wholesaleSizeId: wholesaleProductsTable.wholesaleSizeId,
             sizeCategory: wholesaleProductsTable.sizeCategory,
@@ -122,6 +126,7 @@ router.get("/products", async (req, res) => {
             and(
                 eq(wholesaleProductsTable.available, true),
                 sql`COALESCE(${wholesaleFlavoursTable.active}, true) = true`,
+                wholesaleCustomerCatalogVisibility(wc.id, wholesaleProductsTable.flavourId),
             ),
         )
         .orderBy(
@@ -212,7 +217,16 @@ router.post("/orders", async (req, res) => {
             })
             .from(wholesaleProductsTable)
             .innerJoin(flavoursTable, eq(wholesaleProductsTable.flavourId, flavoursTable.id))
-            .where(eq(wholesaleProductsTable.available, true));
+            .leftJoin(
+                wholesaleFlavoursTable,
+                eq(wholesaleFlavoursTable.flavourId, wholesaleProductsTable.flavourId),
+            )
+            .where(
+                and(
+                    eq(wholesaleProductsTable.available, true),
+                    wholesaleCustomerCatalogVisibility(wc.id, wholesaleProductsTable.flavourId),
+                ),
+            );
 
         for (const p of products) {
             productsMap.set(p.id, p);

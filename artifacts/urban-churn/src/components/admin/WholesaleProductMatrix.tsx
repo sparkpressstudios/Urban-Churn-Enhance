@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -193,7 +194,12 @@ function MatrixRow({
 
     return (
         <tr className="border-b hover:bg-gray-50/50">
-            <td className="px-3 py-2 font-medium sticky left-0 bg-white">{flavour.flavourName}</td>
+            <td className="px-3 py-2 sticky left-0 bg-white">
+                <div className="font-medium">{flavour.flavourName}</div>
+                {flavour.isExclusive && (
+                    <Badge className="mt-0.5 bg-violet-100 text-violet-800 text-[10px]">Exclusive</Badge>
+                )}
+            </td>
             {sizes.map((size) => {
                 const cell = getCell(flavour.flavourId, size.id);
                 return (

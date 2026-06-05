@@ -525,7 +525,10 @@ export const api = {
     getWholesaleCustomer: (id: number) => apiFetch(`/admin/wholesale/customers/${id}`),
     updateWholesaleCustomer: (id: number, data: any) =>
         apiFetch(`/admin/wholesale/customers/${id}`, { method: "PUT", body: JSON.stringify(data) }),
-    getWholesaleFlavours: () => apiFetch("/admin/wholesale/flavours"),
+    getWholesaleFlavours: (params?: Record<string, string>) => {
+        const qs = params ? `?${new URLSearchParams(params)}` : "";
+        return apiFetch(`/admin/wholesale/flavours${qs}`);
+    },
     createWholesaleFlavour: (data: any) =>
         apiFetch("/admin/wholesale/flavours", { method: "POST", body: JSON.stringify(data) }),
     updateWholesaleFlavour: (id: number, data: any) =>
@@ -539,7 +542,10 @@ export const api = {
         apiFetch(`/admin/wholesale/sizes/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteWholesaleSize: (id: number) =>
         apiFetch(`/admin/wholesale/sizes/${id}`, { method: "DELETE" }),
-    getWholesaleProducts: () => apiFetch("/admin/wholesale/products"),
+    getWholesaleProducts: (params?: Record<string, string>) => {
+        const qs = params ? `?${new URLSearchParams(params)}` : "";
+        return apiFetch(`/admin/wholesale/products${qs}`);
+    },
     createWholesaleProduct: (data: any) =>
         apiFetch("/admin/wholesale/products", { method: "POST", body: JSON.stringify(data) }),
     updateWholesaleProduct: (id: number, data: any) =>
@@ -587,6 +593,22 @@ export const api = {
         apiFetch(`/admin/wholesale/orders/${id}/send-invoice`, { method: "POST" }),
     voidWholesaleInvoice: (id: number) =>
         apiFetch(`/admin/wholesale/orders/${id}/void-invoice`, { method: "POST" }),
+    createWholesaleExclusiveFlavour: (data: {
+        name: string;
+        description?: string;
+        allergens?: string;
+        isSeasonal?: boolean;
+        customerIds: number[];
+        sizeIds?: number[];
+        defaultPriceCents?: number;
+    }) => apiFetch("/admin/wholesale/flavours/create-exclusive", { method: "POST", body: JSON.stringify(data) }),
+    updateWholesaleExclusiveCustomers: (wholesaleFlavourId: number, customerIds: number[]) =>
+        apiFetch(`/admin/wholesale/flavours/${wholesaleFlavourId}/exclusive-customers`, {
+            method: "PUT",
+            body: JSON.stringify({ customerIds }),
+        }),
+    getWholesaleCustomerExclusiveFlavours: (customerId: number) =>
+        apiFetch(`/admin/wholesale/customers/${customerId}/exclusive-flavours`),
     createWholesaleFlavourFull: (data: {
         name: string;
         description?: string;
