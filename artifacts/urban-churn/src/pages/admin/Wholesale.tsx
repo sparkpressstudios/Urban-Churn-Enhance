@@ -763,7 +763,7 @@ function CreateOrderDialog({ onClose, onCreated }: { onClose: () => void; onCrea
 
     const productsQ = useQuery({
         queryKey: ["wholesale-products-list"],
-        queryFn: api.getWholesaleProducts,
+        queryFn: () => api.getWholesaleProducts(),
     });
 
     const createMutation = useMutation({
@@ -976,7 +976,7 @@ function OrderDetailDialog({
 
     const productsQ = useQuery({
         queryKey: ["wholesale-products"],
-        queryFn: api.getWholesaleProducts,
+        queryFn: () => api.getWholesaleProducts(),
     });
 
     const flavoursQ = useQuery({

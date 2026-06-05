@@ -1,4 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
+import type { AnyColumn } from "drizzle-orm/column";
 import { wholesaleFlavoursTable } from "@workspace/db/schema";
 
 /** Minimum calendar date (YYYY-MM-DD) that satisfies N business days from today (Mon–Fri). */
@@ -30,7 +31,7 @@ export type WholesaleCatalogFilter = "standard" | "exclusive" | "all" | "custome
 /** Products/flavours a logged-in wholesale customer may order. */
 export function wholesaleCustomerCatalogVisibility(
     wholesaleCustomerId: number,
-    flavourIdColumn: SQL | ReturnType<typeof sql>,
+    flavourIdColumn: AnyColumn,
 ): SQL {
     return sql`(
         COALESCE(${wholesaleFlavoursTable.isExclusive}, false) = false
@@ -45,7 +46,7 @@ export function wholesaleCustomerCatalogVisibility(
 /** Admin list filter for standard vs exclusive catalogue rows. */
 export function wholesaleAdminCatalogFilter(
     catalog: WholesaleCatalogFilter,
-    flavourIdColumn: SQL | ReturnType<typeof sql>,
+    flavourIdColumn: AnyColumn,
     options?: { customerId?: number },
 ): SQL | undefined {
     if (catalog === "standard") {
