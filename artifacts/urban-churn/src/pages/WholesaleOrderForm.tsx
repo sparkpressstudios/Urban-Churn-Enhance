@@ -155,6 +155,7 @@ export default function WholesaleOrderForm() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["wholesale-portal-orders"] });
+            queryClient.invalidateQueries({ queryKey: ["wholesale-portal-dashboard"] });
             navigate("/wholesale/portal");
         },
         onError: (err: any) => {

@@ -16,6 +16,13 @@ export const WHOLESALE_PAYMENT_STATUS_LABELS: Record<string, string> = {
     paid: "Paid",
 };
 
+export const WHOLESALE_ACTIVE_ORDER_STATUSES = [
+    "pending_review",
+    "confirmed",
+    "in_production",
+    "ready",
+] as const;
+
 export function formatWholesaleOrderStatus(status: string): string {
     return WHOLESALE_ORDER_STATUS_LABELS[status] || status.replace(/_/g, " ");
 }
@@ -38,6 +45,7 @@ export const WHOLESALE_ORDER_FILTERS = [
     { value: "filter:awaiting_delivery", label: "Awaiting Delivery" },
     { value: "filter:unpaid_awaiting_delivery", label: "Awaiting Delivery (Unpaid)" },
     { value: "filter:rush", label: "Rush Orders" },
+    { value: "filter:has_unmatched", label: "Has Unmatched Items" },
     { value: "pending_review", label: "Pending Review" },
     { value: "confirmed", label: "Confirmed" },
     { value: "in_production", label: "In Production" },

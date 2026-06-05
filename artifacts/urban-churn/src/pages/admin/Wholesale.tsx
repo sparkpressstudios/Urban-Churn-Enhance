@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -13,6 +13,11 @@ import {
     parseWholesaleOrderFilter,
     WHOLESALE_CANONICAL_SIZES,
 } from "@/lib/wholesale-constants";
+import { invalidateWholesaleSummaries } from "@/lib/wholesale-queries";
+import {
+    WholesaleDashboardTab,
+    type WholesaleNavigateTarget,
+} from "@/components/admin/wholesale/WholesaleDashboardTab";
 import { Label } from "@/components/ui/label";
 import { WholesaleProductMatrix } from "@/components/admin/WholesaleProductMatrix";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,8 +50,6 @@ import {
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
-    PieChart,
-    Pie,
     Cell,
 } from "recharts";
 import {
@@ -101,8 +104,6 @@ const orderStatusColors: Record<string, string> = {
     cancelled: "bg-red-100 text-red-800",
 };
 
-const orderStatuses = WHOLESALE_ORDER_FILTERS.map((f) => f.value);
-
 function formatCents(c: number) {
     return `$${(c / 100).toFixed(2)}`;
 }
@@ -131,9 +132,20 @@ type TabKey = "dashboard" | "orders" | "customers" | "products" | "production" |
 
 export default function AdminWholesale() {
     const [tab, setTab] = useState<TabKey>("dashboard");
+    const [ordersNav, setOrdersNav] = useState<{ filter?: string; selectedOrderId?: number }>({});
     const [showHelp, setShowHelp] = useState(false);
 
     useTour("admin-wholesale", adminWholesaleSteps);
+
+    const navigateWholesale = useCallback((target: WholesaleNavigateTarget) => {
+        setTab(target.tab);
+        if (target.tab === "orders") {
+            setOrdersNav({
+                filter: target.ordersFilter,
+                selectedOrderId: target.selectedOrderId,
+            });
+        }
+    }, []);
 
     return (
         <AdminLayout>
@@ -144,7 +156,7 @@ export default function AdminWholesale() {
                         variant="outline"
                         size="sm"
                         onClick={() => setShowHelp(!showHelp)}
-                        className="gap-1.5"
+                        className="gap-1.5 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
                     >
                         <Info className="h-4 w-4" />
                         How It Works
@@ -171,7 +183,7 @@ export default function AdminWholesale() {
                         <button
                             key={key}
                             onClick={() => setTab(key)}
-                            className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${tab === key ? "bg-white/25 text-white shadow-sm" : "text-white/60 hover:text-white"}`}
+                            className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${tab === key ? "bg-white/25 text-white shadow-sm" : "text-white/80 hover:text-white"}`}
                         >
                             <Icon className="h-4 w-4" />
                             {label}
@@ -179,240 +191,23 @@ export default function AdminWholesale() {
                     ))}
                 </div>
 
-                {tab === "dashboard" && <DashboardTab />}
-                {tab === "orders" && <OrdersTab />}
-                {tab === "customers" && <CustomersTab />}
-                {tab === "products" && <ProductsTab />}
-                {tab === "production" && <ProductionTab />}
-                {tab === "deliveries" && <DeliveriesTab />}
-                {tab === "email-log" && <EmailLogTab />}
+                <div className="rounded-xl border border-slate-200/90 bg-white text-slate-900 shadow-xl p-4 md:p-6">
+                    {tab === "dashboard" && <WholesaleDashboardTab onNavigate={navigateWholesale} />}
+                    {tab === "orders" && (
+                        <OrdersTab
+                            initialFilter={ordersNav.filter}
+                            initialSelectedId={ordersNav.selectedOrderId}
+                            onNavConsumed={() => setOrdersNav({})}
+                        />
+                    )}
+                    {tab === "customers" && <CustomersTab />}
+                    {tab === "products" && <ProductsTab />}
+                    {tab === "production" && <ProductionTab />}
+                    {tab === "deliveries" && <DeliveriesTab />}
+                    {tab === "email-log" && <EmailLogTab />}
+                </div>
             </div>
         </AdminLayout>
-    );
-}
-
-// ═══════════════════════════════════════
-// ── Dashboard Tab ──
-// ═══════════════════════════════════════
-
-function DashboardTab() {
-    const dashQ = useQuery({
-        queryKey: ["wholesale-dashboard"],
-        queryFn: api.getWholesaleDashboard,
-        refetchInterval: 60_000,
-    });
-
-    const dash = dashQ.data || {};
-    const statusCounts = dash.statusCounts || {};
-    const productionByFlavour = (dash.productionByFlavour || []).map((r: any) => ({
-        name: r.flavourName || "(unmatched)",
-        quantity: parseInt(r.totalQuantity) || 0,
-    }));
-    const upcomingDeliveries = dash.upcomingDeliveries || [];
-
-    // Pie chart data from status counts
-    const statusLabels: Record<string, string> = WHOLESALE_ORDER_STATUS_LABELS;
-    const statusPieData = Object.entries(statusCounts)
-        .filter(([, v]) => (v as number) > 0)
-        .map(([k, v]) => ({ name: statusLabels[k] || k, value: v as number }));
-
-    const STATUS_COLORS: Record<string, string> = {
-        "Pending Review": "#EAB308",
-        Confirmed: "#3B82F6",
-        "In Production": "#A855F7",
-        Ready: "#10B981",
-        "Ready for Delivery": "#10B981",
-        Delivered: "#22C55E",
-        Cancelled: "#EF4444",
-    };
-
-    return (
-        <div className="space-y-6">
-            {/* Stats row */}
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <Card>
-                    <CardContent className="px-5 py-4">
-                        <p className="text-xs text-gray-500">Pending Review</p>
-                        <p className="text-3xl font-bold text-yellow-600">
-                            {statusCounts.pending_review || 0}
-                        </p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardContent className="px-5 py-4">
-                        <p className="text-xs text-gray-500">In Production</p>
-                        <p className="text-3xl font-bold text-purple-600">
-                            {statusCounts.in_production || 0}
-                        </p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardContent className="px-5 py-4">
-                        <p className="text-xs text-gray-500">Deliveries This Week</p>
-                        <p className="text-3xl font-bold text-blue-600">
-                            {dash.deliveriesThisWeek || 0}
-                        </p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardContent className="px-5 py-4">
-                        <p className="text-xs text-gray-500">Unmatched Items</p>
-                        <p className="text-3xl font-bold text-amber-600">
-                            {dash.unmatchedItems || 0}
-                        </p>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Charts row */}
-            <div className="grid gap-6 lg:grid-cols-2">
-                {/* Production by flavour bar chart */}
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <BarChart3 className="h-4 w-4" />
-                            Production Needed (Next 7 Days)
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {productionByFlavour.length > 0 ? (
-                            <ResponsiveContainer width="100%" height={280}>
-                                <BarChart
-                                    data={productionByFlavour}
-                                    layout="vertical"
-                                    margin={{ left: 100 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                    <XAxis type="number" tick={{ fontSize: 11 }} />
-                                    <YAxis
-                                        type="category"
-                                        dataKey="name"
-                                        tick={{ fontSize: 11 }}
-                                        width={95}
-                                    />
-                                    <Tooltip
-                                        formatter={(v: number) => [v, "Units"]}
-                                    />
-                                    <Bar
-                                        dataKey="quantity"
-                                        fill="#A1AB74"
-                                        radius={[0, 4, 4, 0]}
-                                    />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <p className="py-12 text-center text-sm text-gray-400">
-                                No confirmed production for next 7 days
-                            </p>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Orders by status pie chart */}
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <TrendingUp className="h-4 w-4" />
-                            Orders by Status
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {statusPieData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height={280}>
-                                <PieChart>
-                                    <Pie
-                                        data={statusPieData}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={50}
-                                        outerRadius={90}
-                                        dataKey="value"
-                                        label={({ name, value }) =>
-                                            `${name}: ${value}`
-                                        }
-                                    >
-                                        {statusPieData.map((entry, i) => (
-                                            <Cell
-                                                key={i}
-                                                fill={
-                                                    STATUS_COLORS[entry.name] ||
-                                                    CHART_COLORS[i % CHART_COLORS.length]
-                                                }
-                                            />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <p className="py-12 text-center text-sm text-gray-400">
-                                No orders yet
-                            </p>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Upcoming deliveries */}
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                        <Truck className="h-4 w-4" />
-                        Upcoming Deliveries
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                    {upcomingDeliveries.length > 0 ? (
-                        <div className="divide-y">
-                            {upcomingDeliveries.map((d: any) => (
-                                <div
-                                    key={d.id}
-                                    className="flex items-center gap-4 px-4 py-3"
-                                >
-                                    <div className="flex-1">
-                                        <p className="font-medium">
-                                            {d.customerName}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                            {d.orderNumber}
-                                        </p>
-                                    </div>
-                                    <span className="text-sm text-gray-600">
-                                        {d.confirmedDeliveryDate
-                                            ? new Date(
-                                                d.confirmedDeliveryDate + "T12:00:00",
-                                            ).toLocaleDateString("en-US", {
-                                                weekday: "short",
-                                                month: "short",
-                                                day: "numeric",
-                                            })
-                                            : "TBD"}
-                                    </span>
-                                    <Badge
-                                        className={
-                                            orderStatusColors[d.status] ||
-                                            "bg-gray-100"
-                                        }
-                                    >
-                                        {d.status.replace(/_/g, " ")}
-                                    </Badge>
-                                    <div className="flex items-center gap-1 text-xs text-gray-500">
-                                        <Truck className="h-3.5 w-3.5" />
-                                        <span className="capitalize">
-                                            {d.deliveryMethod}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="px-4 py-8 text-center text-sm text-gray-400">
-                            No upcoming deliveries
-                        </p>
-                    )}
-                </CardContent>
-            </Card>
-        </div>
     );
 }
 
@@ -422,7 +217,7 @@ function DashboardTab() {
 
 function HowItWorks() {
     return (
-        <Card>
+        <Card className="border-slate-200 bg-white text-slate-900 shadow-xl" data-tour="admin-wholesale-flow">
             <CardContent className="pt-5 pb-4">
                 <div className="space-y-4">
                     <h3 className="text-lg font-semibold">Wholesale Order System</h3>
@@ -506,14 +301,28 @@ function InfoCard({ title, items }: { title: string; items: string[] }) {
 // ── Orders Tab ──
 // ═══════════════════════════════════════
 
-function OrdersTab() {
+function OrdersTab({
+    initialFilter,
+    initialSelectedId,
+    onNavConsumed,
+}: {
+    initialFilter?: string;
+    initialSelectedId?: number;
+    onNavConsumed?: () => void;
+}) {
     const queryClient = useQueryClient();
     const { toast } = useToast();
-    const [filterStatus, setFilterStatus] = useState("all");
+    const [filterStatus, setFilterStatus] = useState(initialFilter || "all");
     const [search, setSearch] = useState("");
     const debouncedSearch = useDebounce(search);
-    const [selectedId, setSelectedId] = useState<number | null>(null);
+    const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId ?? null);
     const [showCreate, setShowCreate] = useState(false);
+
+    useEffect(() => {
+        if (initialFilter) setFilterStatus(initialFilter);
+        if (initialSelectedId) setSelectedId(initialSelectedId);
+        if (initialFilter || initialSelectedId) onNavConsumed?.();
+    }, [initialFilter, initialSelectedId, onNavConsumed]);
 
     const statsQ = useQuery({
         queryKey: ["wholesale-order-stats"],
@@ -537,7 +346,7 @@ function OrdersTab() {
             api.updateWholesaleOrderStatus(id, status),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["wholesale-orders"] });
-            queryClient.invalidateQueries({ queryKey: ["wholesale-order-stats"] });
+            invalidateWholesaleSummaries(queryClient);
             toast({ title: "Status updated" });
         },
     });
@@ -547,7 +356,7 @@ function OrdersTab() {
             api.confirmWholesaleOrder(id, date),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["wholesale-orders"] });
-            queryClient.invalidateQueries({ queryKey: ["wholesale-order-stats"] });
+            invalidateWholesaleSummaries(queryClient);
             setSelectedId(null);
             toast({ title: "Order confirmed & customer notified" });
         },
@@ -560,12 +369,13 @@ function OrdersTab() {
         <div className="space-y-4">
             {/* Stats */}
             {stats && (
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
                     {[
                         { label: "Total Orders", value: stats.totalOrders },
                         { label: "Pending Review", value: stats.pendingReview },
+                        { label: "Today", value: stats.todayOrders },
                         { label: "Awaiting Delivery", value: stats.awaitingDelivery ?? 0 },
-                        { label: "Unpaid (In Fulfillment)", value: stats.unpaidAwaitingDelivery ?? 0 },
+                        { label: "Unpaid (Fulfillment)", value: stats.unpaidAwaitingDelivery ?? 0 },
                     ].map((s) => (
                         <Card key={s.label}>
                             <CardContent className="pt-4">
@@ -741,7 +551,7 @@ function OrdersTab() {
                     onCreated={() => {
                         setShowCreate(false);
                         queryClient.invalidateQueries({ queryKey: ["wholesale-orders"] });
-                        queryClient.invalidateQueries({ queryKey: ["wholesale-order-stats"] });
+                        invalidateWholesaleSummaries(queryClient);
                     }}
                 />
             )}
@@ -997,6 +807,7 @@ function OrderDetailDialog({
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["wholesale-order", orderId] });
             queryClient.invalidateQueries({ queryKey: ["wholesale-orders"] });
+            invalidateWholesaleSummaries(queryClient);
             setEditing(false);
             toast({ title: "Order updated" });
         },
@@ -1008,6 +819,7 @@ function OrderDetailDialog({
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["wholesale-order", orderId] });
             queryClient.invalidateQueries({ queryKey: ["wholesale-orders"] });
+            invalidateWholesaleSummaries(queryClient);
             setPaymentEdit(false);
             toast({ title: "Payment updated" });
         },
@@ -1018,6 +830,7 @@ function OrderDetailDialog({
         onSuccess: (data: any) => {
             queryClient.invalidateQueries({ queryKey: ["wholesale-order", orderId] });
             queryClient.invalidateQueries({ queryKey: ["wholesale-orders"] });
+            invalidateWholesaleSummaries(queryClient);
             toast({ title: "Invoice sent", description: "Square invoice emailed to customer." });
             if (data?.publicUrl) window.open(data.publicUrl, "_blank");
         },
@@ -1043,6 +856,7 @@ function OrderDetailDialog({
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["wholesale-order", orderId] });
             queryClient.invalidateQueries({ queryKey: ["wholesale-orders"] });
+            invalidateWholesaleSummaries(queryClient);
             toast({ title: "Production started" });
         },
     });
@@ -1052,6 +866,7 @@ function OrderDetailDialog({
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["wholesale-order", orderId] });
             queryClient.invalidateQueries({ queryKey: ["wholesale-orders"] });
+            invalidateWholesaleSummaries(queryClient);
             toast({ title: "Production complete — order marked ready" });
         },
     });
