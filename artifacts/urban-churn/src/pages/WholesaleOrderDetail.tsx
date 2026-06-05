@@ -9,13 +9,15 @@ import { CreditCard, Truck } from "lucide-react";
 import { TourProvider, useTour } from "@/lib/tour";
 import { wholesaleOrderDetailSteps } from "@/lib/tour/tour-steps";
 
+import { WHOLESALE_ORDER_STATUS_LABELS } from "@/lib/wholesale-constants";
+
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-    pending_review: { label: "Pending Review", color: "bg-yellow-500/20 text-yellow-300" },
-    confirmed: { label: "Confirmed", color: "bg-blue-500/20 text-blue-300" },
-    in_production: { label: "In Production", color: "bg-purple-500/20 text-purple-300" },
-    ready: { label: "Ready", color: "bg-green-500/20 text-green-300" },
-    delivered: { label: "Delivered", color: "bg-emerald-500/20 text-emerald-300" },
-    cancelled: { label: "Cancelled", color: "bg-red-500/20 text-red-300" },
+    pending_review: { label: WHOLESALE_ORDER_STATUS_LABELS.pending_review, color: "bg-yellow-500/20 text-yellow-300" },
+    confirmed: { label: WHOLESALE_ORDER_STATUS_LABELS.confirmed, color: "bg-blue-500/20 text-blue-300" },
+    in_production: { label: WHOLESALE_ORDER_STATUS_LABELS.in_production, color: "bg-purple-500/20 text-purple-300" },
+    ready: { label: WHOLESALE_ORDER_STATUS_LABELS.ready, color: "bg-green-500/20 text-green-300" },
+    delivered: { label: WHOLESALE_ORDER_STATUS_LABELS.delivered, color: "bg-emerald-500/20 text-emerald-300" },
+    cancelled: { label: WHOLESALE_ORDER_STATUS_LABELS.cancelled, color: "bg-red-500/20 text-red-300" },
 };
 
 const PAYMENT_LABELS: Record<string, { label: string; color: string }> = {
@@ -96,9 +98,20 @@ export default function WholesaleOrderDetail() {
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6" data-tour="wholesale-order-detail-header">
                         <h1 className="text-xl sm:text-2xl font-bold text-white">Order #{order.orderNumber}</h1>
-                        <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${status.color} w-fit`}>
-                            {status.label}
-                        </span>
+                        <div className="flex items-center gap-2">
+                            {order.isRushOrder && (
+                                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-200">Rush Order</span>
+                            )}
+                            <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${status.color} w-fit`}>
+                                {status.label}
+                            </span>
+                            <Link
+                                href={`/wholesale/portal/order?reorder=${order.id}`}
+                                className="text-sm text-[#A1AB74] hover:underline"
+                            >
+                                Reorder
+                            </Link>
+                        </div>
                     </div>
 
                     {/* Order Details */}

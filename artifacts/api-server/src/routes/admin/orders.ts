@@ -6,7 +6,7 @@ import {
     locationsTable,
     orderNotesTable,
 } from "@workspace/db/schema";
-import { eq, desc, asc, and, gte, lte, sql, count } from "drizzle-orm";
+import { eq, desc, asc, and, gte, lte, sql, count, ne, or, isNull } from "drizzle-orm";
 import { sendOrderStatusUpdate } from "../../lib/email";
 import { updateSquareOrderState, refundPayment, createSquareOrder, getOnlineSalesLocationId } from "../../lib/square";
 

@@ -13,6 +13,7 @@ import {
     wholesaleDeliveryRunStopsTable,
     wholesaleCustomerLocationsTable,
     wholesaleVendorLocationsTable,
+    wholesaleCustomerExclusiveFlavoursTable,
     adminUsersTable,
     locationsTable,
     flavoursTable,
@@ -20,8 +21,8 @@ import {
 } from "@workspace/db/schema";
 import {
     eq,
-    desc,
     and,
+    desc,
     gte,
     lte,
     count,
@@ -33,10 +34,22 @@ import {
     inArray,
 } from "drizzle-orm";
 import { sendWholesaleOrderConfirmed, sendDeliveryRunAssignment, sendWholesaleInvite, sendWholesaleAccountApproved, sendWholesaleWelcomeEmail } from "../../lib/email";
-import { createAndPublishWholesaleInvoice } from "../../lib/square";
+import { createAndPublishWholesaleInvoice, cancelWholesaleInvoice } from "../../lib/square";
 import { hashPassword } from "../../lib/password";
+import {
+    wholesaleAdminCatalogFilter,
+    type WholesaleCatalogFilter,
+} from "../../lib/wholesale-utils";
 
 const router: IRouter = Router();
+
+function slugifyFlavourName(name: string) {
+    return name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+}
 
 function slugifyWholesaleSize(name: string) {
     return name
@@ -44,6 +57,104 @@ function slugifyWholesaleSize(name: string) {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "");
+}
+
+async function getBaseFlavourMeta(flavourId: number) {
+    const [flavour] = await db
+        .select({
+            description: flavoursTable.description,
+            tag: flavoursTable.tag,
+        })
+        .from(flavoursTable)
+        .where(eq(flavoursTable.id, flavourId))
+        .limit(1);
+
+    return flavour;
+}
+
+function resolveWholesaleDescription(
+    wholesaleDescription: string | null | undefined,
+    baseDescription: string | null | undefined,
+) {
+    const trimmed = wholesaleDescription?.trim();
+    if (trimmed) return trimmed;
+    return baseDescription?.trim() || "";
+}
+
+async function syncExclusiveCustomers(flavourId: number, customerIds: number[]) {
+    await db
+        .delete(wholesaleCustomerExclusiveFlavoursTable)
+        .where(eq(wholesaleCustomerExclusiveFlavoursTable.flavourId, flavourId));
+
+    const uniqueIds = [...new Set(customerIds.map(Number).filter((id) => id > 0))];
+    if (uniqueIds.length === 0) return;
+
+    const existing = await db
+        .select({ id: wholesaleCustomersTable.id })
+        .from(wholesaleCustomersTable)
+        .where(inArray(wholesaleCustomersTable.id, uniqueIds));
+
+    if (existing.length === 0) return;
+
+    await db.insert(wholesaleCustomerExclusiveFlavoursTable).values(
+        existing.map((c) => ({
+            wholesaleCustomerId: c.id,
+            flavourId,
+        })),
+    );
+}
+
+async function getExclusiveCustomerMap(flavourIds: number[]) {
+    const map = new Map<number, { id: number; businessName: string }[]>();
+    if (flavourIds.length === 0) return map;
+
+    const rows = await db
+        .select({
+            flavourId: wholesaleCustomerExclusiveFlavoursTable.flavourId,
+            customerId: wholesaleCustomersTable.id,
+            businessName: wholesaleCustomersTable.businessName,
+        })
+        .from(wholesaleCustomerExclusiveFlavoursTable)
+        .innerJoin(
+            wholesaleCustomersTable,
+            eq(
+                wholesaleCustomerExclusiveFlavoursTable.wholesaleCustomerId,
+                wholesaleCustomersTable.id,
+            ),
+        )
+        .where(inArray(wholesaleCustomerExclusiveFlavoursTable.flavourId, flavourIds));
+
+    for (const row of rows) {
+        if (!map.has(row.flavourId)) map.set(row.flavourId, []);
+        map.get(row.flavourId)!.push({ id: row.customerId, businessName: row.businessName });
+    }
+    return map;
+}
+
+async function decrementWholesaleStockForOrder(orderId: number) {
+    const items = await db
+        .select({
+            wholesaleProductId: wholesaleOrderItemsTable.wholesaleProductId,
+            quantity: wholesaleOrderItemsTable.quantity,
+        })
+        .from(wholesaleOrderItemsTable)
+        .where(eq(wholesaleOrderItemsTable.wholesaleOrderId, orderId));
+
+    for (const item of items) {
+        if (!item.wholesaleProductId) continue;
+        await db
+            .update(wholesaleProductsTable)
+            .set({
+                stockQuantity: sql`GREATEST(${wholesaleProductsTable.stockQuantity} - ${item.quantity}, 0)`,
+                updatedAt: new Date(),
+            })
+            .where(
+                and(
+                    eq(wholesaleProductsTable.id, item.wholesaleProductId),
+                    eq(wholesaleProductsTable.manageStock, true),
+                ),
+            );
+    }
 }
 
 // ═══════════════════════════════════════
@@ -323,7 +434,18 @@ router.put("/customers/:id", async (req, res) => {
 // ── Wholesale Flavours ──
 // ═══════════════════════════════════════
 
-router.get("/flavours", async (_req, res) => {
+router.get("/flavours", async (req, res) => {
+    const catalog = (req.query.catalog as WholesaleCatalogFilter) || "all";
+    const customerId = req.query.customerId
+        ? Number(req.query.customerId)
+        : undefined;
+
+    const catalogFilter = wholesaleAdminCatalogFilter(
+        catalog,
+        flavoursTable.id,
+        { customerId },
+    );
+
     const rows = await db
         .select({
             wholesaleFlavourId: wholesaleFlavoursTable.id,
@@ -335,6 +457,7 @@ router.get("/flavours", async (_req, res) => {
             description: wholesaleFlavoursTable.description,
             allergens: wholesaleFlavoursTable.allergens,
             isSeasonal: wholesaleFlavoursTable.isSeasonal,
+            isExclusive: wholesaleFlavoursTable.isExclusive,
             active: wholesaleFlavoursTable.active,
             sortOrder: wholesaleFlavoursTable.sortOrder,
             updatedAt: wholesaleFlavoursTable.updatedAt,
@@ -344,10 +467,15 @@ router.get("/flavours", async (_req, res) => {
             wholesaleFlavoursTable,
             eq(wholesaleFlavoursTable.flavourId, flavoursTable.id),
         )
+        .where(catalogFilter ? catalogFilter : undefined)
         .orderBy(
+            asc(sql`COALESCE(${wholesaleFlavoursTable.isExclusive}, false)`),
             asc(sql`COALESCE(${wholesaleFlavoursTable.sortOrder}, ${flavoursTable.sortOrder})`),
             asc(flavoursTable.name),
         );
+
+    const flavourIds = rows.map((r) => r.flavourId);
+    const exclusiveMap = await getExclusiveCustomerMap(flavourIds);
 
     res.json(
         rows.map((row) => ({
@@ -356,10 +484,12 @@ router.get("/flavours", async (_req, res) => {
             flavourName: row.flavourName,
             tag: row.tag,
             imageUrl: row.imageUrl,
-            description: row.description ?? row.baseDescription ?? "",
+            description: resolveWholesaleDescription(row.description, row.baseDescription),
             allergens: row.allergens ?? "",
             isSeasonal: row.isSeasonal ?? row.tag === "seasonal",
-            active: row.active ?? true,
+            isExclusive: row.isExclusive ?? false,
+            exclusiveCustomers: exclusiveMap.get(row.flavourId) || [],
+            active: row.wholesaleFlavourId != null ? row.active !== false : false,
             sortOrder: row.sortOrder ?? 0,
             updatedAt: row.updatedAt,
         })),
@@ -367,17 +497,34 @@ router.get("/flavours", async (_req, res) => {
 });
 
 router.post("/flavours", async (req, res) => {
-    const { flavourId, description, allergens, isSeasonal, active, sortOrder } = req.body;
+    const {
+        flavourId,
+        description,
+        allergens,
+        isSeasonal,
+        isExclusive,
+        active,
+        sortOrder,
+        customerIds,
+    } = req.body;
 
     if (!flavourId) {
         res.status(400).json({ error: "flavourId is required" });
         return;
     }
 
+    const exclusive = isExclusive === true;
+    if (exclusive && (!Array.isArray(customerIds) || customerIds.length === 0)) {
+        res.status(400).json({ error: "At least one customerId is required for exclusive flavours" });
+        return;
+    }
+
+    const numericFlavourId = Number(flavourId);
+
     const [existing] = await db
         .select({ id: wholesaleFlavoursTable.id })
         .from(wholesaleFlavoursTable)
-        .where(eq(wholesaleFlavoursTable.flavourId, Number(flavourId)))
+        .where(eq(wholesaleFlavoursTable.flavourId, numericFlavourId))
         .limit(1);
 
     if (existing) {
@@ -387,6 +534,7 @@ router.post("/flavours", async (req, res) => {
                 description: description ?? "",
                 allergens: allergens ?? "",
                 isSeasonal: isSeasonal === true,
+                isExclusive: exclusive,
                 active: active !== false,
                 sortOrder: sortOrder || 0,
                 updatedAt: new Date(),
@@ -394,33 +542,113 @@ router.post("/flavours", async (req, res) => {
             .where(eq(wholesaleFlavoursTable.id, existing.id))
             .returning();
 
+        if (Array.isArray(customerIds)) {
+            await syncExclusiveCustomers(numericFlavourId, customerIds);
+        } else if (isExclusive === false) {
+            await db
+                .delete(wholesaleCustomerExclusiveFlavoursTable)
+                .where(eq(wholesaleCustomerExclusiveFlavoursTable.flavourId, numericFlavourId));
+        }
+
         res.json(updated);
         return;
     }
 
+    const baseFlavour = await getBaseFlavourMeta(numericFlavourId);
+
     const [created] = await db
         .insert(wholesaleFlavoursTable)
         .values({
-            flavourId: Number(flavourId),
-            description: description ?? "",
+            flavourId: numericFlavourId,
+            description:
+                description !== undefined && description !== null
+                    ? description
+                    : baseFlavour?.description || "",
             allergens: allergens ?? "",
-            isSeasonal: isSeasonal === true,
+            isSeasonal: isSeasonal === true || baseFlavour?.tag === "seasonal",
+            isExclusive: exclusive,
             active: active !== false,
             sortOrder: sortOrder || 0,
         })
         .returning();
 
+    if (exclusive && Array.isArray(customerIds)) {
+        await syncExclusiveCustomers(numericFlavourId, customerIds);
+    }
+
     res.status(201).json(created);
+});
+
+router.put("/flavours/bulk/active", async (req, res) => {
+    const { flavourIds, active } = req.body;
+
+    if (!Array.isArray(flavourIds) || flavourIds.length === 0) {
+        res.status(400).json({ error: "flavourIds array is required" });
+        return;
+    }
+    if (typeof active !== "boolean") {
+        res.status(400).json({ error: "active boolean is required" });
+        return;
+    }
+
+    let updated = 0;
+    let created = 0;
+
+    const numericFlavourIds = flavourIds
+        .map(Number)
+        .filter((id) => id > 0 && !Number.isNaN(id));
+
+    const baseFlavours =
+        numericFlavourIds.length > 0
+            ? await db
+                  .select({
+                      id: flavoursTable.id,
+                      description: flavoursTable.description,
+                      tag: flavoursTable.tag,
+                  })
+                  .from(flavoursTable)
+                  .where(inArray(flavoursTable.id, numericFlavourIds))
+            : [];
+    const baseFlavourMap = new Map(baseFlavours.map((f) => [f.id, f]));
+
+    for (const flavourId of numericFlavourIds) {
+        const [existing] = await db
+            .select({ id: wholesaleFlavoursTable.id })
+            .from(wholesaleFlavoursTable)
+            .where(eq(wholesaleFlavoursTable.flavourId, flavourId))
+            .limit(1);
+
+        if (existing) {
+            await db
+                .update(wholesaleFlavoursTable)
+                .set({ active, updatedAt: new Date() })
+                .where(eq(wholesaleFlavoursTable.id, existing.id));
+            updated++;
+        } else {
+            const baseFlavour = baseFlavourMap.get(flavourId);
+            await db.insert(wholesaleFlavoursTable).values({
+                flavourId,
+                active,
+                description: baseFlavour?.description || "",
+                isSeasonal: baseFlavour?.tag === "seasonal",
+            });
+            created++;
+        }
+    }
+
+    res.json({ updated, created, total: updated + created });
 });
 
 router.put("/flavours/:id", async (req, res) => {
     const id = Number(req.params.id);
-    const { description, allergens, isSeasonal, active, sortOrder } = req.body;
+    const { description, allergens, isSeasonal, isExclusive, active, sortOrder, customerIds } =
+        req.body;
 
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (description !== undefined) updates.description = description;
     if (allergens !== undefined) updates.allergens = allergens;
     if (isSeasonal !== undefined) updates.isSeasonal = !!isSeasonal;
+    if (isExclusive !== undefined) updates.isExclusive = !!isExclusive;
     if (active !== undefined) updates.active = active;
     if (sortOrder !== undefined) updates.sortOrder = sortOrder;
 
@@ -433,6 +661,14 @@ router.put("/flavours/:id", async (req, res) => {
     if (!updated) {
         res.status(404).json({ error: "Wholesale flavour not found" });
         return;
+    }
+
+    if (Array.isArray(customerIds)) {
+        await syncExclusiveCustomers(updated.flavourId, customerIds);
+    } else if (isExclusive === false) {
+        await db
+            .delete(wholesaleCustomerExclusiveFlavoursTable)
+            .where(eq(wholesaleCustomerExclusiveFlavoursTable.flavourId, updated.flavourId));
     }
 
     res.json(updated);
@@ -455,6 +691,311 @@ router.delete("/flavours/:id", async (req, res) => {
     res.json({ success: true });
 });
 
+// Create base flavour + wholesale profile (+ optional size SKUs) in one step
+router.post("/flavours/create-full", async (req, res) => {
+    const {
+        name,
+        description,
+        allergens,
+        isSeasonal,
+        sizeIds,
+        defaultPriceCents,
+    } = req.body;
+
+    if (!name || typeof name !== "string") {
+        res.status(400).json({ error: "name is required" });
+        return;
+    }
+
+    let baseSlug = slugifyFlavourName(name);
+    if (!baseSlug) baseSlug = `flavour-${Date.now()}`;
+
+    const [existingSlug] = await db
+        .select({ id: flavoursTable.id })
+        .from(flavoursTable)
+        .where(eq(flavoursTable.slug, baseSlug))
+        .limit(1);
+
+    const slug = existingSlug ? `${baseSlug}-${Date.now().toString(36)}` : baseSlug;
+
+    const [flavour] = await db
+        .insert(flavoursTable)
+        .values({
+            name: name.trim(),
+            slug,
+            description: description || "",
+            tag: isSeasonal ? "seasonal" : "classic",
+            available: true,
+        })
+        .returning();
+
+    const [wholesaleFlavour] = await db
+        .insert(wholesaleFlavoursTable)
+        .values({
+            flavourId: flavour.id,
+            description: description || "",
+            allergens: allergens || "",
+            isSeasonal: isSeasonal === true,
+            active: true,
+        })
+        .returning();
+
+    const createdProducts: typeof wholesaleProductsTable.$inferSelect[] = [];
+    if (Array.isArray(sizeIds) && sizeIds.length > 0 && defaultPriceCents !== undefined) {
+        const sizes = await db
+            .select()
+            .from(wholesaleSizesTable)
+            .where(inArray(wholesaleSizesTable.id, sizeIds.map(Number)));
+
+        for (const size of sizes) {
+            const [existing] = await db
+                .select({ id: wholesaleProductsTable.id })
+                .from(wholesaleProductsTable)
+                .where(
+                    and(
+                        eq(wholesaleProductsTable.flavourId, flavour.id),
+                        eq(wholesaleProductsTable.wholesaleSizeId, size.id),
+                    ),
+                )
+                .limit(1);
+            if (existing) continue;
+
+            const [product] = await db
+                .insert(wholesaleProductsTable)
+                .values({
+                    flavourId: flavour.id,
+                    wholesaleSizeId: size.id,
+                    name: size.name,
+                    unitDescription: size.description || "",
+                    priceCents: Number(defaultPriceCents),
+                    sizeCategory: size.sizeCategory,
+                    available: true,
+                })
+                .returning();
+            if (product) createdProducts.push(product);
+        }
+    }
+
+    res.status(201).json({ flavour, wholesaleFlavour, products: createdProducts });
+});
+
+// Create a client-exclusive flavour with customer assignments
+router.post("/flavours/create-exclusive", async (req, res) => {
+    const {
+        name,
+        description,
+        allergens,
+        isSeasonal,
+        customerIds,
+        sizeIds,
+        defaultPriceCents,
+    } = req.body;
+
+    if (!name || typeof name !== "string") {
+        res.status(400).json({ error: "name is required" });
+        return;
+    }
+    if (!Array.isArray(customerIds) || customerIds.length === 0) {
+        res.status(400).json({ error: "At least one customerId is required for exclusive flavours" });
+        return;
+    }
+
+    let baseSlug = slugifyFlavourName(name);
+    if (!baseSlug) baseSlug = `flavour-${Date.now()}`;
+
+    const [existingSlug] = await db
+        .select({ id: flavoursTable.id })
+        .from(flavoursTable)
+        .where(eq(flavoursTable.slug, baseSlug))
+        .limit(1);
+
+    const slug = existingSlug ? `${baseSlug}-${Date.now().toString(36)}` : baseSlug;
+
+    const [flavour] = await db
+        .insert(flavoursTable)
+        .values({
+            name: name.trim(),
+            slug,
+            description: description || "",
+            tag: isSeasonal ? "seasonal" : "classic",
+            available: true,
+        })
+        .returning();
+
+    const [wholesaleFlavour] = await db
+        .insert(wholesaleFlavoursTable)
+        .values({
+            flavourId: flavour.id,
+            description: description || "",
+            allergens: allergens || "",
+            isSeasonal: isSeasonal === true,
+            isExclusive: true,
+            active: true,
+        })
+        .returning();
+
+    await syncExclusiveCustomers(flavour.id, customerIds);
+
+    const createdProducts: typeof wholesaleProductsTable.$inferSelect[] = [];
+    if (Array.isArray(sizeIds) && sizeIds.length > 0 && defaultPriceCents !== undefined) {
+        const sizes = await db
+            .select()
+            .from(wholesaleSizesTable)
+            .where(inArray(wholesaleSizesTable.id, sizeIds.map(Number)));
+
+        for (const size of sizes) {
+            const [product] = await db
+                .insert(wholesaleProductsTable)
+                .values({
+                    flavourId: flavour.id,
+                    wholesaleSizeId: size.id,
+                    name: size.name,
+                    unitDescription: size.description || "",
+                    priceCents: Number(defaultPriceCents),
+                    sizeCategory: size.sizeCategory,
+                    available: true,
+                })
+                .returning();
+            if (product) createdProducts.push(product);
+        }
+    }
+
+    const exclusiveMap = await getExclusiveCustomerMap([flavour.id]);
+
+    res.status(201).json({
+        flavour,
+        wholesaleFlavour,
+        products: createdProducts,
+        exclusiveCustomers: exclusiveMap.get(flavour.id) || [],
+    });
+});
+
+router.put("/flavours/:id/exclusive-customers", async (req, res) => {
+    const id = Number(req.params.id);
+    const { customerIds } = req.body;
+
+    const [wf] = await db
+        .select()
+        .from(wholesaleFlavoursTable)
+        .where(eq(wholesaleFlavoursTable.id, id))
+        .limit(1);
+
+    if (!wf) {
+        res.status(404).json({ error: "Wholesale flavour not found" });
+        return;
+    }
+
+    if (!Array.isArray(customerIds)) {
+        res.status(400).json({ error: "customerIds array is required" });
+        return;
+    }
+
+    await db
+        .update(wholesaleFlavoursTable)
+        .set({ isExclusive: customerIds.length > 0, updatedAt: new Date() })
+        .where(eq(wholesaleFlavoursTable.id, id));
+
+    await syncExclusiveCustomers(wf.flavourId, customerIds);
+
+    const exclusiveMap = await getExclusiveCustomerMap([wf.flavourId]);
+    res.json({ flavourId: wf.flavourId, exclusiveCustomers: exclusiveMap.get(wf.flavourId) || [] });
+});
+
+router.get("/customers/:id/exclusive-flavours", async (req, res) => {
+    const customerId = Number(req.params.id);
+
+    const rows = await db
+        .select({
+            wholesaleFlavourId: wholesaleFlavoursTable.id,
+            flavourId: flavoursTable.id,
+            flavourName: flavoursTable.name,
+            description: wholesaleFlavoursTable.description,
+            active: wholesaleFlavoursTable.active,
+        })
+        .from(wholesaleCustomerExclusiveFlavoursTable)
+        .innerJoin(flavoursTable, eq(wholesaleCustomerExclusiveFlavoursTable.flavourId, flavoursTable.id))
+        .innerJoin(
+            wholesaleFlavoursTable,
+            eq(wholesaleFlavoursTable.flavourId, flavoursTable.id),
+        )
+        .where(eq(wholesaleCustomerExclusiveFlavoursTable.wholesaleCustomerId, customerId))
+        .orderBy(asc(flavoursTable.name));
+
+    res.json(rows);
+});
+
+// Enable all (or selected) sizes for a flavour with a default price
+router.post("/flavours/:flavourId/enable-sizes", async (req, res) => {
+    const flavourId = Number(req.params.flavourId);
+    const { sizeIds, defaultPriceCents } = req.body;
+
+    if (defaultPriceCents === undefined || Number(defaultPriceCents) < 0) {
+        res.status(400).json({ error: "defaultPriceCents is required" });
+        return;
+    }
+
+    const [flavour] = await db
+        .select({ id: flavoursTable.id, name: flavoursTable.name })
+        .from(flavoursTable)
+        .where(eq(flavoursTable.id, flavourId))
+        .limit(1);
+
+    if (!flavour) {
+        res.status(404).json({ error: "Flavour not found" });
+        return;
+    }
+
+    let sizes;
+    if (Array.isArray(sizeIds) && sizeIds.length > 0) {
+        sizes = await db
+            .select()
+            .from(wholesaleSizesTable)
+            .where(
+                and(
+                    inArray(wholesaleSizesTable.id, sizeIds.map(Number)),
+                    eq(wholesaleSizesTable.active, true),
+                ),
+            );
+    } else {
+        sizes = await db
+            .select()
+            .from(wholesaleSizesTable)
+            .where(eq(wholesaleSizesTable.active, true));
+    }
+
+    const created = [];
+    for (const size of sizes) {
+        const [existing] = await db
+            .select({ id: wholesaleProductsTable.id })
+            .from(wholesaleProductsTable)
+            .where(
+                and(
+                    eq(wholesaleProductsTable.flavourId, flavourId),
+                    eq(wholesaleProductsTable.wholesaleSizeId, size.id),
+                ),
+            )
+            .limit(1);
+
+        if (existing) continue;
+
+        const [product] = await db
+            .insert(wholesaleProductsTable)
+            .values({
+                flavourId,
+                wholesaleSizeId: size.id,
+                name: size.name,
+                unitDescription: size.description || "",
+                priceCents: Number(defaultPriceCents),
+                sizeCategory: size.sizeCategory,
+                available: true,
+            })
+            .returning();
+        if (product) created.push(product);
+    }
+
+    res.status(201).json({ created: created.length, products: created });
+});
+
 // ═══════════════════════════════════════
 // ── Wholesale Sizes ──
 // ═══════════════════════════════════════
@@ -466,6 +1007,43 @@ router.get("/sizes", async (_req, res) => {
         .orderBy(asc(wholesaleSizesTable.sortOrder), asc(wholesaleSizesTable.name));
 
     res.json(sizes);
+});
+
+const CANONICAL_WHOLESALE_SIZES = [
+    { name: "3 Gallon", slug: "3-gallon", description: "3 gallon wholesale bucket", sizeCategory: "3_gallon" as const, sortOrder: 10 },
+    { name: "1.5 Gallon", slug: "1-5-gallon", description: "1.5 gallon wholesale bucket", sizeCategory: null, sortOrder: 20 },
+    { name: "Half Gallon", slug: "half-gallon", description: "Half gallon wholesale package", sizeCategory: "half_gallon" as const, sortOrder: 90 },
+    { name: "Pint", slug: "pint", description: "Pint wholesale package", sizeCategory: "pint" as const, sortOrder: 100 },
+];
+
+router.post("/sizes/ensure-canonical", async (_req, res) => {
+    let created = 0;
+    for (const def of CANONICAL_WHOLESALE_SIZES) {
+        const [existing] = await db
+            .select({ id: wholesaleSizesTable.id })
+            .from(wholesaleSizesTable)
+            .where(eq(wholesaleSizesTable.slug, def.slug))
+            .limit(1);
+
+        if (existing) continue;
+
+        await db.insert(wholesaleSizesTable).values({
+            name: def.name,
+            slug: def.slug,
+            description: def.description,
+            sizeCategory: def.sizeCategory,
+            active: true,
+            sortOrder: def.sortOrder,
+        });
+        created++;
+    }
+
+    const sizes = await db
+        .select()
+        .from(wholesaleSizesTable)
+        .orderBy(asc(wholesaleSizesTable.sortOrder), asc(wholesaleSizesTable.name));
+
+    res.json({ created, sizes });
 });
 
 router.post("/sizes", async (req, res) => {
@@ -547,7 +1125,18 @@ router.delete("/sizes/:id", async (req, res) => {
 // ── Wholesale Products ──
 // ═══════════════════════════════════════
 
-router.get("/products", async (_req, res) => {
+router.get("/products", async (req, res) => {
+    const catalog = (req.query.catalog as WholesaleCatalogFilter) || "all";
+    const customerId = req.query.customerId
+        ? Number(req.query.customerId)
+        : undefined;
+
+    const catalogFilter = wholesaleAdminCatalogFilter(
+        catalog,
+        wholesaleProductsTable.flavourId,
+        { customerId },
+    );
+
     const products = await db
         .select({
             id: wholesaleProductsTable.id,
@@ -557,6 +1146,7 @@ router.get("/products", async (_req, res) => {
             flavourDescription: wholesaleFlavoursTable.description,
             flavourAllergens: wholesaleFlavoursTable.allergens,
             flavourIsSeasonal: wholesaleFlavoursTable.isSeasonal,
+            flavourIsExclusive: wholesaleFlavoursTable.isExclusive,
             flavourActive: wholesaleFlavoursTable.active,
             wholesaleSizeId: wholesaleProductsTable.wholesaleSizeId,
             name: wholesaleProductsTable.name,
@@ -569,6 +1159,9 @@ router.get("/products", async (_req, res) => {
             unitDescription: wholesaleProductsTable.unitDescription,
             priceCents: wholesaleProductsTable.priceCents,
             available: wholesaleProductsTable.available,
+            manageStock: wholesaleProductsTable.manageStock,
+            stockQuantity: wholesaleProductsTable.stockQuantity,
+            lowStockThreshold: wholesaleProductsTable.lowStockThreshold,
             sortOrder: wholesaleProductsTable.sortOrder,
             createdAt: wholesaleProductsTable.createdAt,
         })
@@ -585,16 +1178,27 @@ router.get("/products", async (_req, res) => {
             wholesaleSizesTable,
             eq(wholesaleProductsTable.wholesaleSizeId, wholesaleSizesTable.id),
         )
+        .where(catalogFilter ? catalogFilter : undefined)
         .orderBy(
+            asc(sql`COALESCE(${wholesaleFlavoursTable.isExclusive}, false)`),
             asc(wholesaleSizesTable.sortOrder),
             asc(wholesaleProductsTable.sortOrder),
         );
 
-    res.json(products);
+    const flavourIds = [...new Set(products.map((p) => p.flavourId))];
+    const exclusiveMap = await getExclusiveCustomerMap(flavourIds);
+
+    res.json(
+        products.map((p) => ({
+            ...p,
+            flavourIsExclusive: p.flavourIsExclusive ?? false,
+            exclusiveCustomers: exclusiveMap.get(p.flavourId) || [],
+        })),
+    );
 });
 
 router.post("/products", async (req, res) => {
-    const { flavourId, wholesaleSizeId, name, unitDescription, priceCents, available, sortOrder, sizeCategory } = req.body;
+    const { flavourId, wholesaleSizeId, name, unitDescription, priceCents, available, sortOrder, sizeCategory, manageStock, stockQuantity, lowStockThreshold } = req.body;
 
     if (!flavourId || priceCents === undefined) {
         res.status(400).json({ error: "flavourId and priceCents are required" });
@@ -637,6 +1241,9 @@ router.post("/products", async (req, res) => {
             unitDescription: resolvedUnitDescription,
             priceCents,
             available: available !== false,
+            manageStock: manageStock === true,
+            stockQuantity: stockQuantity ?? 0,
+            lowStockThreshold: lowStockThreshold ?? 5,
             sortOrder: sortOrder || 0,
             sizeCategory: resolvedSizeCategory,
         })
@@ -645,9 +1252,92 @@ router.post("/products", async (req, res) => {
     res.status(201).json(product);
 });
 
+router.put("/products/bulk/size-availability", async (req, res) => {
+    const { flavourIds, wholesaleSizeIds, enabled, defaultPriceCents } = req.body;
+
+    if (!Array.isArray(flavourIds) || flavourIds.length === 0) {
+        res.status(400).json({ error: "flavourIds array is required" });
+        return;
+    }
+    if (!Array.isArray(wholesaleSizeIds) || wholesaleSizeIds.length === 0) {
+        res.status(400).json({ error: "wholesaleSizeIds array is required" });
+        return;
+    }
+    if (typeof enabled !== "boolean") {
+        res.status(400).json({ error: "enabled boolean is required" });
+        return;
+    }
+
+    const sizeRows = await db
+        .select()
+        .from(wholesaleSizesTable)
+        .where(inArray(wholesaleSizesTable.id, wholesaleSizeIds.map(Number)));
+
+    if (sizeRows.length === 0) {
+        res.status(400).json({ error: "No valid wholesale sizes found" });
+        return;
+    }
+
+    const priceCents = Math.max(0, Math.round(Number(defaultPriceCents) || 0));
+
+    let updated = 0;
+    let created = 0;
+    let disabled = 0;
+    let skipped = 0;
+
+    for (const rawFlavourId of flavourIds) {
+        const flavourId = Number(rawFlavourId);
+        if (!flavourId || Number.isNaN(flavourId)) continue;
+
+        for (const size of sizeRows) {
+            const [existing] = await db
+                .select()
+                .from(wholesaleProductsTable)
+                .where(
+                    and(
+                        eq(wholesaleProductsTable.flavourId, flavourId),
+                        eq(wholesaleProductsTable.wholesaleSizeId, size.id),
+                    ),
+                )
+                .limit(1);
+
+            if (enabled) {
+                if (existing) {
+                    await db
+                        .update(wholesaleProductsTable)
+                        .set({ available: true, updatedAt: new Date() })
+                        .where(eq(wholesaleProductsTable.id, existing.id));
+                    updated++;
+                } else if (priceCents > 0) {
+                    await db.insert(wholesaleProductsTable).values({
+                        flavourId,
+                        wholesaleSizeId: size.id,
+                        name: size.name,
+                        unitDescription: size.description || "",
+                        priceCents,
+                        sizeCategory: size.sizeCategory,
+                        available: true,
+                    });
+                    created++;
+                } else {
+                    skipped++;
+                }
+            } else if (existing) {
+                await db
+                    .update(wholesaleProductsTable)
+                    .set({ available: false, updatedAt: new Date() })
+                    .where(eq(wholesaleProductsTable.id, existing.id));
+                disabled++;
+            }
+        }
+    }
+
+    res.json({ updated, created, disabled, skipped, total: updated + created + disabled });
+});
+
 router.put("/products/:id", async (req, res) => {
     const id = Number(req.params.id);
-    const { flavourId, wholesaleSizeId, name, unitDescription, priceCents, available, sortOrder, sizeCategory } = req.body;
+    const { flavourId, wholesaleSizeId, name, unitDescription, priceCents, available, sortOrder, sizeCategory, manageStock, stockQuantity, lowStockThreshold } = req.body;
 
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (wholesaleSizeId !== undefined) updates.wholesaleSizeId = wholesaleSizeId ? Number(wholesaleSizeId) : null;
@@ -656,6 +1346,9 @@ router.put("/products/:id", async (req, res) => {
     if (unitDescription !== undefined) updates.unitDescription = unitDescription;
     if (priceCents !== undefined) updates.priceCents = priceCents;
     if (available !== undefined) updates.available = available;
+    if (manageStock !== undefined) updates.manageStock = manageStock;
+    if (stockQuantity !== undefined) updates.stockQuantity = stockQuantity;
+    if (lowStockThreshold !== undefined) updates.lowStockThreshold = lowStockThreshold;
     if (sortOrder !== undefined) updates.sortOrder = sortOrder;
     if (sizeCategory !== undefined) updates.sizeCategory = sizeCategory || null;
 
@@ -766,6 +1459,89 @@ router.post("/products/bulk", async (req, res) => {
     res.status(201).json({ created: created.length, products: created });
 });
 
+// Bulk upsert flavour×size matrix cells
+router.put("/products/matrix", async (req, res) => {
+    const { cells } = req.body;
+
+    if (!Array.isArray(cells) || cells.length === 0) {
+        res.status(400).json({ error: "cells array is required" });
+        return;
+    }
+
+    const results = [];
+    for (const cell of cells) {
+        const flavourId = Number(cell.flavourId);
+        const wholesaleSizeId = Number(cell.wholesaleSizeId);
+        if (!flavourId || !wholesaleSizeId) continue;
+
+        const [size] = await db
+            .select()
+            .from(wholesaleSizesTable)
+            .where(eq(wholesaleSizesTable.id, wholesaleSizeId))
+            .limit(1);
+        if (!size) continue;
+
+        const priceCents = Math.max(0, Math.round(Number(cell.priceCents) || 0));
+        const available = cell.available !== false;
+        const manageStock = cell.manageStock === true;
+        const stockQuantity = Number(cell.stockQuantity) || 0;
+        const lowStockThreshold = Number(cell.lowStockThreshold) || 5;
+
+        const [existing] = await db
+            .select({ id: wholesaleProductsTable.id })
+            .from(wholesaleProductsTable)
+            .where(
+                and(
+                    eq(wholesaleProductsTable.flavourId, flavourId),
+                    eq(wholesaleProductsTable.wholesaleSizeId, wholesaleSizeId),
+                ),
+            )
+            .limit(1);
+
+        if (existing) {
+            if (cell.enabled === false) {
+                await db
+                    .update(wholesaleProductsTable)
+                    .set({ available: false, updatedAt: new Date() })
+                    .where(eq(wholesaleProductsTable.id, existing.id));
+                continue;
+            }
+            const [updated] = await db
+                .update(wholesaleProductsTable)
+                .set({
+                    priceCents,
+                    available,
+                    manageStock,
+                    stockQuantity,
+                    lowStockThreshold,
+                    updatedAt: new Date(),
+                })
+                .where(eq(wholesaleProductsTable.id, existing.id))
+                .returning();
+            if (updated) results.push(updated);
+        } else if (cell.enabled !== false && priceCents > 0) {
+            const [created] = await db
+                .insert(wholesaleProductsTable)
+                .values({
+                    flavourId,
+                    wholesaleSizeId,
+                    name: size.name,
+                    unitDescription: size.description || "",
+                    priceCents,
+                    sizeCategory: size.sizeCategory,
+                    available,
+                    manageStock,
+                    stockQuantity,
+                    lowStockThreshold,
+                })
+                .returning();
+            if (created) results.push(created);
+        }
+    }
+
+    res.json({ updated: results.length, products: results });
+});
+
 // ═══════════════════════════════════════
 // ── Wholesale Orders ──
 // ═══════════════════════════════════════
@@ -846,22 +1622,100 @@ router.get("/orders/stats", async (_req, res) => {
         .select({ count: count() })
         .from(wholesaleOrdersTable)
         .where(gte(wholesaleOrdersTable.createdAt, today));
+    const [awaitingDelivery] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.status, "ready"));
+    const [unpaidAwaitingDelivery] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                or(
+                    eq(wholesaleOrdersTable.status, "ready"),
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                )!,
+                sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`,
+            ),
+        );
+    const [rushOrders] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                eq(wholesaleOrdersTable.isRushOrder, true),
+                sql`${wholesaleOrdersTable.status} NOT IN ('delivered', 'cancelled')`,
+            ),
+        );
+    const [lowStockProducts] = await db
+        .select({ count: count() })
+        .from(wholesaleProductsTable)
+        .where(
+            and(
+                eq(wholesaleProductsTable.manageStock, true),
+                sql`${wholesaleProductsTable.stockQuantity} > 0`,
+                sql`${wholesaleProductsTable.stockQuantity} <= ${wholesaleProductsTable.lowStockThreshold}`,
+            ),
+        );
 
     res.json({
         totalOrders: total.count,
         pendingReview: pendingReview.count,
         confirmedOrders: confirmed.count,
         todayOrders: todayCount.count,
+        awaitingDelivery: awaitingDelivery.count,
+        unpaidAwaitingDelivery: unpaidAwaitingDelivery.count,
+        rushOrders: rushOrders.count,
+        lowStockProducts: lowStockProducts.count,
     });
 });
 
 router.get("/orders", async (req, res) => {
     const status = req.query.status as string | undefined;
+    const filter = req.query.filter as string | undefined;
     const customerId = req.query.customerId as string | undefined;
     const search = req.query.search as string | undefined;
 
     const conditions = [];
-    if (status) conditions.push(eq(wholesaleOrdersTable.status, status as any));
+    if (filter === "awaiting_delivery") {
+        conditions.push(eq(wholesaleOrdersTable.status, "ready"));
+    } else if (filter === "unpaid_awaiting_delivery") {
+        conditions.push(
+            and(
+                or(
+                    eq(wholesaleOrdersTable.status, "ready"),
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                )!,
+                sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`,
+            )!,
+        );
+    } else if (filter === "rush") {
+        conditions.push(
+            and(
+                eq(wholesaleOrdersTable.isRushOrder, true),
+                sql`${wholesaleOrdersTable.status} NOT IN ('delivered', 'cancelled')`,
+            )!,
+        );
+    } else if (filter === "has_unmatched") {
+        conditions.push(
+            and(
+                or(
+                    eq(wholesaleOrdersTable.status, "pending_review"),
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                )!,
+                sql`EXISTS (
+                    SELECT 1 FROM wholesale_order_items
+                    WHERE wholesale_order_id = ${wholesaleOrdersTable.id}
+                    AND matched = false
+                )`,
+            )!,
+        );
+    } else if (status && status !== "all") {
+        conditions.push(eq(wholesaleOrdersTable.status, status as any));
+    }
     if (customerId) conditions.push(eq(wholesaleOrdersTable.wholesaleCustomerId, Number(customerId)));
     if (search) {
         conditions.push(
@@ -887,6 +1741,8 @@ router.get("/orders", async (req, res) => {
             aiParseNotes: wholesaleOrdersTable.aiParseNotes,
             paymentStatus: wholesaleOrdersTable.paymentStatus,
             paymentMethod: wholesaleOrdersTable.paymentMethod,
+            isRushOrder: wholesaleOrdersTable.isRushOrder,
+            rushNotes: wholesaleOrdersTable.rushNotes,
             originalEmailSubject: wholesaleOrdersTable.originalEmailSubject,
             createdAt: wholesaleOrdersTable.createdAt,
         })
@@ -928,6 +1784,11 @@ router.get("/orders/:id", async (req, res) => {
             paymentStatus: wholesaleOrdersTable.paymentStatus,
             paymentMethod: wholesaleOrdersTable.paymentMethod,
             paymentNotes: wholesaleOrdersTable.paymentNotes,
+            squareInvoiceId: wholesaleOrdersTable.squareInvoiceId,
+            squareInvoicePublicUrl: wholesaleOrdersTable.squareInvoicePublicUrl,
+            isRushOrder: wholesaleOrdersTable.isRushOrder,
+            rushNotes: wholesaleOrdersTable.rushNotes,
+            vendorLocationId: wholesaleOrdersTable.vendorLocationId,
             paidAt: wholesaleOrdersTable.paidAt,
             createdAt: wholesaleOrdersTable.createdAt,
             updatedAt: wholesaleOrdersTable.updatedAt,
@@ -1062,6 +1923,8 @@ router.put("/orders/:id/confirm", async (req, res) => {
         })
         .where(eq(wholesaleOrdersTable.id, id))
         .returning();
+
+    await decrementWholesaleStockForOrder(id);
 
     // Get items for confirmation email
     const items = await db
@@ -1215,6 +2078,7 @@ router.post("/orders/:id/send-invoice", async (req, res) => {
             .update(wholesaleOrdersTable)
             .set({
                 squareInvoiceId,
+                squareInvoicePublicUrl: publicUrl,
                 paymentStatus: "invoiced",
                 paymentMethod: "square_invoice",
                 updatedAt: new Date(),
@@ -1226,6 +2090,57 @@ router.post("/orders/:id/send-invoice", async (req, res) => {
     } catch (e: any) {
         console.error("[WHOLESALE] Failed to create Square invoice:", e?.message || e);
         res.status(502).json({ error: e?.message || "Failed to create Square invoice" });
+    }
+});
+
+// Void/cancel a Square invoice so a new one can be issued
+router.post("/orders/:id/void-invoice", async (req, res) => {
+    const id = Number(req.params.id);
+
+    const [order] = await db
+        .select({
+            id: wholesaleOrdersTable.id,
+            squareInvoiceId: wholesaleOrdersTable.squareInvoiceId,
+            paymentStatus: wholesaleOrdersTable.paymentStatus,
+        })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.id, id))
+        .limit(1);
+
+    if (!order) {
+        res.status(404).json({ error: "Order not found" });
+        return;
+    }
+
+    if (!order.squareInvoiceId) {
+        res.status(400).json({ error: "No Square invoice on this order" });
+        return;
+    }
+
+    if (order.paymentStatus === "paid") {
+        res.status(400).json({ error: "Cannot void invoice — order is already paid" });
+        return;
+    }
+
+    try {
+        await cancelWholesaleInvoice(order.squareInvoiceId);
+
+        const [updated] = await db
+            .update(wholesaleOrdersTable)
+            .set({
+                squareInvoiceId: null,
+                squareInvoicePublicUrl: null,
+                paymentStatus: "unpaid",
+                paymentMethod: null,
+                updatedAt: new Date(),
+            })
+            .where(eq(wholesaleOrdersTable.id, id))
+            .returning();
+
+        res.json(updated);
+    } catch (e: any) {
+        console.error("[WHOLESALE] Failed to void Square invoice:", e?.message || e);
+        res.status(502).json({ error: e?.message || "Failed to void Square invoice" });
     }
 });
 
@@ -1403,19 +2318,42 @@ router.get("/delivery-schedule", async (req, res) => {
 // ── Dashboard Summary ──
 // ═══════════════════════════════════════
 
-router.get("/dashboard", async (_req, res) => {
+router.get("/dashboard", async (req, res) => {
+    const scope = (req.query.scope as string) || "week";
     const now = new Date();
-    const weekLater = new Date(now);
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    const weekLater = new Date(today);
     weekLater.setDate(weekLater.getDate() + 7);
-    const todayStr = now.toISOString().slice(0, 10);
-    const weekStr = weekLater.toISOString().slice(0, 10);
+    const twoWeeksAgo = new Date(today);
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 13);
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    // Counts by status
+    const todayStr = today.toISOString().slice(0, 10);
+    const weekStr = weekLater.toISOString().slice(0, 10);
+    const twoWeeksStr = twoWeeksAgo.toISOString().slice(0, 10);
+    const monthStartStr = monthStart.toISOString().slice(0, 10);
+
+    const scopeEndStr =
+        scope === "today" ? todayStr : scope === "month" ? weekStr : weekStr;
+    const scopeStartStr =
+        scope === "today" ? todayStr : scope === "month" ? monthStartStr : todayStr;
+
+    const activeOrderStatuses = or(
+        eq(wholesaleOrdersTable.status, "pending_review"),
+        eq(wholesaleOrdersTable.status, "confirmed"),
+        eq(wholesaleOrdersTable.status, "in_production"),
+        eq(wholesaleOrdersTable.status, "ready"),
+    )!;
+
+    const fulfillmentStatuses = or(
+        eq(wholesaleOrdersTable.status, "confirmed"),
+        eq(wholesaleOrdersTable.status, "in_production"),
+        eq(wholesaleOrdersTable.status, "ready"),
+    )!;
+
     const statusCounts = await db
-        .select({
-            status: wholesaleOrdersTable.status,
-            count: count(),
-        })
+        .select({ status: wholesaleOrdersTable.status, count: count() })
         .from(wholesaleOrdersTable)
         .groupBy(wholesaleOrdersTable.status);
 
@@ -1424,32 +2362,46 @@ router.get("/dashboard", async (_req, res) => {
         statusMap[s.status] = Number(s.count);
     });
 
-    // Deliveries this week
+    const activePipeline = {
+        pending_review: statusMap.pending_review || 0,
+        confirmed: statusMap.confirmed || 0,
+        in_production: statusMap.in_production || 0,
+        ready: statusMap.ready || 0,
+    };
+
+    const [totalOrders] = await db.select({ count: count() }).from(wholesaleOrdersTable);
+    const [todayOrders] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(gte(wholesaleOrdersTable.createdAt, today));
+    const [awaitingDelivery] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.status, "ready"));
+    const [unpaidAwaitingDelivery] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(fulfillmentStatuses, sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`),
+        );
+
     const [deliveriesThisWeek] = await db
         .select({ count: count() })
         .from(wholesaleOrdersTable)
         .where(
             and(
-                or(
-                    eq(wholesaleOrdersTable.status, "confirmed"),
-                    eq(wholesaleOrdersTable.status, "in_production"),
-                    eq(wholesaleOrdersTable.status, "ready"),
-                )!,
+                fulfillmentStatuses,
                 gte(wholesaleOrdersTable.confirmedDeliveryDate, todayStr),
                 lte(wholesaleOrdersTable.confirmedDeliveryDate, weekStr),
             ),
         );
 
-    // Unmatched items count
     const [unmatchedItems] = await db
         .select({ count: count() })
         .from(wholesaleOrderItemsTable)
         .innerJoin(
             wholesaleOrdersTable,
-            eq(
-                wholesaleOrderItemsTable.wholesaleOrderId,
-                wholesaleOrdersTable.id,
-            ),
+            eq(wholesaleOrderItemsTable.wholesaleOrderId, wholesaleOrdersTable.id),
         )
         .where(
             and(
@@ -1462,7 +2414,101 @@ router.get("/dashboard", async (_req, res) => {
             ),
         );
 
-    // Production by flavour (next 7 days)
+    const [totalActiveItems] = await db
+        .select({ count: count() })
+        .from(wholesaleOrderItemsTable)
+        .innerJoin(
+            wholesaleOrdersTable,
+            eq(wholesaleOrderItemsTable.wholesaleOrderId, wholesaleOrdersTable.id),
+        )
+        .where(
+            or(
+                eq(wholesaleOrdersTable.status, "pending_review"),
+                eq(wholesaleOrdersTable.status, "confirmed"),
+                eq(wholesaleOrdersTable.status, "in_production"),
+            )!,
+        );
+
+    const unmatchedItemRate =
+        Number(totalActiveItems?.count || 0) > 0
+            ? Number(unmatchedItems?.count || 0) / Number(totalActiveItems.count)
+            : 0;
+
+    const pendingOrders = await db
+        .select({ createdAt: wholesaleOrdersTable.createdAt })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.status, "pending_review"))
+        .orderBy(asc(wholesaleOrdersTable.createdAt))
+        .limit(1);
+
+    const pendingReviewOldestHours = pendingOrders[0]
+        ? Math.round((now.getTime() - pendingOrders[0].createdAt.getTime()) / 3_600_000)
+        : 0;
+
+    const [revenueScope] = await db
+        .select({ total: sum(wholesaleOrdersTable.subtotalCents) })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                gte(wholesaleOrdersTable.confirmedDeliveryDate, scopeStartStr),
+                lte(wholesaleOrdersTable.confirmedDeliveryDate, scopeEndStr),
+                sql`${wholesaleOrdersTable.status} NOT IN ('cancelled')`,
+            ),
+        );
+
+    const [revenueMonth] = await db
+        .select({ total: sum(wholesaleOrdersTable.subtotalCents) })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                gte(wholesaleOrdersTable.confirmedDeliveryDate, monthStartStr),
+                sql`${wholesaleOrdersTable.status} NOT IN ('cancelled')`,
+            ),
+        );
+
+    const ordersByDayRows = await db
+        .select({
+            day: sql<string>`to_char(${wholesaleOrdersTable.createdAt}, 'YYYY-MM-DD')`.as("day"),
+            count: count(),
+        })
+        .from(wholesaleOrdersTable)
+        .where(gte(wholesaleOrdersTable.createdAt, twoWeeksAgo))
+        .groupBy(sql`to_char(${wholesaleOrdersTable.createdAt}, 'YYYY-MM-DD')`)
+        .orderBy(sql`to_char(${wholesaleOrdersTable.createdAt}, 'YYYY-MM-DD')`);
+
+    const ordersByDayMap = new Map(
+        ordersByDayRows.map((r) => [r.day, Number(r.count)]),
+    );
+    const ordersByDay: { date: string; count: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        ordersByDay.push({ date: key, count: ordersByDayMap.get(key) || 0 });
+    }
+
+    const topCustomers = await db
+        .select({
+            customerId: wholesaleCustomersTable.id,
+            businessName: wholesaleCustomersTable.businessName,
+            orderCount: count(),
+            totalCents: sum(wholesaleOrdersTable.subtotalCents),
+        })
+        .from(wholesaleOrdersTable)
+        .innerJoin(
+            wholesaleCustomersTable,
+            eq(wholesaleOrdersTable.wholesaleCustomerId, wholesaleCustomersTable.id),
+        )
+        .where(
+            and(
+                gte(wholesaleOrdersTable.createdAt, new Date(today.getTime() - 30 * 24 * 3_600_000)),
+                sql`${wholesaleOrdersTable.status} NOT IN ('cancelled')`,
+            ),
+        )
+        .groupBy(wholesaleCustomersTable.id, wholesaleCustomersTable.businessName)
+        .orderBy(desc(count()))
+        .limit(5);
+
     const productionByFlavour = await db
         .select({
             flavourName: flavoursTable.name,
@@ -1471,15 +2517,9 @@ router.get("/dashboard", async (_req, res) => {
         .from(wholesaleOrderItemsTable)
         .innerJoin(
             wholesaleOrdersTable,
-            eq(
-                wholesaleOrderItemsTable.wholesaleOrderId,
-                wholesaleOrdersTable.id,
-            ),
+            eq(wholesaleOrderItemsTable.wholesaleOrderId, wholesaleOrdersTable.id),
         )
-        .leftJoin(
-            flavoursTable,
-            eq(wholesaleOrderItemsTable.flavourId, flavoursTable.id),
-        )
+        .leftJoin(flavoursTable, eq(wholesaleOrderItemsTable.flavourId, flavoursTable.id))
         .where(
             and(
                 or(
@@ -1492,43 +2532,166 @@ router.get("/dashboard", async (_req, res) => {
         )
         .groupBy(flavoursTable.name);
 
-    // Upcoming deliveries (next 5)
-    const upcomingDeliveries = await db
+    const productionByProduct = await db
         .select({
-            id: wholesaleOrdersTable.id,
-            orderNumber: wholesaleOrdersTable.orderNumber,
-            customerName: wholesaleCustomersTable.businessName,
-            confirmedDeliveryDate: wholesaleOrdersTable.confirmedDeliveryDate,
-            status: wholesaleOrdersTable.status,
-            deliveryMethod: wholesaleOrdersTable.deliveryMethod,
+            flavourName: flavoursTable.name,
+            productName: wholesaleProductsTable.name,
+            totalQuantity: sum(wholesaleOrderItemsTable.quantity),
         })
-        .from(wholesaleOrdersTable)
+        .from(wholesaleOrderItemsTable)
         .innerJoin(
-            wholesaleCustomersTable,
-            eq(
-                wholesaleOrdersTable.wholesaleCustomerId,
-                wholesaleCustomersTable.id,
-            ),
+            wholesaleOrdersTable,
+            eq(wholesaleOrderItemsTable.wholesaleOrderId, wholesaleOrdersTable.id),
         )
+        .leftJoin(
+            wholesaleProductsTable,
+            eq(wholesaleOrderItemsTable.wholesaleProductId, wholesaleProductsTable.id),
+        )
+        .leftJoin(flavoursTable, eq(wholesaleOrderItemsTable.flavourId, flavoursTable.id))
         .where(
             and(
                 or(
                     eq(wholesaleOrdersTable.status, "confirmed"),
                     eq(wholesaleOrdersTable.status, "in_production"),
-                    eq(wholesaleOrdersTable.status, "ready"),
                 )!,
                 gte(wholesaleOrdersTable.confirmedDeliveryDate, todayStr),
+                lte(wholesaleOrdersTable.confirmedDeliveryDate, weekStr),
             ),
         )
+        .groupBy(flavoursTable.name, wholesaleProductsTable.name)
+        .orderBy(desc(sum(wholesaleOrderItemsTable.quantity)))
+        .limit(10);
+
+    const upcomingDeliveries = await db
+        .select({
+            id: wholesaleOrdersTable.id,
+            orderNumber: wholesaleOrdersTable.orderNumber,
+            customerName: wholesaleCustomersTable.businessName,
+            customerCity: wholesaleCustomersTable.city,
+            confirmedDeliveryDate: wholesaleOrdersTable.confirmedDeliveryDate,
+            status: wholesaleOrdersTable.status,
+            deliveryMethod: wholesaleOrdersTable.deliveryMethod,
+            paymentStatus: wholesaleOrdersTable.paymentStatus,
+            subtotalCents: wholesaleOrdersTable.subtotalCents,
+            hasUnmatchedItems: sql<boolean>`EXISTS (
+                SELECT 1 FROM wholesale_order_items
+                WHERE wholesale_order_id = ${wholesaleOrdersTable.id}
+                AND matched = false
+            )`.as("has_unmatched_items"),
+        })
+        .from(wholesaleOrdersTable)
+        .innerJoin(
+            wholesaleCustomersTable,
+            eq(wholesaleOrdersTable.wholesaleCustomerId, wholesaleCustomersTable.id),
+        )
+        .where(and(fulfillmentStatuses, gte(wholesaleOrdersTable.confirmedDeliveryDate, todayStr)))
         .orderBy(asc(wholesaleOrdersTable.confirmedDeliveryDate))
-        .limit(5);
+        .limit(15);
+
+    const attentionCandidates = await db
+        .select({
+            id: wholesaleOrdersTable.id,
+            orderNumber: wholesaleOrdersTable.orderNumber,
+            customerName: wholesaleCustomersTable.businessName,
+            status: wholesaleOrdersTable.status,
+            aiParseConfidence: wholesaleOrdersTable.aiParseConfidence,
+            createdAt: wholesaleOrdersTable.createdAt,
+            paymentStatus: wholesaleOrdersTable.paymentStatus,
+            unmatchedCount: sql<number>`(
+                SELECT count(*)::int FROM wholesale_order_items
+                WHERE wholesale_order_id = ${wholesaleOrdersTable.id}
+                AND matched = false
+            )`.as("unmatched_count"),
+        })
+        .from(wholesaleOrdersTable)
+        .innerJoin(
+            wholesaleCustomersTable,
+            eq(wholesaleOrdersTable.wholesaleCustomerId, wholesaleCustomersTable.id),
+        )
+        .where(
+            or(
+                eq(wholesaleOrdersTable.status, "pending_review"),
+                and(
+                    fulfillmentStatuses,
+                    sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`,
+                )!,
+                sql`EXISTS (
+                    SELECT 1 FROM wholesale_order_items
+                    WHERE wholesale_order_id = ${wholesaleOrdersTable.id}
+                    AND matched = false
+                )`,
+            )!,
+        )
+        .orderBy(asc(wholesaleOrdersTable.createdAt))
+        .limit(40);
+
+    type AttentionReason = "pending_review" | "unmatched_items" | "unpaid" | "low_confidence";
+    const needsAttention = attentionCandidates
+        .map((o) => {
+            const reasons: AttentionReason[] = [];
+            if (o.status === "pending_review") reasons.push("pending_review");
+            if (Number(o.unmatchedCount) > 0) reasons.push("unmatched_items");
+            if (
+                ["confirmed", "in_production", "ready"].includes(o.status) &&
+                o.paymentStatus !== "paid"
+            ) {
+                reasons.push("unpaid");
+            }
+            if (o.aiParseConfidence !== null && o.aiParseConfidence < 0.7) {
+                reasons.push("low_confidence");
+            }
+            const priority =
+                (o.status === "pending_review" ? 100 : 0) +
+                (Number(o.unmatchedCount) > 0 ? 50 : 0) +
+                (o.paymentStatus !== "paid" && o.status === "ready" ? 40 : 0) +
+                (o.aiParseConfidence !== null && o.aiParseConfidence < 0.7 ? 30 : 0) +
+                Math.min(24, Math.round((now.getTime() - o.createdAt.getTime()) / 3_600_000));
+
+            return {
+                id: o.id,
+                orderNumber: o.orderNumber,
+                customerName: o.customerName,
+                status: o.status,
+                reasons,
+                priority,
+                aiParseConfidence: o.aiParseConfidence,
+                createdAt: o.createdAt,
+                paymentStatus: o.paymentStatus,
+                unmatchedCount: Number(o.unmatchedCount),
+            };
+        })
+        .filter((o) => o.reasons.length > 0)
+        .sort((a, b) => b.priority - a.priority)
+        .slice(0, 15);
 
     res.json({
+        lastUpdatedAt: new Date().toISOString(),
+        scope,
         statusCounts: statusMap,
+        activePipeline,
+        totalOrders: Number(totalOrders?.count || 0),
+        pendingReview: statusMap.pending_review || 0,
+        confirmedOrders: statusMap.confirmed || 0,
+        todayOrders: Number(todayOrders?.count || 0),
+        awaitingDelivery: Number(awaitingDelivery?.count || 0),
+        unpaidAwaitingDelivery: Number(unpaidAwaitingDelivery?.count || 0),
         deliveriesThisWeek: Number(deliveriesThisWeek?.count || 0),
         unmatchedItems: Number(unmatchedItems?.count || 0),
+        unmatchedItemRate,
+        pendingReviewOldestHours,
+        revenueScopeCents: Number(revenueScope?.total || 0),
+        revenueMonthCents: Number(revenueMonth?.total || 0),
+        ordersByDay,
+        topCustomers: topCustomers.map((c) => ({
+            customerId: c.customerId,
+            businessName: c.businessName,
+            orderCount: Number(c.orderCount),
+            totalCents: Number(c.totalCents || 0),
+        })),
         productionByFlavour,
+        productionByProduct,
         upcomingDeliveries,
+        needsAttention,
     });
 });
 

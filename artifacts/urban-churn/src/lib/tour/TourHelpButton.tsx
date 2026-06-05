@@ -10,10 +10,10 @@ export function TourHelpButton() {
         <button
             onClick={() => restartTour(activeTourId)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md text-gray-400 hover:text-[#A1AB74] hover:bg-white/10 transition-colors"
-            title="Replay tour"
+            title="Open tutorial"
         >
             <HelpCircle className="w-4 h-4" />
-            <span className="hidden sm:inline">Tour</span>
+            <span className="hidden sm:inline">Tutorial</span>
         </button>
     );
 }

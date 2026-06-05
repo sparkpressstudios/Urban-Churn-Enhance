@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import { db } from "@workspace/db";
 import { customersTable, bakeryOrdersTable, wholesaleCustomersTable, eventOrdersTable, eventTicketsTable, eventsTable, ordersTable, orderItemsTable, locationsTable, wooOrderHistoryTable } from "@workspace/db/schema";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, or, isNull, ne } from "drizzle-orm";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { signToken } from "../lib/jwt";
 import { requireCustomer } from "../middlewares/customer-auth";

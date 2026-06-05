@@ -718,11 +718,12 @@ export default function PreOrder() {
             setAccountMode("guest");
           } else if (code === "INVALID_CREDENTIALS") {
             toast({ title: "Incorrect password", description: "The password you entered is incorrect. Try again or reset your password.", variant: "destructive" });
-          } else {
-            // Surface payment error detail if available (402 from Square)
-            const detail = err?.detail || "";
-            const msg = detail ? `${err.message} (${detail})` : (err.message || "Please try again.");
+          } else if (typeof code === "string" && code.startsWith("PAYMENT_")) {
+            const msg = err.message || "Payment was not completed. Your order was not placed.";
             setPaymentError(msg);
+            toast({ title: "Payment not completed", description: msg, variant: "destructive" });
+          } else {
+            setPaymentError(err.message || "Please try again.");
             toast({ title: "Order failed", description: err.message || "Please try again.", variant: "destructive" });
           }
         },

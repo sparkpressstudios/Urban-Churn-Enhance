@@ -525,21 +525,44 @@ export const api = {
     getWholesaleCustomer: (id: number) => apiFetch(`/admin/wholesale/customers/${id}`),
     updateWholesaleCustomer: (id: number, data: any) =>
         apiFetch(`/admin/wholesale/customers/${id}`, { method: "PUT", body: JSON.stringify(data) }),
-    getWholesaleFlavours: () => apiFetch("/admin/wholesale/flavours"),
+    getWholesaleFlavours: (params?: Record<string, string>) => {
+        const qs = params ? `?${new URLSearchParams(params)}` : "";
+        return apiFetch(`/admin/wholesale/flavours${qs}`);
+    },
     createWholesaleFlavour: (data: any) =>
         apiFetch("/admin/wholesale/flavours", { method: "POST", body: JSON.stringify(data) }),
     updateWholesaleFlavour: (id: number, data: any) =>
         apiFetch(`/admin/wholesale/flavours/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    bulkUpdateWholesaleFlavourActive: (flavourIds: number[], active: boolean) =>
+        apiFetch("/admin/wholesale/flavours/bulk/active", {
+            method: "PUT",
+            body: JSON.stringify({ flavourIds, active }),
+        }),
+    bulkUpdateWholesaleSizeAvailability: (data: {
+        flavourIds: number[];
+        wholesaleSizeIds: number[];
+        enabled: boolean;
+        defaultPriceCents?: number;
+    }) =>
+        apiFetch("/admin/wholesale/products/bulk/size-availability", {
+            method: "PUT",
+            body: JSON.stringify(data),
+        }),
     deleteWholesaleFlavour: (id: number) =>
         apiFetch(`/admin/wholesale/flavours/${id}`, { method: "DELETE" }),
     getWholesaleSizes: () => apiFetch("/admin/wholesale/sizes"),
+    ensureWholesaleCanonicalSizes: () =>
+        apiFetch("/admin/wholesale/sizes/ensure-canonical", { method: "POST" }),
     createWholesaleSize: (data: any) =>
         apiFetch("/admin/wholesale/sizes", { method: "POST", body: JSON.stringify(data) }),
     updateWholesaleSize: (id: number, data: any) =>
         apiFetch(`/admin/wholesale/sizes/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteWholesaleSize: (id: number) =>
         apiFetch(`/admin/wholesale/sizes/${id}`, { method: "DELETE" }),
-    getWholesaleProducts: () => apiFetch("/admin/wholesale/products"),
+    getWholesaleProducts: (params?: Record<string, string>) => {
+        const qs = params ? `?${new URLSearchParams(params)}` : "";
+        return apiFetch(`/admin/wholesale/products${qs}`);
+    },
     createWholesaleProduct: (data: any) =>
         apiFetch("/admin/wholesale/products", { method: "POST", body: JSON.stringify(data) }),
     updateWholesaleProduct: (id: number, data: any) =>
@@ -560,7 +583,10 @@ export const api = {
         const qs = params ? "?" + new URLSearchParams(params).toString() : "";
         return apiFetch(`/admin/wholesale/delivery-schedule${qs}`);
     },
-    getWholesaleDashboard: () => apiFetch("/admin/wholesale/dashboard"),
+    getWholesaleDashboard: (params?: { scope?: string }) => {
+        const qs = params?.scope ? `?scope=${encodeURIComponent(params.scope)}` : "";
+        return apiFetch(`/admin/wholesale/dashboard${qs}`);
+    },
     getWholesaleDeliveryRuns: (params?: Record<string, string>) => {
         const qs = params ? "?" + new URLSearchParams(params).toString() : "";
         return apiFetch(`/admin/wholesale/delivery-runs${qs}`);
@@ -585,6 +611,36 @@ export const api = {
         apiFetch(`/admin/wholesale/delivery-runs/${runId}/send-driver-link`, { method: "POST" }),
     sendWholesaleInvoice: (id: number) =>
         apiFetch(`/admin/wholesale/orders/${id}/send-invoice`, { method: "POST" }),
+    voidWholesaleInvoice: (id: number) =>
+        apiFetch(`/admin/wholesale/orders/${id}/void-invoice`, { method: "POST" }),
+    createWholesaleExclusiveFlavour: (data: {
+        name: string;
+        description?: string;
+        allergens?: string;
+        isSeasonal?: boolean;
+        customerIds: number[];
+        sizeIds?: number[];
+        defaultPriceCents?: number;
+    }) => apiFetch("/admin/wholesale/flavours/create-exclusive", { method: "POST", body: JSON.stringify(data) }),
+    updateWholesaleExclusiveCustomers: (wholesaleFlavourId: number, customerIds: number[]) =>
+        apiFetch(`/admin/wholesale/flavours/${wholesaleFlavourId}/exclusive-customers`, {
+            method: "PUT",
+            body: JSON.stringify({ customerIds }),
+        }),
+    getWholesaleCustomerExclusiveFlavours: (customerId: number) =>
+        apiFetch(`/admin/wholesale/customers/${customerId}/exclusive-flavours`),
+    createWholesaleFlavourFull: (data: {
+        name: string;
+        description?: string;
+        allergens?: string;
+        isSeasonal?: boolean;
+        sizeIds?: number[];
+        defaultPriceCents?: number;
+    }) => apiFetch("/admin/wholesale/flavours/create-full", { method: "POST", body: JSON.stringify(data) }),
+    enableWholesaleFlavourSizes: (flavourId: number, data: { sizeIds?: number[]; defaultPriceCents: number }) =>
+        apiFetch(`/admin/wholesale/flavours/${flavourId}/enable-sizes`, { method: "POST", body: JSON.stringify(data) }),
+    saveWholesaleProductMatrix: (cells: any[]) =>
+        apiFetch("/admin/wholesale/products/matrix", { method: "PUT", body: JSON.stringify({ cells }) }),
     startWholesaleProduction: (id: number) =>
         apiFetch(`/admin/wholesale/orders/${id}/production/start`, { method: "PUT" }),
     completeWholesaleProduction: (id: number) =>
@@ -655,6 +711,7 @@ export const api = {
         customerFetch("/customer/register-wholesale", { method: "POST", body: JSON.stringify(data) }),
 
     // ── Wholesale Portal (Customer) ──
+    wholesalePortalDashboard: () => customerFetch("/customer/wholesale/dashboard"),
     wholesalePortalProfile: () => customerFetch("/customer/wholesale/profile"),
     wholesalePortalProducts: () => customerFetch("/customer/wholesale/products"),
     wholesalePortalOrders: () => customerFetch("/customer/wholesale/orders"),
@@ -664,7 +721,11 @@ export const api = {
         requestedDeliveryDate?: string;
         deliveryMethod?: string;
         notes?: string;
+        isRushOrder?: boolean;
+        rushNotes?: string;
+        vendorLocationId?: number;
     }) => customerFetch("/customer/wholesale/orders", { method: "POST", body: JSON.stringify(data) }),
+    wholesalePortalVendorLocations: () => customerFetch("/customer/wholesale/vendor-locations"),
 
     // ── Admin Wholesale Invite/Approve ──
     sendWholesaleInvite: (id: number) =>
