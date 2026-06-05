@@ -109,7 +109,7 @@ function formatCents(c: number) {
 }
 
 function confidenceColor(c: number | null) {
-    if (c === null) return "bg-gray-100 text-gray-600";
+    if (c === null) return "bg-slate-100 text-slate-800";
     if (c >= 0.9) return "bg-green-100 text-green-800";
     if (c >= 0.7) return "bg-yellow-100 text-yellow-800";
     return "bg-red-100 text-red-800";
@@ -221,13 +221,13 @@ function HowItWorks() {
             <CardContent className="pt-5 pb-4">
                 <div className="space-y-4">
                     <h3 className="text-lg font-semibold">Wholesale Order System</h3>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-slate-700">
                         Wholesale customers email their orders to your Resend inbound address.
                         Orders are automatically parsed by AI and appear here for review.
                     </p>
 
                     {/* Flow diagram */}
-                    <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 p-4 text-sm">
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-4 text-sm">
                         {[
                             { icon: Mail, label: "Customer emails order" },
                             { icon: ArrowRight, label: "" },
@@ -240,7 +240,7 @@ function HowItWorks() {
                             { icon: Check, label: "Confirm & schedule" },
                         ].map((step, i) =>
                             step.label === "" ? (
-                                <step.icon key={i} className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                                <step.icon key={i} className="h-4 w-4 text-slate-500 flex-shrink-0" />
                             ) : (
                                 <div key={i} className="flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 shadow-sm">
                                     <step.icon className="h-4 w-4 text-[#A1AB74]" />
@@ -286,11 +286,11 @@ function HowItWorks() {
 
 function InfoCard({ title, items }: { title: string; items: string[] }) {
     return (
-        <div className="rounded-lg border bg-gray-50 p-3">
+        <div className="rounded-lg border bg-slate-50 p-3">
             <p className="mb-2 text-sm font-semibold">{title}</p>
             <ul className="space-y-1">
                 {items.map((item, i) => (
-                    <li key={i} className="text-xs text-gray-600">{item}</li>
+                    <li key={i} className="text-xs text-slate-700">{item}</li>
                 ))}
             </ul>
         </div>
@@ -379,7 +379,7 @@ function OrdersTab({
                     ].map((s) => (
                         <Card key={s.label}>
                             <CardContent className="pt-4">
-                                <p className="text-sm text-gray-500">{s.label}</p>
+                                <p className="text-sm text-slate-600">{s.label}</p>
                                 <p className="text-2xl font-bold">{s.value}</p>
                             </CardContent>
                         </Card>
@@ -390,7 +390,7 @@ function OrdersTab({
             {/* Filters */}
             <div className="flex gap-3">
                 <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
                     <Input
                         placeholder="Search orders…"
                         value={search}
@@ -421,7 +421,7 @@ function OrdersTab({
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b bg-gray-50 text-left">
+                                <tr className="border-b bg-slate-50 text-left">
                                     <th className="px-4 py-3 font-medium">Order</th>
                                     <th className="px-4 py-3 font-medium">Customer</th>
                                     <th className="px-4 py-3 font-medium">Status</th>
@@ -434,7 +434,7 @@ function OrdersTab({
                             </thead>
                             <tbody>
                                 {orders.map((o: any) => (
-                                    <tr key={o.id} className="border-b hover:bg-gray-50">
+                                    <tr key={o.id} className="border-b hover:bg-slate-50">
                                         <td className="px-4 py-3 font-mono text-xs">
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                                 {o.orderNumber}
@@ -480,12 +480,12 @@ function OrdersTab({
                                                 o.paymentStatus === "paid" ? "bg-green-100 text-green-800" :
                                                     o.paymentStatus === "invoiced" ? "bg-blue-100 text-blue-800" :
                                                         o.paymentStatus === "partial" ? "bg-yellow-100 text-yellow-800" :
-                                                            "bg-gray-100 text-gray-600"
+                                                            "bg-gray-100 text-slate-700"
                                             }>
                                                 {WHOLESALE_PAYMENT_STATUS_LABELS[o.paymentStatus] || o.paymentStatus || "Unpaid"}
                                             </Badge>
                                         </td>
-                                        <td className="px-4 py-3 text-xs text-gray-500">
+                                        <td className="px-4 py-3 text-xs text-slate-600">
                                             {new Date(o.createdAt).toLocaleDateString()}
                                         </td>
                                         <td className="px-4 py-3">
@@ -519,7 +519,7 @@ function OrdersTab({
                                     <tr>
                                         <td
                                             colSpan={7}
-                                            className="px-4 py-8 text-center text-gray-400"
+                                            className="px-4 py-8 text-center text-slate-600"
                                         >
                                             No wholesale orders yet
                                         </td>
@@ -682,7 +682,7 @@ function CreateOrderDialog({ onClose, onCreated }: { onClose: () => void; onCrea
                             </Button>
                         </div>
                         {items.length === 0 && (
-                            <p className="text-sm text-gray-400 text-center py-4 border rounded-lg">No items yet. Click "Add Item" to start.</p>
+                            <p className="text-sm text-slate-600 text-center py-4 border rounded-lg">No items yet. Click "Add Item" to start.</p>
                         )}
                         <div className="space-y-3">
                             {items.map((item, idx) => (
@@ -1025,16 +1025,16 @@ function OrderDetailDialog({
 
                 <div className="space-y-4">
                     {/* Customer info */}
-                    <div className="grid grid-cols-2 gap-4 rounded-lg bg-gray-50 p-4">
+                    <div className="grid grid-cols-2 gap-4 rounded-lg bg-slate-50 p-4">
                         <div>
-                            <p className="text-xs text-gray-500">Customer</p>
+                            <p className="text-xs text-slate-600">Customer</p>
                             <p className="font-medium">{order.customerName}</p>
-                            <p className="text-sm text-gray-600">{order.customerContactName}</p>
+                            <p className="text-sm text-slate-700">{order.customerContactName}</p>
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500">Delivery</p>
+                            <p className="text-xs text-slate-600">Delivery</p>
                             <p className="font-medium capitalize">{order.deliveryMethod}</p>
-                            <p className="text-sm text-gray-600">
+                            <p className="text-sm text-slate-700">
                                 Requested: {order.requestedDeliveryDate || "—"}
                             </p>
                             {order.isRushOrder && order.rushNotes && (
@@ -1048,7 +1048,7 @@ function OrderDetailDialog({
                         </div>
                         {(order.productionStartedAt || order.productionCompletedAt) && (
                             <div>
-                                <p className="text-xs text-gray-500">Production</p>
+                                <p className="text-xs text-slate-600">Production</p>
                                 {order.productionStartedAt && (
                                     <p className="text-sm text-purple-700">
                                         Started: {new Date(order.productionStartedAt).toLocaleString()}
@@ -1066,7 +1066,7 @@ function OrderDetailDialog({
                     {/* AI Confidence */}
                     {order.aiParseConfidence !== null && (
                         <div className="flex items-center gap-3">
-                            <span className="text-sm text-gray-500">AI Confidence:</span>
+                            <span className="text-sm text-slate-600">AI Confidence:</span>
                             <Badge className={confidenceColor(order.aiParseConfidence)}>
                                 {Math.round(order.aiParseConfidence * 100)}%
                             </Badge>
@@ -1261,7 +1261,7 @@ function OrderDetailDialog({
                                 )}
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="border-b bg-gray-50">
+                                        <tr className="border-b bg-slate-50">
                                             <th className="px-3 py-2 text-left font-medium">Item</th>
                                             <th className="px-3 py-2 text-center font-medium">Qty</th>
                                             <th className="px-3 py-2 text-right font-medium">Unit Price</th>
@@ -1430,14 +1430,14 @@ function OrderDetailDialog({
                                 </div>
                             </div>
                         ) : (
-                            <div className="rounded-lg border bg-gray-50 p-3 text-sm space-y-1">
+                            <div className="rounded-lg border bg-slate-50 p-3 text-sm space-y-1">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-gray-500">Status:</span>
+                                    <span className="text-slate-600">Status:</span>
                                     <Badge className={
                                         order.paymentStatus === "paid" ? "bg-green-100 text-green-800" :
                                             order.paymentStatus === "invoiced" ? "bg-blue-100 text-blue-800" :
                                                 order.paymentStatus === "partial" ? "bg-yellow-100 text-yellow-800" :
-                                                    "bg-gray-100 text-gray-600"
+                                                    "bg-gray-100 text-slate-700"
                                     }>
                                         {order.paymentStatus || "unpaid"}
                                     </Badge>
@@ -1483,13 +1483,13 @@ function OrderDetailDialog({
                                     )}
                                 </div>
                                 {order.paymentMethod && (
-                                    <div><span className="text-gray-500">Method:</span> <span className="text-gray-700">{order.paymentMethod.replace(/_/g, " ")}</span></div>
+                                    <div><span className="text-slate-600">Method:</span> <span className="text-slate-800">{order.paymentMethod.replace(/_/g, " ")}</span></div>
                                 )}
                                 {order.paymentNotes && (
-                                    <div><span className="text-gray-500">Notes:</span> <span className="text-gray-700">{order.paymentNotes}</span></div>
+                                    <div><span className="text-slate-600">Notes:</span> <span className="text-slate-800">{order.paymentNotes}</span></div>
                                 )}
                                 {order.paidAt && (
-                                    <div><span className="text-gray-500">Paid:</span> <span className="text-gray-700">{new Date(order.paidAt).toLocaleDateString()}</span></div>
+                                    <div><span className="text-slate-600">Paid:</span> <span className="text-slate-800">{new Date(order.paidAt).toLocaleDateString()}</span></div>
                                 )}
                             </div>
                         )}
@@ -1498,11 +1498,11 @@ function OrderDetailDialog({
                     {/* Original email */}
                     <div>
                         <h3 className="mb-2 font-semibold">Original Email</h3>
-                        <div className="rounded-lg border bg-gray-50 p-4">
-                            <p className="mb-1 text-xs text-gray-500">
+                        <div className="rounded-lg border bg-slate-50 p-4">
+                            <p className="mb-1 text-xs text-slate-600">
                                 Subject: {order.originalEmailSubject}
                             </p>
-                            <pre className="whitespace-pre-wrap text-sm text-gray-700">
+                            <pre className="whitespace-pre-wrap text-sm text-slate-800">
                                 {order.originalEmailBody}
                             </pre>
                         </div>
@@ -1600,7 +1600,7 @@ function CustomersTab() {
         <div className="space-y-4">
             <div className="flex gap-3">
                 <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
                     <Input
                         placeholder="Search customers…"
                         value={search}
@@ -1614,7 +1614,7 @@ function CustomersTab() {
                 </Button>
             </div>
 
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-slate-600">
                 Click a customer to view details, edit profile, and manage their mapped email addresses.
                 Any email mapped to a customer will be recognized when they send an order.
             </p>
@@ -1624,7 +1624,7 @@ function CustomersTab() {
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b bg-gray-50 text-left">
+                                <tr className="border-b bg-slate-50 text-left">
                                     <th className="px-4 py-3 font-medium">Business</th>
                                     <th className="px-4 py-3 font-medium">Contact</th>
                                     <th className="px-4 py-3 font-medium">Emails</th>
@@ -1640,7 +1640,7 @@ function CustomersTab() {
                                     return (
                                         <tr
                                             key={c.id}
-                                            className="border-b cursor-pointer hover:bg-gray-50"
+                                            className="border-b cursor-pointer hover:bg-slate-50"
                                             onClick={() => setSelectedId(c.id)}
                                         >
                                             <td className="px-4 py-3 font-medium">
@@ -1648,11 +1648,11 @@ function CustomersTab() {
                                             </td>
                                             <td className="px-4 py-3">{c.contactName}</td>
                                             <td className="px-4 py-3">
-                                                <span className="text-sm text-gray-600">
+                                                <span className="text-sm text-slate-700">
                                                     {c.email}
                                                 </span>
                                                 {aliases.length > 0 && (
-                                                    <span className="ml-1 text-xs text-gray-400">
+                                                    <span className="ml-1 text-xs text-slate-600">
                                                         +{aliases.length} alias{aliases.length !== 1 ? "es" : ""}
                                                     </span>
                                                 )}
@@ -1667,7 +1667,7 @@ function CustomersTab() {
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <span className="text-xs text-gray-400">—</span>
+                                                    <span className="text-xs text-slate-600">—</span>
                                                 )}
                                             </td>
                                             <td className="px-4 py-3 capitalize">
@@ -1680,7 +1680,7 @@ function CustomersTab() {
                                                             ? "bg-green-100 text-green-800"
                                                             : c.status === "pending"
                                                                 ? "bg-yellow-100 text-yellow-800"
-                                                                : "bg-gray-100 text-gray-600"
+                                                                : "bg-gray-100 text-slate-700"
                                                     }
                                                 >
                                                     {c.status}
@@ -1693,7 +1693,7 @@ function CustomersTab() {
                                     <tr>
                                         <td
                                             colSpan={6}
-                                            className="px-4 py-8 text-center text-gray-400"
+                                            className="px-4 py-8 text-center text-slate-600"
                                         >
                                             No wholesale customers yet
                                         </td>
@@ -1834,7 +1834,7 @@ function CustomerDetailDialog({
                                     ? "bg-green-100 text-green-800"
                                     : customer.status === "pending"
                                         ? "bg-yellow-100 text-yellow-800"
-                                        : "bg-gray-100 text-gray-600"
+                                        : "bg-gray-100 text-slate-700"
                             }
                         >
                             {customer.status}
@@ -1868,7 +1868,7 @@ function CustomerDetailDialog({
                                 <Mail className="inline h-4 w-4 mr-1" />
                                 Mapped Email Addresses
                             </p>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-slate-600">
                                 Orders from any of these addresses will be matched to this customer.
                             </p>
                             <div className="flex flex-wrap gap-1.5">
@@ -1878,7 +1878,7 @@ function CustomerDetailDialog({
                                 {form.emailAliases.map((alias: string) => (
                                     <Badge
                                         key={alias}
-                                        className="bg-gray-100 text-gray-700 cursor-pointer hover:bg-red-100 hover:text-red-700"
+                                        className="bg-gray-100 text-slate-800 cursor-pointer hover:bg-red-100 hover:text-red-700"
                                         onClick={() => removeAlias(alias)}
                                     >
                                         {alias}
@@ -1986,14 +1986,14 @@ function CustomerDetailDialog({
                                             }}
                                             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border flex items-center gap-1.5 ${form.locationIds.includes(loc.id)
                                                 ? "bg-purple-100 text-purple-800 border-purple-400"
-                                                : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                                                : "bg-white text-slate-700 border-slate-200 hover:border-gray-400"
                                                 }`}
                                         >
                                             <MapPin className="w-3.5 h-3.5" /> {loc.name}
                                         </button>
                                     ))}
                                 </div>
-                                <p className="text-xs text-gray-400">Map this partner to their vendor locations for staff access.</p>
+                                <p className="text-xs text-slate-600">Map this partner to their vendor locations for staff access.</p>
                             </div>
                         )}
                         <div className="flex gap-2 justify-end pt-2">
@@ -2016,21 +2016,21 @@ function CustomerDetailDialog({
                             </Button>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4 rounded-lg bg-gray-50 p-4">
+                        <div className="grid grid-cols-2 gap-4 rounded-lg bg-slate-50 p-4">
                             <div>
-                                <p className="text-xs text-gray-500">Contact</p>
+                                <p className="text-xs text-slate-600">Contact</p>
                                 <p className="font-medium">{customer.contactName || "—"}</p>
-                                <p className="text-sm text-gray-600">{customer.phone || "—"}</p>
+                                <p className="text-sm text-slate-700">{customer.phone || "—"}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-gray-500">Delivery</p>
+                                <p className="text-xs text-slate-600">Delivery</p>
                                 <p className="font-medium capitalize">{customer.deliveryMethod}</p>
                                 {customer.deliveryNotes && (
-                                    <p className="text-sm text-gray-600">{customer.deliveryNotes}</p>
+                                    <p className="text-sm text-slate-700">{customer.deliveryNotes}</p>
                                 )}
                             </div>
                             <div className="col-span-2">
-                                <p className="text-xs text-gray-500">Address</p>
+                                <p className="text-xs text-slate-600">Address</p>
                                 <p className="text-sm">
                                     {customer.address
                                         ? `${customer.address}, ${customer.city}, ${customer.state} ${customer.zip}`
@@ -2045,7 +2045,7 @@ function CustomerDetailDialog({
                                 <Mail className="inline h-4 w-4 mr-1" />
                                 Mapped Email Addresses
                             </p>
-                            <p className="text-xs text-gray-500 mb-2">
+                            <p className="text-xs text-slate-600 mb-2">
                                 Emails from any of these addresses will be matched to this customer. Click "Edit Customer" to add or remove.
                             </p>
                             <div className="flex flex-wrap gap-1.5">
@@ -2053,12 +2053,12 @@ function CustomerDetailDialog({
                                     {customer.email} (primary)
                                 </Badge>
                                 {aliases.map((alias: string) => (
-                                    <Badge key={alias} className="bg-gray-100 text-gray-700">
+                                    <Badge key={alias} className="bg-gray-100 text-slate-800">
                                         {alias}
                                     </Badge>
                                 ))}
                                 {aliases.length === 0 && (
-                                    <span className="text-xs text-gray-400">
+                                    <span className="text-xs text-slate-600">
                                         No additional aliases
                                     </span>
                                 )}
@@ -2087,7 +2087,7 @@ function CustomerDetailDialog({
                                         </Badge>
                                     ))
                                 ) : (
-                                    <span className="text-xs text-gray-400">No locations mapped. Click "Edit Customer" to add.</span>
+                                    <span className="text-xs text-slate-600">No locations mapped. Click "Edit Customer" to add.</span>
                                 )}
                             </div>
                         </div>
@@ -2104,11 +2104,11 @@ function CustomerDetailDialog({
                                     Add Address
                                 </Button>
                             </div>
-                            <p className="text-xs text-gray-500 mb-2">
+                            <p className="text-xs text-slate-600 mb-2">
                                 Physical delivery addresses for this vendor (where Urban Churn delivers to).
                             </p>
                             {showAddVendorLocation && (
-                                <div className="rounded-lg bg-gray-50 p-3 mb-3 space-y-2">
+                                <div className="rounded-lg bg-slate-50 p-3 mb-3 space-y-2">
                                     <Input placeholder="Location name (e.g. Main Store) *" value={vendorLocForm.name} onChange={(e) => setVendorLocForm({ ...vendorLocForm, name: e.target.value })} className="text-sm" />
                                     <Input placeholder="Address" value={vendorLocForm.address} onChange={(e) => setVendorLocForm({ ...vendorLocForm, address: e.target.value })} className="text-sm" />
                                     <div className="grid grid-cols-3 gap-2">
@@ -2155,9 +2155,9 @@ function CustomerDetailDialog({
                                                     <span className="text-sm font-medium">{loc.name}</span>
                                                     {loc.isDefault && <Badge className="bg-green-100 text-green-700 text-xs">Default</Badge>}
                                                 </div>
-                                                {loc.address && <p className="text-xs text-gray-500">{loc.address}{loc.city ? `, ${loc.city}` : ""}{loc.state ? `, ${loc.state}` : ""} {loc.zip}</p>}
-                                                {loc.phone && <p className="text-xs text-gray-500">{loc.phone}</p>}
-                                                {loc.notes && <p className="text-xs text-gray-400 italic">{loc.notes}</p>}
+                                                {loc.address && <p className="text-xs text-slate-600">{loc.address}{loc.city ? `, ${loc.city}` : ""}{loc.state ? `, ${loc.state}` : ""} {loc.zip}</p>}
+                                                {loc.phone && <p className="text-xs text-slate-600">{loc.phone}</p>}
+                                                {loc.notes && <p className="text-xs text-slate-600 italic">{loc.notes}</p>}
                                             </div>
                                             <Button
                                                 size="sm"
@@ -2175,7 +2175,7 @@ function CustomerDetailDialog({
                                     ))}
                                 </div>
                             ) : (
-                                <p className="text-xs text-gray-400">No delivery addresses added yet.</p>
+                                <p className="text-xs text-slate-600">No delivery addresses added yet.</p>
                             )}
                         </div>
 
@@ -2184,7 +2184,7 @@ function CustomerDetailDialog({
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm font-medium">Wholesale Portal Access</p>
-                                    <p className="text-xs text-gray-500 mt-0.5">Login: <span className="font-mono">{customer.email}</span> at <a href="/account/login" className="text-blue-600 underline">/account/login</a></p>
+                                    <p className="text-xs text-slate-600 mt-0.5">Login: <span className="font-mono">{customer.email}</span> at <a href="/account/login" className="text-blue-600 underline">/account/login</a></p>
                                 </div>
                                 <Button
                                     size="sm"
@@ -2224,11 +2224,11 @@ function CustomerDetailDialog({
                                     </Button>
                                 )}
                             </div>
-                            <p className="text-xs text-gray-500 mb-2">
+                            <p className="text-xs text-slate-600 mb-2">
                                 Staff accounts allow partner employees to log in and view pre-orders at their location.
                             </p>
                             {showStaffForm && (
-                                <div className="rounded-lg bg-gray-50 p-3 mb-3 space-y-2">
+                                <div className="rounded-lg bg-slate-50 p-3 mb-3 space-y-2">
                                     <Input
                                         placeholder="Username"
                                         value={staffForm.username}
@@ -2289,7 +2289,7 @@ function CustomerDetailDialog({
                                             <div key={s.id} className="flex items-center justify-between rounded-lg border p-2">
                                                 <div>
                                                     <span className="text-sm font-medium">{s.username}</span>
-                                                    <span className="ml-2 text-xs text-gray-500">{locName}</span>
+                                                    <span className="ml-2 text-xs text-slate-600">{locName}</span>
                                                 </div>
                                                 <Button
                                                     size="sm"
@@ -2308,7 +2308,7 @@ function CustomerDetailDialog({
                                     })}
                                 </div>
                             ) : (
-                                <p className="text-xs text-gray-400">No staff accounts created yet.</p>
+                                <p className="text-xs text-slate-600">No staff accounts created yet.</p>
                             )}
                         </div>
 
@@ -2340,14 +2340,14 @@ function CustomerDetailDialog({
                                                     {formatCents(o.subtotalCents)}
                                                 </span>
                                             )}
-                                            <span className="ml-auto text-xs text-gray-400">
+                                            <span className="ml-auto text-xs text-slate-600">
                                                 {new Date(o.createdAt).toLocaleDateString()}
                                             </span>
                                         </div>
                                     ))}
                                 </div>
                             ) : (
-                                <p className="text-sm text-gray-400">No orders yet</p>
+                                <p className="text-sm text-slate-600">No orders yet</p>
                             )}
                         </div>
                     </div>
@@ -2483,14 +2483,14 @@ function AddCustomerDialog({
                                         }}
                                         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border flex items-center gap-1.5 ${form.locationIds.includes(loc.id)
                                             ? "bg-purple-100 text-purple-800 border-purple-400"
-                                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                                            : "bg-white text-slate-700 border-slate-200 hover:border-gray-400"
                                             }`}
                                     >
                                         <MapPin className="w-3.5 h-3.5" /> {loc.name}
                                     </button>
                                 ))}
                             </div>
-                            <p className="text-xs text-gray-400">Map this partner to their vendor locations for staff access.</p>
+                            <p className="text-xs text-slate-600">Map this partner to their vendor locations for staff access.</p>
                         </div>
                     )}
                     <Button onClick={handleSave} disabled={saving} className="w-full">
@@ -2540,10 +2540,10 @@ function getFlavourEnabledSizeIds(flavourId: number, products: any[]) {
 
 function FormSection({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
     return (
-        <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50/40 p-3">
+        <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div>
-                <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
-                {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
+                <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
+                {description && <p className="text-xs text-slate-600 mt-0.5">{description}</p>}
             </div>
             {children}
         </div>
@@ -2572,7 +2572,7 @@ function WholesaleSizeCheckboxPicker({
                 size ? (
                     <label
                         key={slug}
-                        className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm cursor-pointer hover:border-[#A1AB74]/50"
+                        className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm cursor-pointer hover:border-[#A1AB74]/50"
                     >
                         <Checkbox
                             checked={selectedSizeIds.has(size.id)}
@@ -2581,7 +2581,7 @@ function WholesaleSizeCheckboxPicker({
                         <span>{label}</span>
                     </label>
                 ) : (
-                    <div key={slug} className="rounded-md border border-dashed border-gray-200 px-3 py-2 text-xs text-gray-400">
+                    <div key={slug} className="rounded-md border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-600">
                         {label} — add in Sizes
                     </div>
                 ),
@@ -2852,7 +2852,7 @@ function ProductsTab() {
 
     return (
         <div className="space-y-4">
-            <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-4 text-sm text-blue-900 space-y-2">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 space-y-2">
                 <p className="font-medium">How wholesale flavours work</p>
                 <ul className="text-blue-800/90 space-y-1 list-disc list-inside">
                     <li><strong>Create New Flavour</strong> — adds a brand-new flavour name, wholesale profile, and optional size pricing.</li>
@@ -2880,7 +2880,7 @@ function ProductsTab() {
                                         ? key === "exclusive"
                                             ? "bg-violet-600 text-white"
                                             : "bg-[#A1AB74] text-white"
-                                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                        : "bg-slate-100 text-slate-800 hover:bg-slate-200"
                                 }`}
                             >
                                 {label}
@@ -2901,12 +2901,12 @@ function ProductsTab() {
                             </SelectContent>
                         </Select>
                     )}
-                    <p className="text-sm text-gray-600">{catalogTitle}</p>
+                    <p className="text-sm text-slate-700">{catalogTitle}</p>
                 </CardContent>
             </Card>
 
             <div className="flex justify-between flex-wrap gap-3">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm font-medium text-slate-800">
                     {catalogView === "exclusive"
                         ? "Create flavours only specific clients can order."
                         : "Manage sizes, then set prices per flavour×size in the matrix."}
@@ -2950,7 +2950,7 @@ function ProductsTab() {
                     </CardTitle>
                     <div className="flex flex-col gap-3">
                         <div className="relative max-w-md">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-600" />
                             <Input
                                 placeholder="Search flavours, allergens, clients…"
                                 value={flavourSearch}
@@ -3016,7 +3016,7 @@ function ProductsTab() {
                         {selectedFlavourIds.size > 0 && (
                             <div className="space-y-3 rounded-lg border border-[#A1AB74]/30 bg-[#A1AB74]/10 px-3 py-3">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-sm font-medium text-gray-700">
+                                    <span className="text-sm font-medium text-slate-800">
                                         {selectedFlavourIds.size} flavour{selectedFlavourIds.size === 1 ? "" : "s"} selected
                                     </span>
                                     <Button
@@ -3048,8 +3048,8 @@ function ProductsTab() {
                                     </Button>
                                 </div>
                                 <div className="border-t border-[#A1AB74]/20 pt-3 space-y-2">
-                                    <p className="text-sm font-medium text-gray-800">Available package sizes</p>
-                                    <p className="text-xs text-gray-600">
+                                    <p className="text-sm font-medium text-slate-900">Available package sizes</p>
+                                    <p className="text-xs text-slate-700">
                                         Choose which sizes (Pint, Half Gallon, 1.5 Gallon, 3 Gallon) selected flavours can be ordered in.
                                     </p>
                                     <WholesaleSizeCheckboxPicker
@@ -3101,7 +3101,7 @@ function ProductsTab() {
                                 </div>
                             </div>
                         )}
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-slate-600">
                             Showing {filteredFlavours.length} of {wholesaleFlavours.length} flavours
                         </p>
                     </div>
@@ -3110,7 +3110,7 @@ function ProductsTab() {
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b bg-gray-50 text-left">
+                                <tr className="border-b bg-slate-50 text-left">
                                     <th className="px-4 py-3 w-10">
                                         <Checkbox
                                             checked={allFilteredSelected}
@@ -3131,7 +3131,7 @@ function ProductsTab() {
                                 {filteredFlavours.map((f: any) => (
                                     <tr
                                         key={f.flavourId}
-                                        className={`border-b hover:bg-gray-50 ${!isFlavourAvailableForOrdering(f) ? "opacity-60" : ""} ${selectedFlavourIds.has(f.flavourId) ? "bg-[#A1AB74]/5" : ""}`}
+                                        className={`border-b hover:bg-slate-50 ${!isFlavourAvailableForOrdering(f) ? "opacity-60" : ""} ${selectedFlavourIds.has(f.flavourId) ? "bg-[#A1AB74]/5" : ""}`}
                                     >
                                         <td className="px-4 py-3">
                                             <Checkbox
@@ -3149,7 +3149,7 @@ function ProductsTab() {
                                                     </Badge>
                                                 )}
                                             </div>
-                                            <div className="text-xs text-gray-500 line-clamp-2 max-w-[28rem]">{f.description || "—"}</div>
+                                            <div className="text-xs text-slate-600 line-clamp-2 max-w-[28rem]">{f.description || "—"}</div>
                                         </td>
                                         <td className="px-4 py-3">
                                             {f.isExclusive ? (
@@ -3172,17 +3172,17 @@ function ProductsTab() {
                                                     )}
                                                 </div>
                                             ) : (
-                                                <span className="text-xs text-gray-400">All clients</span>
+                                                <span className="text-xs text-slate-600">All clients</span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-gray-600">{f.allergens || "—"}</td>
+                                        <td className="px-4 py-3 text-slate-700">{f.allergens || "—"}</td>
                                         <td className="px-4 py-3">
                                             <Badge className={f.isSeasonal ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-700"}>
                                                 {f.isSeasonal ? "Seasonal" : "Standard"}
                                             </Badge>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <Badge className={isFlavourAvailableForOrdering(f) ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}>
+                                            <Badge className={isFlavourAvailableForOrdering(f) ? "bg-green-100 text-green-700" : "bg-gray-100 text-slate-700"}>
                                                 {isFlavourAvailableForOrdering(f) ? "Available" : "Hidden"}
                                             </Badge>
                                         </td>
@@ -3222,7 +3222,7 @@ function ProductsTab() {
                                 ))}
                                 {filteredFlavours.length === 0 && (
                                     <tr>
-                                        <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
+                                        <td colSpan={8} className="px-4 py-10 text-center text-slate-600">
                                             No flavours match your search or filters
                                         </td>
                                     </tr>
@@ -3241,7 +3241,7 @@ function ProductsTab() {
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b bg-gray-50 text-left">
+                                <tr className="border-b bg-slate-50 text-left">
                                     <th className="px-4 py-3 font-medium">Size</th>
                                     <th className="px-4 py-3 font-medium">Description</th>
                                     <th className="px-4 py-3 font-medium">Status</th>
@@ -3250,14 +3250,14 @@ function ProductsTab() {
                             </thead>
                             <tbody>
                                 {sizes.map((size: any) => (
-                                    <tr key={size.id} className="border-b hover:bg-gray-50">
+                                    <tr key={size.id} className="border-b hover:bg-slate-50">
                                         <td className="px-4 py-3">
                                             <div className="font-medium">{size.name}</div>
-                                            <div className="text-xs text-gray-400">/{size.slug}</div>
+                                            <div className="text-xs text-slate-600">/{size.slug}</div>
                                         </td>
-                                        <td className="px-4 py-3 text-gray-600">{size.description || "—"}</td>
+                                        <td className="px-4 py-3 text-slate-700">{size.description || "—"}</td>
                                         <td className="px-4 py-3">
-                                            <Badge className={size.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}>
+                                            <Badge className={size.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-slate-700"}>
                                                 {size.active ? "Active" : "Inactive"}
                                             </Badge>
                                         </td>
@@ -3284,7 +3284,7 @@ function ProductsTab() {
                                 ))}
                                 {sizes.length === 0 && (
                                     <tr>
-                                        <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                                        <td colSpan={4} className="px-4 py-8 text-center text-slate-600">
                                             No wholesale sizes configured
                                         </td>
                                     </tr>
@@ -3300,7 +3300,7 @@ function ProductsTab() {
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b bg-gray-50 text-left">
+                                <tr className="border-b bg-slate-50 text-left">
                                     <th className="px-4 py-3 font-medium">Flavour</th>
                                     <th className="px-4 py-3 font-medium">Size / Packaging</th>
                                     <th className="px-4 py-3 font-medium">Price</th>
@@ -3310,12 +3310,12 @@ function ProductsTab() {
                             </thead>
                             <tbody>
                                 {products.map((p: any) => (
-                                    <tr key={p.id} className="border-b hover:bg-gray-50">
+                                    <tr key={p.id} className="border-b hover:bg-slate-50">
                                         <td className="px-4 py-3">{p.flavourName}</td>
                                         <td className="px-4 py-3">
                                             {p.sizeName || p.name}
                                             {(p.sizeDescription || p.unitDescription) && (
-                                                <span className="ml-2 text-xs text-gray-400">
+                                                <span className="ml-2 text-xs text-slate-600">
                                                     ({p.sizeDescription || p.unitDescription})
                                                 </span>
                                             )}
@@ -3349,7 +3349,7 @@ function ProductsTab() {
                                     <tr>
                                         <td
                                             colSpan={5}
-                                            className="px-4 py-8 text-center text-gray-400"
+                                            className="px-4 py-8 text-center text-slate-600"
                                         >
                                             No wholesale products configured
                                         </td>
@@ -3647,8 +3647,8 @@ function CatalogVisibilityFields({
     onCustomerIdsChange: (ids: number[]) => void;
 }) {
     return (
-        <div className="space-y-3 rounded-lg border border-gray-200 p-3 bg-gray-50/60">
-            <p className="text-sm font-medium text-gray-800">Who can order this flavour?</p>
+        <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm font-medium text-slate-900">Who can order this flavour?</p>
             <label className="flex items-start gap-2 text-sm cursor-pointer">
                 <input
                     type="radio"
@@ -3659,7 +3659,7 @@ function CatalogVisibilityFields({
                 />
                 <span>
                     <strong>All wholesale clients</strong>
-                    <span className="block text-xs text-gray-500">Standard catalog — everyone sees it in their portal</span>
+                    <span className="block text-xs text-slate-600">Standard catalog — everyone sees it in their portal</span>
                 </span>
             </label>
             <label className="flex items-start gap-2 text-sm cursor-pointer">
@@ -3672,7 +3672,7 @@ function CatalogVisibilityFields({
                 />
                 <span>
                     <strong>Specific clients only</strong>
-                    <span className="block text-xs text-gray-500">Exclusive — hidden from all other clients</span>
+                    <span className="block text-xs text-slate-600">Exclusive — hidden from all other clients</span>
                 </span>
             </label>
             {catalogAccess === "exclusive" && (
@@ -3721,12 +3721,12 @@ function CustomerAssignmentPicker({
             <ScrollArea className="h-48 rounded-md border p-2">
                 <div className="space-y-1">
                     {filtered.length === 0 ? (
-                        <p className="text-sm text-gray-400 px-2 py-4 text-center">No clients match your search</p>
+                        <p className="text-sm text-slate-600 px-2 py-4 text-center">No clients match your search</p>
                     ) : (
                         filtered.map((c) => (
                             <label
                                 key={c.id}
-                                className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-gray-50 cursor-pointer text-sm"
+                                className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-slate-50 cursor-pointer text-sm"
                             >
                                 <Checkbox
                                     checked={selectedIds.includes(c.id)}
@@ -3738,7 +3738,7 @@ function CustomerAssignmentPicker({
                     )}
                 </div>
             </ScrollArea>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-slate-600">
                 {selectedIds.length === 0
                     ? "Select at least one client for exclusive flavours"
                     : `${selectedIds.length} client${selectedIds.length === 1 ? "" : "s"} selected`}
@@ -3799,7 +3799,7 @@ function CreateExclusiveFlavourDialog({
                 <DialogHeader>
                     <DialogTitle>Create Exclusive Flavour</DialogTitle>
                 </DialogHeader>
-                <p className="text-sm text-gray-600 -mt-2">
+                <p className="text-sm text-slate-700 -mt-2">
                     This flavour will only appear in the portal for the clients you assign below.
                 </p>
                 <div className="space-y-3">
@@ -3975,7 +3975,7 @@ function AddWholesaleFlavourDialog({
                         {isFirstSetup ? "Set Up Wholesale Flavour" : "Edit Wholesale Flavour"}
                     </DialogTitle>
                 </DialogHeader>
-                <p className="text-sm text-gray-600 -mt-2">
+                <p className="text-sm text-slate-700 -mt-2">
                     {isFirstSetup ? (
                         <>Configure wholesale settings for <strong>{flavour.flavourName}</strong>.</>
                     ) : (
@@ -4007,7 +4007,7 @@ function AddWholesaleFlavourDialog({
                                 onChange={(e) => setForm({ ...form, allergens: e.target.value })}
                             />
                         </div>
-                        <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <label className="flex items-center gap-2 text-sm text-slate-800">
                             <Checkbox
                                 checked={form.isSeasonal}
                                 onCheckedChange={(checked) =>
@@ -4022,7 +4022,7 @@ function AddWholesaleFlavourDialog({
                         title="Portal availability"
                         description="Control whether this flavour appears for ordering at all."
                     >
-                        <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <label className="flex items-center gap-2 text-sm text-slate-800">
                             <Checkbox
                                 checked={form.active}
                                 onCheckedChange={(checked) =>
@@ -4039,7 +4039,7 @@ function AddWholesaleFlavourDialog({
                                 value={form.sortOrder}
                                 onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
                             />
-                            <p className="text-xs text-gray-500">Lower numbers appear first in the portal.</p>
+                            <p className="text-xs text-slate-600">Lower numbers appear first in the portal.</p>
                         </div>
                     </FormSection>
 
@@ -4062,7 +4062,7 @@ function AddWholesaleFlavourDialog({
                                 value={sizeDefaultPrice}
                                 onChange={(e) => setSizeDefaultPrice(e.target.value)}
                             />
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-slate-600">
                                 Used when enabling a size that does not have a price yet. Existing prices are kept.
                             </p>
                         </div>
@@ -4160,7 +4160,7 @@ function AddWholesaleSizeDialog({
                         value={form.sortOrder}
                         onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
                     />
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <label className="flex items-center gap-2 text-sm text-slate-800">
                         <input
                             type="checkbox"
                             checked={form.active}
@@ -4247,7 +4247,7 @@ function ProductionTab() {
         <div className="space-y-4">
             <div className="flex flex-wrap items-end gap-4">
                 <div>
-                    <p className="mb-1 text-xs font-medium text-gray-500">From</p>
+                    <p className="mb-1 text-xs font-medium text-slate-600">From</p>
                     <Input
                         type="date"
                         value={from}
@@ -4256,7 +4256,7 @@ function ProductionTab() {
                     />
                 </div>
                 <div>
-                    <p className="mb-1 text-xs font-medium text-gray-500">To</p>
+                    <p className="mb-1 text-xs font-medium text-slate-600">To</p>
                     <Input
                         type="date"
                         value={to}
@@ -4285,13 +4285,13 @@ function ProductionTab() {
                 </div>
                 <Card className="ml-auto">
                     <CardContent className="px-5 py-3">
-                        <p className="text-xs text-gray-500">Total Units</p>
+                        <p className="text-xs text-slate-600">Total Units</p>
                         <p className="text-2xl font-bold">{totalUnits}</p>
                     </CardContent>
                 </Card>
             </div>
 
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-slate-600">
                 Aggregated quantities across all confirmed & in-production orders
                 with delivery dates in the selected range. Use this to plan your
                 production batches.
@@ -4352,7 +4352,7 @@ function ProductionTab() {
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b bg-gray-50 text-left">
+                                <tr className="border-b bg-slate-50 text-left">
                                     <th className="px-4 py-3 font-medium">Flavour</th>
                                     <th className="px-4 py-3 font-medium">Product / Size</th>
                                     <th className="px-4 py-3 text-right font-medium">Total Qty</th>
@@ -4361,7 +4361,7 @@ function ProductionTab() {
                             </thead>
                             <tbody>
                                 {report.map((r: any, i: number) => (
-                                    <tr key={i} className="border-b hover:bg-gray-50">
+                                    <tr key={i} className="border-b hover:bg-slate-50">
                                         <td className="px-4 py-3 font-medium">
                                             {r.flavourName || "(unmatched)"}
                                         </td>
@@ -4371,7 +4371,7 @@ function ProductionTab() {
                                         <td className="px-4 py-3 text-right font-mono font-semibold">
                                             {r.totalQuantity}
                                         </td>
-                                        <td className="px-4 py-3 text-right text-gray-500">
+                                        <td className="px-4 py-3 text-right text-slate-600">
                                             {r.orderCount}
                                         </td>
                                     </tr>
@@ -4380,7 +4380,7 @@ function ProductionTab() {
                                     <tr>
                                         <td
                                             colSpan={4}
-                                            className="px-4 py-8 text-center text-gray-400"
+                                            className="px-4 py-8 text-center text-slate-600"
                                         >
                                             No confirmed orders in this date range
                                         </td>
@@ -4487,17 +4487,17 @@ function DeliveriesTab() {
         <div className="space-y-4">
             {/* Header: view toggle + date controls + create run button */}
             <div className="flex flex-wrap items-end gap-4">
-                <div className="flex rounded-lg border p-0.5">
+                <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
                     <button
                         onClick={() => setView("calendar")}
-                        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === "calendar" ? "bg-gray-900 text-white" : "text-gray-500 hover:text-gray-700"}`}
+                        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === "calendar" ? "bg-slate-900 text-white" : "text-slate-800 hover:bg-slate-100"}`}
                     >
                         <CalendarDays className="h-3.5 w-3.5" />
                         Calendar
                     </button>
                     <button
                         onClick={() => setView("list")}
-                        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === "list" ? "bg-gray-900 text-white" : "text-gray-500 hover:text-gray-700"}`}
+                        className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === "list" ? "bg-slate-900 text-white" : "text-slate-800 hover:bg-slate-100"}`}
                     >
                         <List className="h-3.5 w-3.5" />
                         List
@@ -4507,11 +4507,11 @@ function DeliveriesTab() {
                 {view === "list" && (
                     <>
                         <div>
-                            <p className="mb-1 text-xs font-medium text-gray-500">From</p>
+                            <p className="mb-1 text-xs font-medium text-slate-600">From</p>
                             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-44" />
                         </div>
                         <div>
-                            <p className="mb-1 text-xs font-medium text-gray-500">To</p>
+                            <p className="mb-1 text-xs font-medium text-slate-600">To</p>
                             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-44" />
                         </div>
                     </>
@@ -4526,7 +4526,7 @@ function DeliveriesTab() {
 
                 <Card>
                     <CardContent className="px-5 py-3">
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-slate-600">
                             {view === "calendar" ? "This Month" : "Deliveries"}
                         </p>
                         <p className="text-2xl font-bold">
@@ -4559,7 +4559,7 @@ function DeliveriesTab() {
                                     hasDelivery: "ring-2 ring-green-400 ring-offset-1",
                                 }}
                             />
-                            <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                            <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
                                 <span className="inline-block h-3 w-3 rounded-full ring-2 ring-green-400 ring-offset-1" />
                                 Has deliveries
                             </div>
@@ -4583,10 +4583,10 @@ function DeliveriesTab() {
                                 {dayOrders.length > 0 ? (
                                     <Card>
                                         <CardContent className="p-0">
-                                            <div className="flex items-center gap-3 border-b bg-gray-50 px-4 py-3">
-                                                <ShoppingCart className="h-4 w-4 text-gray-500" />
+                                            <div className="flex items-center gap-3 border-b bg-slate-50 px-4 py-3">
+                                                <ShoppingCart className="h-4 w-4 text-slate-600" />
                                                 <span className="font-medium text-sm">Orders</span>
-                                                <Badge className="bg-gray-200 text-gray-700">
+                                                <Badge className="bg-gray-200 text-slate-800">
                                                     {dayOrders.length}
                                                 </Badge>
                                             </div>
@@ -4595,7 +4595,7 @@ function DeliveriesTab() {
                                                     <div key={d.id} className="flex items-center gap-4 px-4 py-3">
                                                         <div className="flex-1">
                                                             <p className="font-medium">{d.customerName}</p>
-                                                            <p className="text-sm text-gray-500">
+                                                            <p className="text-sm text-slate-600">
                                                                 {d.customerAddress
                                                                     ? `${d.customerAddress}, ${d.customerCity}`
                                                                     : "No address on file"}
@@ -4604,11 +4604,11 @@ function DeliveriesTab() {
                                                         <Badge className={orderStatusColors[d.status] || "bg-gray-100"}>
                                                             {d.status.replace(/_/g, " ")}
                                                         </Badge>
-                                                        <div className="flex items-center gap-1 text-sm text-gray-500">
+                                                        <div className="flex items-center gap-1 text-sm text-slate-600">
                                                             <Truck className="h-4 w-4" />
                                                             <span className="capitalize">{d.deliveryMethod}</span>
                                                         </div>
-                                                        <span className="font-mono text-xs text-gray-400">{d.orderNumber}</span>
+                                                        <span className="font-mono text-xs text-slate-600">{d.orderNumber}</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -4616,7 +4616,7 @@ function DeliveriesTab() {
                                     </Card>
                                 ) : (
                                     <Card>
-                                        <CardContent className="py-8 text-center text-gray-400">
+                                        <CardContent className="py-8 text-center text-slate-600">
                                             No deliveries on this date
                                         </CardContent>
                                     </Card>
@@ -4626,10 +4626,10 @@ function DeliveriesTab() {
                                 {dayRuns.length > 0 && (
                                     <Card>
                                         <CardContent className="p-0">
-                                            <div className="flex items-center gap-3 border-b bg-gray-50 px-4 py-3">
-                                                <Route className="h-4 w-4 text-gray-500" />
+                                            <div className="flex items-center gap-3 border-b bg-slate-50 px-4 py-3">
+                                                <Route className="h-4 w-4 text-slate-600" />
                                                 <span className="font-medium text-sm">Delivery Runs</span>
-                                                <Badge className="bg-gray-200 text-gray-700">
+                                                <Badge className="bg-gray-200 text-slate-800">
                                                     {dayRuns.length}
                                                 </Badge>
                                             </div>
@@ -4637,13 +4637,13 @@ function DeliveriesTab() {
                                                 {dayRuns.map((run: any) => (
                                                     <div
                                                         key={run.id}
-                                                        className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-gray-50"
+                                                        className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-slate-50"
                                                         onClick={() => setSelectedRunId(run.id)}
                                                     >
                                                         <div className="flex-1">
                                                             <p className="font-medium">{run.name}</p>
                                                             {run.driverName && (
-                                                                <p className="text-sm text-gray-500">
+                                                                <p className="text-sm text-slate-600">
                                                                     Driver: {run.driverName}
                                                                 </p>
                                                             )}
@@ -4651,7 +4651,7 @@ function DeliveriesTab() {
                                                         <Badge className={runStatusColors[run.status] || "bg-gray-100"}>
                                                             {run.status.replace(/_/g, " ")}
                                                         </Badge>
-                                                        <span className="text-sm text-gray-500">
+                                                        <span className="text-sm text-slate-600">
                                                             {run.stopCount || 0} stops
                                                         </span>
                                                     </div>
@@ -4663,7 +4663,7 @@ function DeliveriesTab() {
                             </>
                         ) : (
                             <Card>
-                                <CardContent className="py-12 text-center text-gray-400">
+                                <CardContent className="py-12 text-center text-slate-600">
                                     <CalendarDays className="mx-auto mb-3 h-8 w-8" />
                                     <p>Select a date to see deliveries and runs</p>
                                     <p className="mt-1 text-xs">
@@ -4677,20 +4677,20 @@ function DeliveriesTab() {
                         {runs.length > 0 && (
                             <Card>
                                 <CardContent className="p-0">
-                                    <div className="flex items-center gap-3 border-b bg-gray-50 px-4 py-3">
-                                        <Route className="h-4 w-4 text-gray-500" />
+                                    <div className="flex items-center gap-3 border-b bg-slate-50 px-4 py-3">
+                                        <Route className="h-4 w-4 text-slate-600" />
                                         <span className="font-medium text-sm">All Runs This Month</span>
                                     </div>
                                     <div className="divide-y">
                                         {runs.map((run: any) => (
                                             <div
                                                 key={run.id}
-                                                className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-gray-50"
+                                                className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-slate-50"
                                                 onClick={() => setSelectedRunId(run.id)}
                                             >
                                                 <div className="flex-1">
                                                     <p className="font-medium">{run.name}</p>
-                                                    <p className="text-xs text-gray-500">
+                                                    <p className="text-xs text-slate-600">
                                                         {new Date(run.scheduledDate + "T12:00:00").toLocaleDateString("en-US", {
                                                             weekday: "short",
                                                             month: "short",
@@ -4702,7 +4702,7 @@ function DeliveriesTab() {
                                                 <Badge className={runStatusColors[run.status] || "bg-gray-100"}>
                                                     {run.status.replace(/_/g, " ")}
                                                 </Badge>
-                                                <span className="text-sm text-gray-500">{run.stopCount || 0} stops</span>
+                                                <span className="text-sm text-slate-600">{run.stopCount || 0} stops</span>
                                             </div>
                                         ))}
                                     </div>
@@ -4714,14 +4714,14 @@ function DeliveriesTab() {
             ) : (
                 /* ── List View ── */
                 <div className="space-y-4">
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-slate-600">
                         Upcoming deliveries grouped by date. Shows confirmed, in-production,
                         and ready orders so you can plan routes and drivers.
                     </p>
 
                     {sortedDates.length === 0 && (
                         <Card>
-                            <CardContent className="py-8 text-center text-gray-400">
+                            <CardContent className="py-8 text-center text-slate-600">
                                 No deliveries scheduled in this date range
                             </CardContent>
                         </Card>
@@ -4730,8 +4730,8 @@ function DeliveriesTab() {
                     {sortedDates.map((date) => (
                         <Card key={date}>
                             <CardContent className="p-0">
-                                <div className="flex items-center gap-3 border-b bg-gray-50 px-4 py-3">
-                                    <Calendar className="h-4 w-4 text-gray-500" />
+                                <div className="flex items-center gap-3 border-b bg-slate-50 px-4 py-3">
+                                    <Calendar className="h-4 w-4 text-slate-600" />
                                     <h3 className="font-semibold">
                                         {date === "Unscheduled"
                                             ? "Unscheduled"
@@ -4741,7 +4741,7 @@ function DeliveriesTab() {
                                                 day: "numeric",
                                             })}
                                     </h3>
-                                    <Badge className="bg-gray-200 text-gray-700">
+                                    <Badge className="bg-gray-200 text-slate-800">
                                         {grouped[date].length} order{grouped[date].length !== 1 ? "s" : ""}
                                     </Badge>
                                 </div>
@@ -4750,7 +4750,7 @@ function DeliveriesTab() {
                                         <div key={d.id} className="flex items-center gap-4 px-4 py-3">
                                             <div className="flex-1">
                                                 <p className="font-medium">{d.customerName}</p>
-                                                <p className="text-sm text-gray-500">
+                                                <p className="text-sm text-slate-600">
                                                     {d.customerAddress
                                                         ? `${d.customerAddress}, ${d.customerCity}`
                                                         : "No address on file"}
@@ -4759,11 +4759,11 @@ function DeliveriesTab() {
                                             <Badge className={orderStatusColors[d.status] || "bg-gray-100"}>
                                                 {d.status.replace(/_/g, " ")}
                                             </Badge>
-                                            <div className="flex items-center gap-1 text-sm text-gray-500">
+                                            <div className="flex items-center gap-1 text-sm text-slate-600">
                                                 <Truck className="h-4 w-4" />
                                                 <span className="capitalize">{d.deliveryMethod}</span>
                                             </div>
-                                            <span className="font-mono text-xs text-gray-400">{d.orderNumber}</span>
+                                            <span className="font-mono text-xs text-slate-600">{d.orderNumber}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -5019,9 +5019,9 @@ function RunDetailDialog({
 
                 <div className="space-y-4">
                     {/* Run info */}
-                    <div className="grid grid-cols-2 gap-4 rounded-lg bg-gray-50 p-4">
+                    <div className="grid grid-cols-2 gap-4 rounded-lg bg-slate-50 p-4">
                         <div>
-                            <p className="text-xs text-gray-500">Date</p>
+                            <p className="text-xs text-slate-600">Date</p>
                             <p className="font-medium">
                                 {new Date(run.scheduledDate + "T12:00:00").toLocaleDateString("en-US", {
                                     weekday: "long",
@@ -5031,21 +5031,21 @@ function RunDetailDialog({
                             </p>
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500">Driver</p>
+                            <p className="text-xs text-slate-600">Driver</p>
                             <p className="font-medium">{run.driverName || "—"}</p>
                             {run.driverEmail && (
-                                <p className="text-xs text-gray-500">{run.driverEmail}</p>
+                                <p className="text-xs text-slate-600">{run.driverEmail}</p>
                             )}
                         </div>
                         {run.vehicleNotes && (
                             <div>
-                                <p className="text-xs text-gray-500">Vehicle</p>
+                                <p className="text-xs text-slate-600">Vehicle</p>
                                 <p className="text-sm">{run.vehicleNotes}</p>
                             </div>
                         )}
                         {run.notes && (
                             <div>
-                                <p className="text-xs text-gray-500">Notes</p>
+                                <p className="text-xs text-slate-600">Notes</p>
                                 <p className="text-sm">{run.notes}</p>
                             </div>
                         )}
@@ -5120,7 +5120,7 @@ function RunDetailDialog({
                                         className={`flex items-center gap-3 rounded-lg border p-3 ${stop.status === "completed"
                                             ? "bg-green-50 border-green-200"
                                             : stop.status === "skipped"
-                                                ? "bg-gray-50 border-gray-200 opacity-60"
+                                                ? "bg-slate-50 border-slate-200 opacity-60"
                                                 : "bg-white"
                                             }`}
                                     >
@@ -5132,7 +5132,7 @@ function RunDetailDialog({
                                         {/* Customer info */}
                                         <div className="flex-1 min-w-0">
                                             <p className="font-medium truncate">{stop.customerName}</p>
-                                            <p className="text-xs text-gray-500 truncate">
+                                            <p className="text-xs text-slate-600 truncate">
                                                 {stop.customerAddress
                                                     ? `${stop.customerAddress}, ${stop.customerCity}`
                                                     : "No address"}
@@ -5161,7 +5161,7 @@ function RunDetailDialog({
                                                 <Button
                                                     size="sm"
                                                     variant="ghost"
-                                                    className="h-7 text-xs text-gray-500"
+                                                    className="h-7 text-xs text-slate-600"
                                                     onClick={() =>
                                                         updateStopMutation.mutate({
                                                             stopId: stop.id,
@@ -5178,7 +5178,7 @@ function RunDetailDialog({
                                             <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                                         )}
                                         {stop.status === "skipped" && (
-                                            <SkipForward className="h-4 w-4 text-gray-400 shrink-0" />
+                                            <SkipForward className="h-4 w-4 text-slate-600 shrink-0" />
                                         )}
 
                                         {/* Reorder buttons */}
@@ -5217,7 +5217,7 @@ function RunDetailDialog({
                             </div>
                         ) : (
                             <Card>
-                                <CardContent className="py-6 text-center text-gray-400">
+                                <CardContent className="py-6 text-center text-slate-600">
                                     <MapPin className="mx-auto mb-2 h-6 w-6" />
                                     <p className="text-sm">No stops yet — add orders to this run</p>
                                 </CardContent>
@@ -5284,7 +5284,7 @@ const emailStatusColors: Record<string, string> = {
     received: "bg-blue-100 text-blue-800",
     parsed: "bg-green-100 text-green-800",
     failed: "bg-red-100 text-red-800",
-    ignored: "bg-gray-100 text-gray-600",
+    ignored: "bg-gray-100 text-slate-700",
 };
 
 function EmailLogTab() {
@@ -5305,7 +5305,7 @@ function EmailLogTab() {
         <div className="space-y-4">
             <div className="flex items-end gap-4">
                 <div className="flex-1">
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-slate-600">
                         All inbound emails received by the wholesale inbox. Monitor for
                         failed parses or orders from unknown senders.
                     </p>
@@ -5329,7 +5329,7 @@ function EmailLogTab() {
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b bg-gray-50 text-left">
+                                <tr className="border-b bg-slate-50 text-left">
                                     <th className="px-4 py-3 font-medium">Date</th>
                                     <th className="px-4 py-3 font-medium">From</th>
                                     <th className="px-4 py-3 font-medium">Subject</th>
@@ -5339,8 +5339,8 @@ function EmailLogTab() {
                             </thead>
                             <tbody>
                                 {logs.map((log: any) => (
-                                    <tr key={log.id} className="border-b hover:bg-gray-50">
-                                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                                    <tr key={log.id} className="border-b hover:bg-slate-50">
+                                        <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
                                             {new Date(log.createdAt).toLocaleString()}
                                         </td>
                                         <td className="px-4 py-3 max-w-[200px] truncate">
@@ -5371,7 +5371,7 @@ function EmailLogTab() {
                                     <tr>
                                         <td
                                             colSpan={5}
-                                            className="px-4 py-8 text-center text-gray-400"
+                                            className="px-4 py-8 text-center text-slate-600"
                                         >
                                             No emails received yet
                                         </td>

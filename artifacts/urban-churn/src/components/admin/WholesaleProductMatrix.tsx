@@ -135,9 +135,9 @@ export function WholesaleProductMatrix({
     }
 
     return (
-        <Card>
+        <Card className="border-slate-200 bg-white text-slate-900">
             <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Flavour × Size Matrix</CardTitle>
+                <CardTitle className="text-slate-900">Flavour × Size Matrix</CardTitle>
                 <Button
                     size="sm"
                     onClick={() => saveMutation.mutate()}
@@ -150,8 +150,8 @@ export function WholesaleProductMatrix({
             <CardContent className="p-0 overflow-x-auto">
                 <table className="w-full text-xs">
                     <thead>
-                        <tr className="border-b bg-gray-50">
-                            <th className="px-3 py-2 text-left font-medium sticky left-0 bg-gray-50 min-w-[140px]">Flavour</th>
+                        <tr className="border-b bg-slate-100 text-slate-800">
+                            <th className="px-3 py-2 text-left font-medium sticky left-0 bg-slate-100 min-w-[140px]">Flavour</th>
                             {activeSizes.map((size) => (
                                 <th key={size.id} className="px-2 py-2 text-center font-medium min-w-[100px]">
                                     {size.name}
@@ -194,7 +194,7 @@ function MatrixRow({
     const [bulkPrice, setBulkPrice] = useState("");
 
     return (
-        <tr className="border-b hover:bg-gray-50/50">
+        <tr className="border-b hover:bg-slate-50">
             <td className="px-3 py-2 sticky left-0 bg-white">
                 <div className="font-medium">{flavour.flavourName}</div>
                 {flavour.isExclusive && (
@@ -217,12 +217,12 @@ function MatrixRow({
                                         })
                                     }
                                 />
-                                <span className="text-[10px] text-gray-600 font-medium">Available</span>
+                                <span className="text-[10px] text-slate-800 font-medium">Available</span>
                             </label>
                             {cell.enabled && (
                                 <>
                                     <div className="space-y-0.5">
-                                        <Label className="text-[10px] text-gray-500">Price ($)</Label>
+                                        <Label className="text-[10px] text-slate-700">Price ($)</Label>
                                         <Input
                                             type="number"
                                             step="0.01"
@@ -248,11 +248,11 @@ function MatrixRow({
                                                 })
                                             }
                                         />
-                                        <span className="text-[10px] text-gray-600 font-medium">Track inventory</span>
+                                        <span className="text-[10px] text-slate-800 font-medium">Track inventory</span>
                                     </label>
                                     {cell.manageStock && (
                                         <div className="space-y-0.5">
-                                            <Label className="text-[10px] text-gray-500">Inventory</Label>
+                                            <Label className="text-[10px] text-slate-700">Inventory</Label>
                                             <Input
                                                 type="number"
                                                 min={0}
