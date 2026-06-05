@@ -129,6 +129,9 @@ export const wholesaleProductsTable = pgTable("wholesale_products", {
     unitDescription: text("unit_description").notNull().default(""), // human label for AI matching
     priceCents: integer("price_cents").notNull(),
     available: boolean("available").notNull().default(true),
+    manageStock: boolean("manage_stock").notNull().default(false),
+    stockQuantity: integer("stock_quantity").notNull().default(0),
+    lowStockThreshold: integer("low_stock_threshold").notNull().default(5),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -145,6 +148,9 @@ export const wholesaleOrdersTable = pgTable("wholesale_orders", {
         .default("pending_review"),
     requestedDeliveryDate: date("requested_delivery_date"),
     confirmedDeliveryDate: date("confirmed_delivery_date"),
+    isRushOrder: boolean("is_rush_order").notNull().default(false),
+    rushNotes: text("rush_notes").notNull().default(""),
+    vendorLocationId: integer("vendor_location_id"),
     deliveryMethod: wholesaleDeliveryMethodEnum("delivery_method")
         .notNull()
         .default("delivery"),
@@ -158,6 +164,7 @@ export const wholesaleOrdersTable = pgTable("wholesale_orders", {
     paymentMethod: text("payment_method"),  // square_invoice, manual, check, cash, wire
     paymentNotes: text("payment_notes").notNull().default(""),
     squareInvoiceId: text("square_invoice_id"),
+    squareInvoicePublicUrl: text("square_invoice_public_url"),
     paidAt: timestamp("paid_at"),
     productionStartedAt: timestamp("production_started_at"),
     productionCompletedAt: timestamp("production_completed_at"),

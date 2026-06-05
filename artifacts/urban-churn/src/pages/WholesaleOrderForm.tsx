@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCustomerAuth } from "@/components/CustomerAuthContext";
 import { api } from "@/lib/api";
@@ -7,19 +7,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { TourProvider, useTour } from "@/lib/tour";
 import { wholesaleNewOrderSteps } from "@/lib/tour/tour-steps";
-
-function getMinDeliveryDate(): string {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    let businessDays = 0;
-    const cursor = new Date(now);
-    while (businessDays < 3) {
-        cursor.setDate(cursor.getDate() + 1);
-        const day = cursor.getDay();
-        if (day !== 0 && day !== 6) businessDays++;
-    }
-    return cursor.toISOString().split("T")[0];
-}
+import { getMinDeliveryDate } from "@/lib/wholesale-constants";
 
 interface OrderItem {
     wholesaleProductId: number;
@@ -28,6 +16,8 @@ interface OrderItem {
 
 export default function WholesaleOrderForm() {
     const [, navigate] = useLocation();
+    const searchString = useSearch();
+    const reorderId = new URLSearchParams(searchString).get("reorder");
     const { customer, isLoading: authLoading } = useCustomerAuth();
     const queryClient = useQueryClient();
 
@@ -35,6 +25,9 @@ export default function WholesaleOrderForm() {
     const [deliveryMethod, setDeliveryMethod] = useState<"delivery" | "pickup">("delivery");
     const [requestedDate, setRequestedDate] = useState("");
     const [notes, setNotes] = useState("");
+    const [isRushOrder, setIsRushOrder] = useState(false);
+    const [rushNotes, setRushNotes] = useState("");
+    const [vendorLocationId, setVendorLocationId] = useState<number | "">("");
     const [error, setError] = useState("");
 
     useEffect(() => {
@@ -55,14 +48,47 @@ export default function WholesaleOrderForm() {
         enabled: !!customer && !!profile,
     });
 
-    // Set default delivery method from profile
+    const { data: vendorLocations = [] } = useQuery({
+        queryKey: ["wholesale-portal-vendor-locations"],
+        queryFn: api.wholesalePortalVendorLocations,
+        enabled: !!customer && !!profile,
+    });
+
+    const { data: reorderSource } = useQuery({
+        queryKey: ["wholesale-portal-order", reorderId],
+        queryFn: () => api.wholesalePortalOrder(Number(reorderId)),
+        enabled: !!customer && !!reorderId,
+    });
+
     useEffect(() => {
         if (profile?.deliveryMethod) {
             setDeliveryMethod(profile.deliveryMethod);
         }
     }, [profile]);
 
-    // Group products by managed wholesale size
+    useEffect(() => {
+        if (!reorderSource?.items) return;
+        const next: Record<number, number> = {};
+        for (const item of reorderSource.items) {
+            if (item.wholesaleProductId) {
+                next[item.wholesaleProductId] = item.quantity;
+            }
+        }
+        setQuantities(next);
+        if (reorderSource.deliveryMethod) {
+            setDeliveryMethod(reorderSource.deliveryMethod);
+        }
+    }, [reorderSource]);
+
+    useEffect(() => {
+        if (vendorLocations.length === 1) {
+            setVendorLocationId(vendorLocations[0].id);
+        } else {
+            const defaultLoc = vendorLocations.find((l: any) => l.isDefault);
+            if (defaultLoc) setVendorLocationId(defaultLoc.id);
+        }
+    }, [vendorLocations]);
+
     const grouped = useMemo(() => {
         const groups = new Map<string, { key: string; label: string; sortOrder: number; items: typeof products }>();
 
@@ -103,13 +129,12 @@ export default function WholesaleOrderForm() {
     }, [quantities, products]);
 
     const itemCount = Object.values(quantities).reduce((a, b) => a + b, 0);
-    const minDate = getMinDeliveryDate();
+    const minDate = isRushOrder ? "" : getMinDeliveryDate(3);
 
     const submitMutation = useMutation({
         mutationFn: async () => {
-            const items: any[] = [];
+            const items: OrderItem[] = [];
 
-            // Add product items
             for (const [pid, qty] of Object.entries(quantities)) {
                 if (qty > 0) {
                     items.push({ wholesaleProductId: Number(pid), quantity: qty });
@@ -123,6 +148,9 @@ export default function WholesaleOrderForm() {
                 requestedDeliveryDate: requestedDate || undefined,
                 deliveryMethod,
                 notes: notes || undefined,
+                isRushOrder,
+                rushNotes: isRushOrder ? rushNotes || undefined : undefined,
+                vendorLocationId: vendorLocationId ? Number(vendorLocationId) : undefined,
             });
         },
         onSuccess: () => {
@@ -160,7 +188,9 @@ export default function WholesaleOrderForm() {
                 <div className="max-w-3xl mx-auto" data-tour="wholesale-order-form">
                     <div className="flex items-center justify-between mb-8">
                         <div>
-                            <h1 className="text-2xl sm:text-3xl font-bold text-white">New Order</h1>
+                            <h1 className="text-2xl sm:text-3xl font-bold text-white">
+                                {reorderId ? "Reorder" : "New Order"}
+                            </h1>
                             <p className="text-white/50 mt-1 text-sm sm:text-base">{profile?.businessName}</p>
                         </div>
                         <Link href="/wholesale/portal" className="text-white/50 hover:text-white transition-colors">
@@ -174,7 +204,6 @@ export default function WholesaleOrderForm() {
                         </div>
                     )}
 
-                    {/* Products by size category */}
                     {grouped.map((group) => (
                         <div key={group.key} className="mb-8">
                             <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
@@ -184,11 +213,11 @@ export default function WholesaleOrderForm() {
                             <div className="space-y-2">
                                 {group.items.map((product: any) => {
                                     const qty = quantities[product.id] || 0;
+                                    const disabled = product.outOfStock;
                                     return (
                                         <div
                                             key={product.id}
-                                            className={`flex flex-col sm:flex-row sm:items-center justify-between bg-black/40 backdrop-blur-sm border rounded-xl p-3 sm:p-4 transition-colors gap-3 ${qty > 0 ? "border-[#A1AB74]/40 bg-[#A1AB74]/10" : "border-white/10"
-                                                }`}
+                                            className={`flex flex-col sm:flex-row sm:items-center justify-between bg-black/40 backdrop-blur-sm border rounded-xl p-3 sm:p-4 transition-colors gap-3 ${qty > 0 ? "border-[#A1AB74]/40 bg-[#A1AB74]/10" : "border-white/10"} ${disabled ? "opacity-50" : ""}`}
                                         >
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-white font-medium truncate text-sm sm:text-base">{product.flavourName}</p>
@@ -196,17 +225,15 @@ export default function WholesaleOrderForm() {
                                                     {product.sizeName || product.name}
                                                     {product.sizeDescription ? ` • ${product.sizeDescription}` : ""}
                                                 </p>
-                                                {product.flavourDescription && (
-                                                    <p className="text-white/40 text-xs mt-1 line-clamp-2">{product.flavourDescription}</p>
-                                                )}
                                                 <div className="flex flex-wrap gap-1 mt-1">
+                                                    {product.outOfStock && (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-200">Out of stock</span>
+                                                    )}
+                                                    {product.lowStock && !product.outOfStock && (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200">Limited stock</span>
+                                                    )}
                                                     {product.flavourIsSeasonal && (
                                                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200">Seasonal</span>
-                                                    )}
-                                                    {product.flavourAllergens && (
-                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/70">
-                                                            Allergens: {product.flavourAllergens}
-                                                        </span>
                                                     )}
                                                 </div>
                                             </div>
@@ -214,29 +241,31 @@ export default function WholesaleOrderForm() {
                                                 <span className="text-white/60 text-sm whitespace-nowrap">
                                                     ${(product.priceCents / 100).toFixed(2)}
                                                 </span>
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setQty(product.id, qty - 1)}
-                                                        className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors flex items-center justify-center text-lg"
-                                                    >
-                                                        −
-                                                    </button>
-                                                    <input
-                                                        type="number"
-                                                        min={0}
-                                                        value={qty}
-                                                        onChange={(e) => setQty(product.id, Math.max(0, parseInt(e.target.value) || 0))}
-                                                        className="w-12 text-center bg-transparent text-white border-none focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setQty(product.id, qty + 1)}
-                                                        className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors flex items-center justify-center text-lg"
-                                                    >
-                                                        +
-                                                    </button>
-                                                </div>
+                                                {!disabled && (
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setQty(product.id, qty - 1)}
+                                                            className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors flex items-center justify-center text-lg"
+                                                        >
+                                                            −
+                                                        </button>
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            value={qty}
+                                                            onChange={(e) => setQty(product.id, Math.max(0, parseInt(e.target.value) || 0))}
+                                                            className="w-12 text-center bg-transparent text-white border-none focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setQty(product.id, qty + 1)}
+                                                            className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors flex items-center justify-center text-lg"
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -251,15 +280,27 @@ export default function WholesaleOrderForm() {
                         </div>
                     )}
 
-                    <div className="mb-8 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white/60" data-tour="wholesale-custom-flavour">
-                        Seasonal offerings are included above when available. Orders in the portal are limited to the admin-managed wholesale catalog.
-                    </div>
-
-                    {/* Delivery Options */}
                     <div className="bg-black/40 backdrop-blur-sm border border-white/10 rounded-xl p-4 sm:p-6 mb-8 space-y-4" data-tour="wholesale-delivery-method">
                         <h2 className="text-lg font-semibold text-white">Delivery Details</h2>
 
-                        {/* Delivery / Pickup Toggle */}
+                        {vendorLocations.length > 0 && deliveryMethod === "delivery" && (
+                            <div>
+                                <label className="block text-sm font-medium text-white/70 mb-1.5">Delivery Location</label>
+                                <select
+                                    value={vendorLocationId}
+                                    onChange={(e) => setVendorLocationId(e.target.value ? Number(e.target.value) : "")}
+                                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-[#A1AB74]/50"
+                                >
+                                    <option value="">Default address</option>
+                                    {vendorLocations.map((loc: any) => (
+                                        <option key={loc.id} value={loc.id}>
+                                            {loc.name} — {loc.address}, {loc.city}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
                         <div>
                             <label className="block text-sm font-medium text-white/70 mb-2">Method</label>
                             <div className="flex gap-2">
@@ -286,7 +327,35 @@ export default function WholesaleOrderForm() {
                             </div>
                         </div>
 
-                        {/* Delivery Date */}
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                            <label className="flex items-start gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={isRushOrder}
+                                    onChange={(e) => {
+                                        setIsRushOrder(e.target.checked);
+                                        if (!e.target.checked) setRushNotes("");
+                                    }}
+                                    className="mt-1"
+                                />
+                                <span>
+                                    <span className="text-amber-200 font-medium text-sm">Rush order</span>
+                                    <span className="block text-white/50 text-xs mt-0.5">
+                                        Request delivery sooner than 3 business days. Subject to approval — we will confirm availability.
+                                    </span>
+                                </span>
+                            </label>
+                            {isRushOrder && (
+                                <input
+                                    type="text"
+                                    value={rushNotes}
+                                    onChange={(e) => setRushNotes(e.target.value)}
+                                    placeholder="Why is this urgent? Preferred date/time window…"
+                                    className="mt-2 w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/30"
+                                />
+                            )}
+                        </div>
+
                         <div>
                             <label className="block text-sm font-medium text-white/70 mb-1.5">
                                 Requested {deliveryMethod === "pickup" ? "Pickup" : "Delivery"} Date
@@ -295,13 +364,16 @@ export default function WholesaleOrderForm() {
                                 type="date"
                                 value={requestedDate}
                                 onChange={(e) => setRequestedDate(e.target.value)}
-                                min={minDate}
+                                min={minDate || undefined}
                                 className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-[#A1AB74]/50 [color-scheme:dark]"
                             />
-                            <p className="text-white/40 text-xs mt-1.5">Minimum 3 business days lead time required</p>
+                            <p className="text-white/40 text-xs mt-1.5">
+                                {isRushOrder
+                                    ? "Rush orders may request any date — we will confirm feasibility"
+                                    : "Minimum 3 business days lead time required"}
+                            </p>
                         </div>
 
-                        {/* Notes */}
                         <div>
                             <label className="block text-sm font-medium text-white/70 mb-1.5">Order Notes</label>
                             <textarea
@@ -314,7 +386,6 @@ export default function WholesaleOrderForm() {
                         </div>
                     </div>
 
-                    {/* Order Summary / Submit */}
                     <div className="sticky bottom-0 bg-black/80 backdrop-blur border-t border-white/10 -mx-4 px-4 py-3 sm:py-4" data-tour="wholesale-order-summary">
                         <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
                             <div className="min-w-0">

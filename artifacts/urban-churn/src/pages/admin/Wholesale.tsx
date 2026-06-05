@@ -5,6 +5,14 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useTour } from "@/lib/tour";
 import { adminWholesaleSteps } from "@/lib/tour/tour-steps";
+import {
+    WHOLESALE_ORDER_FILTERS,
+    WHOLESALE_ORDER_STATUS_LABELS,
+    WHOLESALE_PAYMENT_STATUS_LABELS,
+    formatWholesaleOrderStatus,
+    parseWholesaleOrderFilter,
+} from "@/lib/wholesale-constants";
+import { WholesaleProductMatrix } from "@/components/admin/WholesaleProductMatrix";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -88,15 +96,7 @@ const orderStatusColors: Record<string, string> = {
     cancelled: "bg-red-100 text-red-800",
 };
 
-const orderStatuses = [
-    "all",
-    "pending_review",
-    "confirmed",
-    "in_production",
-    "ready",
-    "delivered",
-    "cancelled",
-];
+const orderStatuses = WHOLESALE_ORDER_FILTERS.map((f) => f.value);
 
 function formatCents(c: number) {
     return `$${(c / 100).toFixed(2)}`;
@@ -206,14 +206,7 @@ function DashboardTab() {
     const upcomingDeliveries = dash.upcomingDeliveries || [];
 
     // Pie chart data from status counts
-    const statusLabels: Record<string, string> = {
-        pending_review: "Pending Review",
-        confirmed: "Confirmed",
-        in_production: "In Production",
-        ready: "Ready",
-        delivered: "Delivered",
-        cancelled: "Cancelled",
-    };
+    const statusLabels: Record<string, string> = WHOLESALE_ORDER_STATUS_LABELS;
     const statusPieData = Object.entries(statusCounts)
         .filter(([, v]) => (v as number) > 0)
         .map(([k, v]) => ({ name: statusLabels[k] || k, value: v as number }));
@@ -223,6 +216,7 @@ function DashboardTab() {
         Confirmed: "#3B82F6",
         "In Production": "#A855F7",
         Ready: "#10B981",
+        "Ready for Delivery": "#10B981",
         Delivered: "#22C55E",
         Cancelled: "#EF4444",
     };
@@ -525,7 +519,9 @@ function OrdersTab() {
         queryKey: ["wholesale-orders", filterStatus, debouncedSearch],
         queryFn: () => {
             const params: Record<string, string> = {};
-            if (filterStatus !== "all") params.status = filterStatus;
+            const parsed = parseWholesaleOrderFilter(filterStatus);
+            if (parsed.status) params.status = parsed.status;
+            if (parsed.filter) params.filter = parsed.filter;
             if (debouncedSearch) params.search = debouncedSearch;
             return api.getWholesaleOrders(params);
         },
@@ -563,8 +559,8 @@ function OrdersTab() {
                     {[
                         { label: "Total Orders", value: stats.totalOrders },
                         { label: "Pending Review", value: stats.pendingReview },
-                        { label: "Confirmed", value: stats.confirmedOrders },
-                        { label: "Today", value: stats.todayOrders },
+                        { label: "Awaiting Delivery", value: stats.awaitingDelivery ?? 0 },
+                        { label: "Unpaid (In Fulfillment)", value: stats.unpaidAwaitingDelivery ?? 0 },
                     ].map((s) => (
                         <Card key={s.label}>
                             <CardContent className="pt-4">
@@ -592,9 +588,9 @@ function OrdersTab() {
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        {orderStatuses.map((s) => (
-                            <SelectItem key={s} value={s}>
-                                {s === "all" ? "All Statuses" : s.replace(/_/g, " ")}
+                        {WHOLESALE_ORDER_FILTERS.map((s) => (
+                            <SelectItem key={s.value} value={s.value}>
+                                {s.label}
                             </SelectItem>
                         ))}
                     </SelectContent>
@@ -625,7 +621,12 @@ function OrdersTab() {
                                 {orders.map((o: any) => (
                                     <tr key={o.id} className="border-b hover:bg-gray-50">
                                         <td className="px-4 py-3 font-mono text-xs">
-                                            {o.orderNumber}
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                {o.orderNumber}
+                                                {o.isRushOrder && (
+                                                    <Badge className="bg-amber-100 text-amber-800 text-[10px]">RUSH</Badge>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3">
                                             {o.customerName}
@@ -637,7 +638,7 @@ function OrdersTab() {
                                                     "bg-gray-100"
                                                 }
                                             >
-                                                {o.status.replace(/_/g, " ")}
+                                                {formatWholesaleOrderStatus(o.status)}
                                             </Badge>
                                         </td>
                                         <td className="px-4 py-3 text-xs">
@@ -666,7 +667,7 @@ function OrdersTab() {
                                                         o.paymentStatus === "partial" ? "bg-yellow-100 text-yellow-800" :
                                                             "bg-gray-100 text-gray-600"
                                             }>
-                                                {o.paymentStatus || "unpaid"}
+                                                {WHOLESALE_PAYMENT_STATUS_LABELS[o.paymentStatus] || o.paymentStatus || "Unpaid"}
                                             </Badge>
                                         </td>
                                         <td className="px-4 py-3 text-xs text-gray-500">
@@ -1020,6 +1021,18 @@ function OrderDetailDialog({
         },
     });
 
+    const voidInvoiceMutation = useMutation({
+        mutationFn: () => api.voidWholesaleInvoice(orderId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["wholesale-order", orderId] });
+            queryClient.invalidateQueries({ queryKey: ["wholesale-orders"] });
+            toast({ title: "Invoice voided", description: "You can now send a new invoice." });
+        },
+        onError: (err: any) => {
+            toast({ title: "Void failed", description: err?.message || "Could not void invoice", variant: "destructive" });
+        },
+    });
+
     const productionStartMutation = useMutation({
         mutationFn: () => api.startWholesaleProduction(orderId),
         onSuccess: () => {
@@ -1179,10 +1192,13 @@ function OrderDetailDialog({
         <Dialog open onOpenChange={onClose}>
             <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle className="flex items-center gap-3">
+                    <DialogTitle className="flex items-center gap-3 flex-wrap">
                         Order {order.orderNumber}
+                        {order.isRushOrder && (
+                            <Badge className="bg-amber-100 text-amber-800">RUSH</Badge>
+                        )}
                         <Badge className={orderStatusColors[order.status] || "bg-gray-100"}>
-                            {order.status.replace(/_/g, " ")}
+                            {formatWholesaleOrderStatus(order.status)}
                         </Badge>
                     </DialogTitle>
                 </DialogHeader>
@@ -1201,6 +1217,9 @@ function OrderDetailDialog({
                             <p className="text-sm text-gray-600">
                                 Requested: {order.requestedDeliveryDate || "—"}
                             </p>
+                            {order.isRushOrder && order.rushNotes && (
+                                <p className="text-sm text-amber-700 mt-1">Rush: {order.rushNotes}</p>
+                            )}
                             {order.confirmedDeliveryDate && (
                                 <p className="text-sm text-green-600">
                                     Confirmed: {order.confirmedDeliveryDate}
@@ -1615,8 +1634,31 @@ function OrderDetailDialog({
                                         </Button>
                                     )}
                                     {order.squareInvoiceId && (
-                                        <span className="ml-auto text-xs text-blue-600 flex items-center gap-1">
-                                            <Receipt className="h-3 w-3" /> Invoice sent
+                                        <span className="ml-auto flex items-center gap-2">
+                                            <span className="text-xs text-blue-600 flex items-center gap-1">
+                                                <Receipt className="h-3 w-3" /> Invoice sent
+                                            </span>
+                                            {order.squareInvoicePublicUrl && (
+                                                <a
+                                                    href={order.squareInvoicePublicUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-[#A1AB74] hover:underline flex items-center gap-1"
+                                                >
+                                                    <ExternalLink className="h-3 w-3" /> View
+                                                </a>
+                                            )}
+                                            {order.paymentStatus !== "paid" && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="text-xs h-7 text-red-600"
+                                                    disabled={voidInvoiceMutation.isPending}
+                                                    onClick={() => voidInvoiceMutation.mutate()}
+                                                >
+                                                    {voidInvoiceMutation.isPending ? "Voiding…" : "Void Invoice"}
+                                                </Button>
+                                            )}
                                         </span>
                                     )}
                                 </div>
@@ -2651,6 +2693,7 @@ function ProductsTab() {
     const [showSizeDialog, setShowSizeDialog] = useState(false);
     const [editingSize, setEditingSize] = useState<any | null>(null);
     const [showFlavourDialog, setShowFlavourDialog] = useState(false);
+    const [showCreateFullFlavour, setShowCreateFullFlavour] = useState(false);
     const [editingFlavour, setEditingFlavour] = useState<any | null>(null);
 
     const productsQ = useQuery({
@@ -2698,11 +2741,23 @@ function ProductsTab() {
 
     return (
         <div className="space-y-4">
+            <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-4 text-sm text-blue-900">
+                <p className="font-medium mb-1">Catalog setup checklist</p>
+                <ol className="list-decimal list-inside space-y-0.5 text-blue-800/90">
+                    <li>Add wholesale sizes (e.g. 2.5 Gallon Tub, Case of Pints)</li>
+                    <li>Add flavours — pick from catalog or create new with &quot;New Flavour&quot;</li>
+                    <li>Use the matrix below to set prices and optional stock per flavour×size</li>
+                </ol>
+            </div>
             <div className="flex justify-between">
                 <p className="text-sm text-gray-500">
                     Manage the wholesale size list first, then set flavour-specific wholesale prices for each size.
                 </p>
                 <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setShowCreateFullFlavour(true)}>
+                        <Plus className="mr-1 h-4 w-4" />
+                        New Flavour
+                    </Button>
                     <Button variant="outline" onClick={() => { setEditingFlavour(null); setShowFlavourDialog(true); }}>
                         <Plus className="mr-1 h-4 w-4" />
                         Add Flavour Metadata
@@ -2717,6 +2772,12 @@ function ProductsTab() {
                     </Button>
                 </div>
             </div>
+
+            <WholesaleProductMatrix
+                flavours={wholesaleFlavours}
+                sizes={sizes}
+                products={products}
+            />
 
             <Card>
                 <CardHeader>
@@ -2928,6 +2989,20 @@ function ProductsTab() {
                 />
             )}
 
+            {showCreateFullFlavour && (
+                <CreateFullFlavourDialog
+                    sizes={sizes}
+                    onClose={() => setShowCreateFullFlavour(false)}
+                    onSaved={() => {
+                        setShowCreateFullFlavour(false);
+                        queryClient.invalidateQueries({ queryKey: ["wholesale-flavours"] });
+                        queryClient.invalidateQueries({ queryKey: ["wholesale-products"] });
+                        queryClient.invalidateQueries({ queryKey: ["flavours"] });
+                        toast({ title: "Flavour created" });
+                    }}
+                />
+            )}
+
             {showFlavourDialog && (
                 <AddWholesaleFlavourDialog
                     baseFlavours={flavoursQ.data || []}
@@ -3047,6 +3122,103 @@ function AddProductDialog({
                     />
                     <Button onClick={handleSave} disabled={saving} className="w-full">
                         {saving ? "Saving…" : "Add Product"}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function CreateFullFlavourDialog({
+    sizes,
+    onClose,
+    onSaved,
+}: {
+    sizes: any[];
+    onClose: () => void;
+    onSaved: () => void;
+}) {
+    const [form, setForm] = useState({
+        name: "",
+        description: "",
+        allergens: "",
+        isSeasonal: false,
+        defaultPriceDollars: "",
+        enableAllSizes: true,
+    });
+    const [saving, setSaving] = useState(false);
+
+    const handleSave = async () => {
+        if (!form.name.trim()) return;
+        setSaving(true);
+        try {
+            const defaultPriceCents = form.defaultPriceDollars
+                ? Math.round(parseFloat(form.defaultPriceDollars) * 100)
+                : undefined;
+            await api.createWholesaleFlavourFull({
+                name: form.name.trim(),
+                description: form.description,
+                allergens: form.allergens,
+                isSeasonal: form.isSeasonal,
+                sizeIds: form.enableAllSizes ? sizes.filter((s) => s.active).map((s) => s.id) : undefined,
+                defaultPriceCents,
+            });
+            onSaved();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Dialog open onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Create New Flavour</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                    <Input
+                        placeholder="Flavour name *"
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    />
+                    <Textarea
+                        placeholder="Description"
+                        value={form.description}
+                        onChange={(e) => setForm({ ...form, description: e.target.value })}
+                        rows={2}
+                    />
+                    <Input
+                        placeholder="Allergens"
+                        value={form.allergens}
+                        onChange={(e) => setForm({ ...form, allergens: e.target.value })}
+                    />
+                    <label className="flex items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={form.isSeasonal}
+                            onChange={(e) => setForm({ ...form, isSeasonal: e.target.checked })}
+                        />
+                        Seasonal
+                    </label>
+                    <Input
+                        placeholder="Default price for all sizes ($)"
+                        type="number"
+                        step="0.01"
+                        value={form.defaultPriceDollars}
+                        onChange={(e) => setForm({ ...form, defaultPriceDollars: e.target.value })}
+                    />
+                    <label className="flex items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={form.enableAllSizes}
+                            onChange={(e) => setForm({ ...form, enableAllSizes: e.target.checked })}
+                        />
+                        Enable all active sizes with default price
+                    </label>
+                    <Button onClick={handleSave} disabled={saving || !form.name.trim()} className="w-full">
+                        {saving ? "Creating…" : "Create Flavour"}
                     </Button>
                 </div>
             </DialogContent>

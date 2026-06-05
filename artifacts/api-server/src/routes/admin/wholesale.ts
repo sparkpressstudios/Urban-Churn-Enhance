@@ -33,10 +33,18 @@ import {
     inArray,
 } from "drizzle-orm";
 import { sendWholesaleOrderConfirmed, sendDeliveryRunAssignment, sendWholesaleInvite, sendWholesaleAccountApproved, sendWholesaleWelcomeEmail } from "../../lib/email";
-import { createAndPublishWholesaleInvoice } from "../../lib/square";
+import { createAndPublishWholesaleInvoice, cancelWholesaleInvoice } from "../../lib/square";
 import { hashPassword } from "../../lib/password";
 
 const router: IRouter = Router();
+
+function slugifyFlavourName(name: string) {
+    return name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+}
 
 function slugifyWholesaleSize(name: string) {
     return name
@@ -44,6 +52,32 @@ function slugifyWholesaleSize(name: string) {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "");
+}
+
+async function decrementWholesaleStockForOrder(orderId: number) {
+    const items = await db
+        .select({
+            wholesaleProductId: wholesaleOrderItemsTable.wholesaleProductId,
+            quantity: wholesaleOrderItemsTable.quantity,
+        })
+        .from(wholesaleOrderItemsTable)
+        .where(eq(wholesaleOrderItemsTable.wholesaleOrderId, orderId));
+
+    for (const item of items) {
+        if (!item.wholesaleProductId) continue;
+        await db
+            .update(wholesaleProductsTable)
+            .set({
+                stockQuantity: sql`GREATEST(${wholesaleProductsTable.stockQuantity} - ${item.quantity}, 0)`,
+                updatedAt: new Date(),
+            })
+            .where(
+                and(
+                    eq(wholesaleProductsTable.id, item.wholesaleProductId),
+                    eq(wholesaleProductsTable.manageStock, true),
+                ),
+            );
+    }
 }
 
 // ═══════════════════════════════════════
@@ -455,6 +489,166 @@ router.delete("/flavours/:id", async (req, res) => {
     res.json({ success: true });
 });
 
+// Create base flavour + wholesale profile (+ optional size SKUs) in one step
+router.post("/flavours/create-full", async (req, res) => {
+    const {
+        name,
+        description,
+        allergens,
+        isSeasonal,
+        sizeIds,
+        defaultPriceCents,
+    } = req.body;
+
+    if (!name || typeof name !== "string") {
+        res.status(400).json({ error: "name is required" });
+        return;
+    }
+
+    let baseSlug = slugifyFlavourName(name);
+    if (!baseSlug) baseSlug = `flavour-${Date.now()}`;
+
+    const [existingSlug] = await db
+        .select({ id: flavoursTable.id })
+        .from(flavoursTable)
+        .where(eq(flavoursTable.slug, baseSlug))
+        .limit(1);
+
+    const slug = existingSlug ? `${baseSlug}-${Date.now().toString(36)}` : baseSlug;
+
+    const [flavour] = await db
+        .insert(flavoursTable)
+        .values({
+            name: name.trim(),
+            slug,
+            description: description || "",
+            tag: isSeasonal ? "seasonal" : "classic",
+            available: true,
+        })
+        .returning();
+
+    const [wholesaleFlavour] = await db
+        .insert(wholesaleFlavoursTable)
+        .values({
+            flavourId: flavour.id,
+            description: description || "",
+            allergens: allergens || "",
+            isSeasonal: isSeasonal === true,
+            active: true,
+        })
+        .returning();
+
+    const createdProducts: typeof wholesaleProductsTable.$inferSelect[] = [];
+    if (Array.isArray(sizeIds) && sizeIds.length > 0 && defaultPriceCents !== undefined) {
+        const sizes = await db
+            .select()
+            .from(wholesaleSizesTable)
+            .where(inArray(wholesaleSizesTable.id, sizeIds.map(Number)));
+
+        for (const size of sizes) {
+            const [existing] = await db
+                .select({ id: wholesaleProductsTable.id })
+                .from(wholesaleProductsTable)
+                .where(
+                    and(
+                        eq(wholesaleProductsTable.flavourId, flavour.id),
+                        eq(wholesaleProductsTable.wholesaleSizeId, size.id),
+                    ),
+                )
+                .limit(1);
+            if (existing) continue;
+
+            const [product] = await db
+                .insert(wholesaleProductsTable)
+                .values({
+                    flavourId: flavour.id,
+                    wholesaleSizeId: size.id,
+                    name: size.name,
+                    unitDescription: size.description || "",
+                    priceCents: Number(defaultPriceCents),
+                    sizeCategory: size.sizeCategory,
+                    available: true,
+                })
+                .returning();
+            if (product) createdProducts.push(product);
+        }
+    }
+
+    res.status(201).json({ flavour, wholesaleFlavour, products: createdProducts });
+});
+
+// Enable all (or selected) sizes for a flavour with a default price
+router.post("/flavours/:flavourId/enable-sizes", async (req, res) => {
+    const flavourId = Number(req.params.flavourId);
+    const { sizeIds, defaultPriceCents } = req.body;
+
+    if (defaultPriceCents === undefined || Number(defaultPriceCents) < 0) {
+        res.status(400).json({ error: "defaultPriceCents is required" });
+        return;
+    }
+
+    const [flavour] = await db
+        .select({ id: flavoursTable.id, name: flavoursTable.name })
+        .from(flavoursTable)
+        .where(eq(flavoursTable.id, flavourId))
+        .limit(1);
+
+    if (!flavour) {
+        res.status(404).json({ error: "Flavour not found" });
+        return;
+    }
+
+    let sizes;
+    if (Array.isArray(sizeIds) && sizeIds.length > 0) {
+        sizes = await db
+            .select()
+            .from(wholesaleSizesTable)
+            .where(
+                and(
+                    inArray(wholesaleSizesTable.id, sizeIds.map(Number)),
+                    eq(wholesaleSizesTable.active, true),
+                ),
+            );
+    } else {
+        sizes = await db
+            .select()
+            .from(wholesaleSizesTable)
+            .where(eq(wholesaleSizesTable.active, true));
+    }
+
+    const created = [];
+    for (const size of sizes) {
+        const [existing] = await db
+            .select({ id: wholesaleProductsTable.id })
+            .from(wholesaleProductsTable)
+            .where(
+                and(
+                    eq(wholesaleProductsTable.flavourId, flavourId),
+                    eq(wholesaleProductsTable.wholesaleSizeId, size.id),
+                ),
+            )
+            .limit(1);
+
+        if (existing) continue;
+
+        const [product] = await db
+            .insert(wholesaleProductsTable)
+            .values({
+                flavourId,
+                wholesaleSizeId: size.id,
+                name: size.name,
+                unitDescription: size.description || "",
+                priceCents: Number(defaultPriceCents),
+                sizeCategory: size.sizeCategory,
+                available: true,
+            })
+            .returning();
+        if (product) created.push(product);
+    }
+
+    res.status(201).json({ created: created.length, products: created });
+});
+
 // ═══════════════════════════════════════
 // ── Wholesale Sizes ──
 // ═══════════════════════════════════════
@@ -569,6 +763,9 @@ router.get("/products", async (_req, res) => {
             unitDescription: wholesaleProductsTable.unitDescription,
             priceCents: wholesaleProductsTable.priceCents,
             available: wholesaleProductsTable.available,
+            manageStock: wholesaleProductsTable.manageStock,
+            stockQuantity: wholesaleProductsTable.stockQuantity,
+            lowStockThreshold: wholesaleProductsTable.lowStockThreshold,
             sortOrder: wholesaleProductsTable.sortOrder,
             createdAt: wholesaleProductsTable.createdAt,
         })
@@ -594,7 +791,7 @@ router.get("/products", async (_req, res) => {
 });
 
 router.post("/products", async (req, res) => {
-    const { flavourId, wholesaleSizeId, name, unitDescription, priceCents, available, sortOrder, sizeCategory } = req.body;
+    const { flavourId, wholesaleSizeId, name, unitDescription, priceCents, available, sortOrder, sizeCategory, manageStock, stockQuantity, lowStockThreshold } = req.body;
 
     if (!flavourId || priceCents === undefined) {
         res.status(400).json({ error: "flavourId and priceCents are required" });
@@ -637,6 +834,9 @@ router.post("/products", async (req, res) => {
             unitDescription: resolvedUnitDescription,
             priceCents,
             available: available !== false,
+            manageStock: manageStock === true,
+            stockQuantity: stockQuantity ?? 0,
+            lowStockThreshold: lowStockThreshold ?? 5,
             sortOrder: sortOrder || 0,
             sizeCategory: resolvedSizeCategory,
         })
@@ -647,7 +847,7 @@ router.post("/products", async (req, res) => {
 
 router.put("/products/:id", async (req, res) => {
     const id = Number(req.params.id);
-    const { flavourId, wholesaleSizeId, name, unitDescription, priceCents, available, sortOrder, sizeCategory } = req.body;
+    const { flavourId, wholesaleSizeId, name, unitDescription, priceCents, available, sortOrder, sizeCategory, manageStock, stockQuantity, lowStockThreshold } = req.body;
 
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (wholesaleSizeId !== undefined) updates.wholesaleSizeId = wholesaleSizeId ? Number(wholesaleSizeId) : null;
@@ -656,6 +856,9 @@ router.put("/products/:id", async (req, res) => {
     if (unitDescription !== undefined) updates.unitDescription = unitDescription;
     if (priceCents !== undefined) updates.priceCents = priceCents;
     if (available !== undefined) updates.available = available;
+    if (manageStock !== undefined) updates.manageStock = manageStock;
+    if (stockQuantity !== undefined) updates.stockQuantity = stockQuantity;
+    if (lowStockThreshold !== undefined) updates.lowStockThreshold = lowStockThreshold;
     if (sortOrder !== undefined) updates.sortOrder = sortOrder;
     if (sizeCategory !== undefined) updates.sizeCategory = sizeCategory || null;
 
@@ -766,6 +969,89 @@ router.post("/products/bulk", async (req, res) => {
     res.status(201).json({ created: created.length, products: created });
 });
 
+// Bulk upsert flavour×size matrix cells
+router.put("/products/matrix", async (req, res) => {
+    const { cells } = req.body;
+
+    if (!Array.isArray(cells) || cells.length === 0) {
+        res.status(400).json({ error: "cells array is required" });
+        return;
+    }
+
+    const results = [];
+    for (const cell of cells) {
+        const flavourId = Number(cell.flavourId);
+        const wholesaleSizeId = Number(cell.wholesaleSizeId);
+        if (!flavourId || !wholesaleSizeId) continue;
+
+        const [size] = await db
+            .select()
+            .from(wholesaleSizesTable)
+            .where(eq(wholesaleSizesTable.id, wholesaleSizeId))
+            .limit(1);
+        if (!size) continue;
+
+        const priceCents = Math.max(0, Math.round(Number(cell.priceCents) || 0));
+        const available = cell.available !== false;
+        const manageStock = cell.manageStock === true;
+        const stockQuantity = Number(cell.stockQuantity) || 0;
+        const lowStockThreshold = Number(cell.lowStockThreshold) || 5;
+
+        const [existing] = await db
+            .select({ id: wholesaleProductsTable.id })
+            .from(wholesaleProductsTable)
+            .where(
+                and(
+                    eq(wholesaleProductsTable.flavourId, flavourId),
+                    eq(wholesaleProductsTable.wholesaleSizeId, wholesaleSizeId),
+                ),
+            )
+            .limit(1);
+
+        if (existing) {
+            if (cell.enabled === false) {
+                await db
+                    .update(wholesaleProductsTable)
+                    .set({ available: false, updatedAt: new Date() })
+                    .where(eq(wholesaleProductsTable.id, existing.id));
+                continue;
+            }
+            const [updated] = await db
+                .update(wholesaleProductsTable)
+                .set({
+                    priceCents,
+                    available,
+                    manageStock,
+                    stockQuantity,
+                    lowStockThreshold,
+                    updatedAt: new Date(),
+                })
+                .where(eq(wholesaleProductsTable.id, existing.id))
+                .returning();
+            if (updated) results.push(updated);
+        } else if (cell.enabled !== false && priceCents > 0) {
+            const [created] = await db
+                .insert(wholesaleProductsTable)
+                .values({
+                    flavourId,
+                    wholesaleSizeId,
+                    name: size.name,
+                    unitDescription: size.description || "",
+                    priceCents,
+                    sizeCategory: size.sizeCategory,
+                    available,
+                    manageStock,
+                    stockQuantity,
+                    lowStockThreshold,
+                })
+                .returning();
+            if (created) results.push(created);
+        }
+    }
+
+    res.json({ updated: results.length, products: results });
+});
+
 // ═══════════════════════════════════════
 // ── Wholesale Orders ──
 // ═══════════════════════════════════════
@@ -846,22 +1132,85 @@ router.get("/orders/stats", async (_req, res) => {
         .select({ count: count() })
         .from(wholesaleOrdersTable)
         .where(gte(wholesaleOrdersTable.createdAt, today));
+    const [awaitingDelivery] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.status, "ready"));
+    const [unpaidAwaitingDelivery] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                or(
+                    eq(wholesaleOrdersTable.status, "ready"),
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                )!,
+                sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`,
+            ),
+        );
+    const [rushOrders] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                eq(wholesaleOrdersTable.isRushOrder, true),
+                sql`${wholesaleOrdersTable.status} NOT IN ('delivered', 'cancelled')`,
+            ),
+        );
+    const [lowStockProducts] = await db
+        .select({ count: count() })
+        .from(wholesaleProductsTable)
+        .where(
+            and(
+                eq(wholesaleProductsTable.manageStock, true),
+                sql`${wholesaleProductsTable.stockQuantity} > 0`,
+                sql`${wholesaleProductsTable.stockQuantity} <= ${wholesaleProductsTable.lowStockThreshold}`,
+            ),
+        );
 
     res.json({
         totalOrders: total.count,
         pendingReview: pendingReview.count,
         confirmedOrders: confirmed.count,
         todayOrders: todayCount.count,
+        awaitingDelivery: awaitingDelivery.count,
+        unpaidAwaitingDelivery: unpaidAwaitingDelivery.count,
+        rushOrders: rushOrders.count,
+        lowStockProducts: lowStockProducts.count,
     });
 });
 
 router.get("/orders", async (req, res) => {
     const status = req.query.status as string | undefined;
+    const filter = req.query.filter as string | undefined;
     const customerId = req.query.customerId as string | undefined;
     const search = req.query.search as string | undefined;
 
     const conditions = [];
-    if (status) conditions.push(eq(wholesaleOrdersTable.status, status as any));
+    if (filter === "awaiting_delivery") {
+        conditions.push(eq(wholesaleOrdersTable.status, "ready"));
+    } else if (filter === "unpaid_awaiting_delivery") {
+        conditions.push(
+            and(
+                or(
+                    eq(wholesaleOrdersTable.status, "ready"),
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                )!,
+                sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`,
+            )!,
+        );
+    } else if (filter === "rush") {
+        conditions.push(
+            and(
+                eq(wholesaleOrdersTable.isRushOrder, true),
+                sql`${wholesaleOrdersTable.status} NOT IN ('delivered', 'cancelled')`,
+            )!,
+        );
+    } else if (status && status !== "all") {
+        conditions.push(eq(wholesaleOrdersTable.status, status as any));
+    }
     if (customerId) conditions.push(eq(wholesaleOrdersTable.wholesaleCustomerId, Number(customerId)));
     if (search) {
         conditions.push(
@@ -887,6 +1236,8 @@ router.get("/orders", async (req, res) => {
             aiParseNotes: wholesaleOrdersTable.aiParseNotes,
             paymentStatus: wholesaleOrdersTable.paymentStatus,
             paymentMethod: wholesaleOrdersTable.paymentMethod,
+            isRushOrder: wholesaleOrdersTable.isRushOrder,
+            rushNotes: wholesaleOrdersTable.rushNotes,
             originalEmailSubject: wholesaleOrdersTable.originalEmailSubject,
             createdAt: wholesaleOrdersTable.createdAt,
         })
@@ -928,6 +1279,11 @@ router.get("/orders/:id", async (req, res) => {
             paymentStatus: wholesaleOrdersTable.paymentStatus,
             paymentMethod: wholesaleOrdersTable.paymentMethod,
             paymentNotes: wholesaleOrdersTable.paymentNotes,
+            squareInvoiceId: wholesaleOrdersTable.squareInvoiceId,
+            squareInvoicePublicUrl: wholesaleOrdersTable.squareInvoicePublicUrl,
+            isRushOrder: wholesaleOrdersTable.isRushOrder,
+            rushNotes: wholesaleOrdersTable.rushNotes,
+            vendorLocationId: wholesaleOrdersTable.vendorLocationId,
             paidAt: wholesaleOrdersTable.paidAt,
             createdAt: wholesaleOrdersTable.createdAt,
             updatedAt: wholesaleOrdersTable.updatedAt,
@@ -1062,6 +1418,8 @@ router.put("/orders/:id/confirm", async (req, res) => {
         })
         .where(eq(wholesaleOrdersTable.id, id))
         .returning();
+
+    await decrementWholesaleStockForOrder(id);
 
     // Get items for confirmation email
     const items = await db
@@ -1215,6 +1573,7 @@ router.post("/orders/:id/send-invoice", async (req, res) => {
             .update(wholesaleOrdersTable)
             .set({
                 squareInvoiceId,
+                squareInvoicePublicUrl: publicUrl,
                 paymentStatus: "invoiced",
                 paymentMethod: "square_invoice",
                 updatedAt: new Date(),
@@ -1226,6 +1585,57 @@ router.post("/orders/:id/send-invoice", async (req, res) => {
     } catch (e: any) {
         console.error("[WHOLESALE] Failed to create Square invoice:", e?.message || e);
         res.status(502).json({ error: e?.message || "Failed to create Square invoice" });
+    }
+});
+
+// Void/cancel a Square invoice so a new one can be issued
+router.post("/orders/:id/void-invoice", async (req, res) => {
+    const id = Number(req.params.id);
+
+    const [order] = await db
+        .select({
+            id: wholesaleOrdersTable.id,
+            squareInvoiceId: wholesaleOrdersTable.squareInvoiceId,
+            paymentStatus: wholesaleOrdersTable.paymentStatus,
+        })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.id, id))
+        .limit(1);
+
+    if (!order) {
+        res.status(404).json({ error: "Order not found" });
+        return;
+    }
+
+    if (!order.squareInvoiceId) {
+        res.status(400).json({ error: "No Square invoice on this order" });
+        return;
+    }
+
+    if (order.paymentStatus === "paid") {
+        res.status(400).json({ error: "Cannot void invoice — order is already paid" });
+        return;
+    }
+
+    try {
+        await cancelWholesaleInvoice(order.squareInvoiceId);
+
+        const [updated] = await db
+            .update(wholesaleOrdersTable)
+            .set({
+                squareInvoiceId: null,
+                squareInvoicePublicUrl: null,
+                paymentStatus: "unpaid",
+                paymentMethod: null,
+                updatedAt: new Date(),
+            })
+            .where(eq(wholesaleOrdersTable.id, id))
+            .returning();
+
+        res.json(updated);
+    } catch (e: any) {
+        console.error("[WHOLESALE] Failed to void Square invoice:", e?.message || e);
+        res.status(502).json({ error: e?.message || "Failed to void Square invoice" });
     }
 });
 
