@@ -5,6 +5,7 @@ import { eq, asc, desc, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 const flavourTagValues = new Set(flavourTagEnum.enumValues);
+type FlavourTag = (typeof flavourTagEnum.enumValues)[number];
 
 function parseBasePrice(value: unknown): string | undefined {
     if (value === undefined) return undefined;
@@ -20,8 +21,12 @@ function parseTag(value: unknown): string | undefined {
     return normalized;
 }
 
-function isValidTag(tag: string): boolean {
-    return flavourTagValues.has(tag as (typeof flavourTagEnum.enumValues)[number]);
+function isValidTag(tag: string): tag is FlavourTag {
+    return flavourTagValues.has(tag as FlavourTag);
+}
+
+function asFlavourTag(tag: string): FlavourTag {
+    return tag as FlavourTag;
 }
 
 function parsePublishedAt(value: unknown): Date | undefined {
@@ -118,7 +123,7 @@ router.post("/", async (req, res) => {
                 description: description ?? "",
                 htmlContent: htmlContent ?? "",
                 imageUrl: imageUrl ?? null,
-                tag: normalizedTag ?? "classic",
+                tag: asFlavourTag(normalizedTag ?? "classic"),
                 emoji: emoji ?? "🍦",
                 basePrice: normalizedBasePrice ?? "7.00",
                 available: available ?? true,
@@ -148,7 +153,12 @@ router.put("/bulk/update", async (req, res) => {
         return;
     }
 
-    const allowed: Record<string, unknown> = { updatedAt: new Date() };
+    const allowed: {
+        updatedAt: Date;
+        basePrice?: string;
+        tag?: FlavourTag;
+        available?: boolean;
+    } = { updatedAt: new Date() };
     const normalizedBulkBasePrice = parseBasePrice(updates.basePrice);
     if (updates.basePrice !== undefined && normalizedBulkBasePrice === undefined) {
         res.status(400).json({ error: "basePrice must be a valid number" });
@@ -161,7 +171,7 @@ router.put("/bulk/update", async (req, res) => {
         res.status(400).json({ error: "tag must be one of the allowed flavour tag values" });
         return;
     }
-    if (normalizedBulkTag !== undefined) allowed.tag = normalizedBulkTag;
+    if (normalizedBulkTag !== undefined) allowed.tag = asFlavourTag(normalizedBulkTag);
 
     if (updates.available !== undefined) allowed.available = updates.available;
 
@@ -227,7 +237,7 @@ router.put("/:id", async (req, res) => {
                 ...(description !== undefined && { description }),
                 ...(htmlContent !== undefined && { htmlContent }),
                 ...(imageUrl !== undefined && { imageUrl }),
-                ...(normalizedTag !== undefined && { tag: normalizedTag }),
+                ...(normalizedTag !== undefined && { tag: asFlavourTag(normalizedTag) }),
                 ...(emoji !== undefined && { emoji }),
                 ...(normalizedBasePrice !== undefined && { basePrice: normalizedBasePrice }),
                 ...(available !== undefined && { available }),
