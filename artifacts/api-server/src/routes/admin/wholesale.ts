@@ -59,6 +59,28 @@ function slugifyWholesaleSize(name: string) {
         .replace(/^-|-$/g, "");
 }
 
+async function getBaseFlavourMeta(flavourId: number) {
+    const [flavour] = await db
+        .select({
+            description: flavoursTable.description,
+            tag: flavoursTable.tag,
+        })
+        .from(flavoursTable)
+        .where(eq(flavoursTable.id, flavourId))
+        .limit(1);
+
+    return flavour;
+}
+
+function resolveWholesaleDescription(
+    wholesaleDescription: string | null | undefined,
+    baseDescription: string | null | undefined,
+) {
+    const trimmed = wholesaleDescription?.trim();
+    if (trimmed) return trimmed;
+    return baseDescription?.trim() || "";
+}
+
 async function syncExclusiveCustomers(flavourId: number, customerIds: number[]) {
     await db
         .delete(wholesaleCustomerExclusiveFlavoursTable)
@@ -462,7 +484,7 @@ router.get("/flavours", async (req, res) => {
             flavourName: row.flavourName,
             tag: row.tag,
             imageUrl: row.imageUrl,
-            description: row.description ?? row.baseDescription ?? "",
+            description: resolveWholesaleDescription(row.description, row.baseDescription),
             allergens: row.allergens ?? "",
             isSeasonal: row.isSeasonal ?? row.tag === "seasonal",
             isExclusive: row.isExclusive ?? false,
@@ -532,13 +554,18 @@ router.post("/flavours", async (req, res) => {
         return;
     }
 
+    const baseFlavour = await getBaseFlavourMeta(numericFlavourId);
+
     const [created] = await db
         .insert(wholesaleFlavoursTable)
         .values({
             flavourId: numericFlavourId,
-            description: description ?? "",
+            description:
+                description !== undefined && description !== null
+                    ? description
+                    : baseFlavour?.description || "",
             allergens: allergens ?? "",
-            isSeasonal: isSeasonal === true,
+            isSeasonal: isSeasonal === true || baseFlavour?.tag === "seasonal",
             isExclusive: exclusive,
             active: active !== false,
             sortOrder: sortOrder || 0,
@@ -567,10 +594,24 @@ router.put("/flavours/bulk/active", async (req, res) => {
     let updated = 0;
     let created = 0;
 
-    for (const rawId of flavourIds) {
-        const flavourId = Number(rawId);
-        if (!flavourId || Number.isNaN(flavourId)) continue;
+    const numericFlavourIds = flavourIds
+        .map(Number)
+        .filter((id) => id > 0 && !Number.isNaN(id));
 
+    const baseFlavours =
+        numericFlavourIds.length > 0
+            ? await db
+                  .select({
+                      id: flavoursTable.id,
+                      description: flavoursTable.description,
+                      tag: flavoursTable.tag,
+                  })
+                  .from(flavoursTable)
+                  .where(inArray(flavoursTable.id, numericFlavourIds))
+            : [];
+    const baseFlavourMap = new Map(baseFlavours.map((f) => [f.id, f]));
+
+    for (const flavourId of numericFlavourIds) {
         const [existing] = await db
             .select({ id: wholesaleFlavoursTable.id })
             .from(wholesaleFlavoursTable)
@@ -584,9 +625,12 @@ router.put("/flavours/bulk/active", async (req, res) => {
                 .where(eq(wholesaleFlavoursTable.id, existing.id));
             updated++;
         } else {
+            const baseFlavour = baseFlavourMap.get(flavourId);
             await db.insert(wholesaleFlavoursTable).values({
                 flavourId,
                 active,
+                description: baseFlavour?.description || "",
+                isSeasonal: baseFlavour?.tag === "seasonal",
             });
             created++;
         }

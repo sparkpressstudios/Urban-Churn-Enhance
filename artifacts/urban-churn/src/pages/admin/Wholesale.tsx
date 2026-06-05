@@ -3024,7 +3024,7 @@ function ProductsTab() {
             queryClient.invalidateQueries({ queryKey: ["wholesale-flavours"] });
             queryClient.invalidateQueries({ queryKey: ["wholesale-products"] });
             toast({
-                title: active ? "Flavours shown for ordering" : "Flavours hidden from ordering",
+                title: active ? "Flavours visible in portal" : "Flavours hidden from portal",
                 description: `${result.total ?? ids.length} flavour(s) updated`,
             });
         } catch (err: any) {
@@ -3050,7 +3050,8 @@ function ProductsTab() {
                 <ul className="text-blue-800/90 space-y-1 list-disc list-inside">
                     <li><strong>Create New Flavour</strong> — adds a brand-new flavour name, wholesale profile, and optional size pricing.</li>
                     <li><strong>Pencil icon</strong> on any row — set up or edit wholesale metadata, package sizes, per-size pricing, catalog access, and availability.</li>
-                    <li><strong>Search & multi-select</strong> — bulk show/hide flavours, or enable package sizes (Pint, Half Gallon, 1.5 Gallon, 3 Gallon) for many flavours at once.</li>
+                    <li><strong>Portal visibility</strong> — controls whether clients see a flavour in their ordering catalog. Separate from package sizes and prices.</li>
+                    <li><strong>Search & multi-select</strong> — bulk show/hide flavours in the portal, or set package sizes and prices for many flavours at once.</li>
                 </ul>
             </div>
 
@@ -3161,8 +3162,8 @@ function ProductsTab() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All availability</SelectItem>
-                                    <SelectItem value="available">Available for ordering</SelectItem>
-                                    <SelectItem value="hidden">Hidden from ordering</SelectItem>
+                                    <SelectItem value="available">Visible in portal</SelectItem>
+                                    <SelectItem value="hidden">Hidden from portal</SelectItem>
                                 </SelectContent>
                             </Select>
                             <Select
@@ -3220,7 +3221,7 @@ function ProductsTab() {
                                         onClick={() => bulkSetFlavourActive(true)}
                                     >
                                         <Eye className="h-4 w-4 mr-1" />
-                                        Show for ordering
+                                        Show in portal
                                     </Button>
                                     <Button
                                         size="sm"
@@ -3230,7 +3231,7 @@ function ProductsTab() {
                                         onClick={() => bulkSetFlavourActive(false)}
                                     >
                                         <EyeOff className="h-4 w-4 mr-1" />
-                                        Hide from ordering
+                                        Hide from portal
                                     </Button>
                                     <Button
                                         size="sm"
@@ -3240,6 +3241,10 @@ function ProductsTab() {
                                         Clear selection
                                     </Button>
                                 </div>
+                                <p className="text-xs text-slate-700">
+                                    <strong>Portal visibility</strong> only controls whether clients see these flavours in their ordering catalog.
+                                    It does not change descriptions, package sizes, or prices.
+                                </p>
                                 <div className="border-t border-[#A1AB74]/20 pt-3 space-y-4">
                                     <div>
                                         <p className="text-sm font-medium text-slate-900">Package sizes &amp; pricing</p>
@@ -3325,7 +3330,7 @@ function ProductsTab() {
                                     <th className="px-4 py-3 font-medium">Assigned Clients</th>
                                     <th className="px-4 py-3 font-medium">Allergens</th>
                                     <th className="px-4 py-3 font-medium">Type</th>
-                                    <th className="px-4 py-3 font-medium">Status</th>
+                                    <th className="px-4 py-3 font-medium">Portal</th>
                                     <th className="px-4 py-3 font-medium">Actions</th>
                                 </tr>
                             </thead>
@@ -3385,7 +3390,7 @@ function ProductsTab() {
                                         </td>
                                         <td className="px-4 py-3">
                                             <Badge className={isFlavourAvailableForOrdering(f) ? "bg-green-100 text-green-700" : "bg-gray-100 text-slate-700"}>
-                                                {isFlavourAvailableForOrdering(f) ? "Available" : "Hidden"}
+                                                {isFlavourAvailableForOrdering(f) ? "In portal" : "Not in portal"}
                                             </Badge>
                                         </td>
                                         <td className="px-4 py-3">
@@ -4245,8 +4250,8 @@ function AddWholesaleFlavourDialog({
                     </FormSection>
 
                     <FormSection
-                        title="Portal availability"
-                        description="Control whether this flavour appears for ordering at all."
+                        title="Portal visibility"
+                        description="Whether wholesale clients see this flavour in their ordering catalog. Does not affect sizes or prices."
                     >
                         <label className="flex items-center gap-2 text-sm text-slate-800">
                             <Checkbox
@@ -4255,7 +4260,7 @@ function AddWholesaleFlavourDialog({
                                     setForm({ ...form, active: checked === true })
                                 }
                             />
-                            Available for ordering in the wholesale portal
+                            Visible in the wholesale ordering portal
                         </label>
                         <div className="space-y-2">
                             <Label htmlFor="wholesale-sort-order">Sort order</Label>
