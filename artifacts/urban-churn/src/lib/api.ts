@@ -533,6 +533,11 @@ export const api = {
         apiFetch("/admin/wholesale/flavours", { method: "POST", body: JSON.stringify(data) }),
     updateWholesaleFlavour: (id: number, data: any) =>
         apiFetch(`/admin/wholesale/flavours/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    bulkUpdateWholesaleFlavourActive: (flavourIds: number[], active: boolean) =>
+        apiFetch("/admin/wholesale/flavours/bulk/active", {
+            method: "PUT",
+            body: JSON.stringify({ flavourIds, active }),
+        }),
     deleteWholesaleFlavour: (id: number) =>
         apiFetch(`/admin/wholesale/flavours/${id}`, { method: "DELETE" }),
     getWholesaleSizes: () => apiFetch("/admin/wholesale/sizes"),

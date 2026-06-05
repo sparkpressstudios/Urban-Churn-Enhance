@@ -552,6 +552,49 @@ router.post("/flavours", async (req, res) => {
     res.status(201).json(created);
 });
 
+router.put("/flavours/bulk/active", async (req, res) => {
+    const { flavourIds, active } = req.body;
+
+    if (!Array.isArray(flavourIds) || flavourIds.length === 0) {
+        res.status(400).json({ error: "flavourIds array is required" });
+        return;
+    }
+    if (typeof active !== "boolean") {
+        res.status(400).json({ error: "active boolean is required" });
+        return;
+    }
+
+    let updated = 0;
+    let created = 0;
+
+    for (const rawId of flavourIds) {
+        const flavourId = Number(rawId);
+        if (!flavourId || Number.isNaN(flavourId)) continue;
+
+        const [existing] = await db
+            .select({ id: wholesaleFlavoursTable.id })
+            .from(wholesaleFlavoursTable)
+            .where(eq(wholesaleFlavoursTable.flavourId, flavourId))
+            .limit(1);
+
+        if (existing) {
+            await db
+                .update(wholesaleFlavoursTable)
+                .set({ active, updatedAt: new Date() })
+                .where(eq(wholesaleFlavoursTable.id, existing.id));
+            updated++;
+        } else {
+            await db.insert(wholesaleFlavoursTable).values({
+                flavourId,
+                active,
+            });
+            created++;
+        }
+    }
+
+    res.json({ updated, created, total: updated + created });
+});
+
 router.put("/flavours/:id", async (req, res) => {
     const id = Number(req.params.id);
     const { description, allergens, isSeasonal, isExclusive, active, sortOrder, customerIds } =

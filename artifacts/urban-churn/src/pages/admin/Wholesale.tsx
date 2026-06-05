@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -49,6 +49,7 @@ import {
 } from "recharts";
 import {
     Eye,
+    EyeOff,
     Search,
     Plus,
     Check,
@@ -2697,6 +2698,50 @@ function catalogQueryParams(view: CatalogView, customerId: string): Record<strin
     return { catalog: view };
 }
 
+type FlavourAvailabilityFilter = "all" | "available" | "hidden";
+type FlavourSetupFilter = "all" | "setup" | "not_setup";
+type FlavourSeasonalFilter = "all" | "seasonal" | "year_round";
+
+function isFlavourAvailableForOrdering(flavour: { active?: boolean }) {
+    return flavour.active !== false;
+}
+
+function filterWholesaleFlavours(
+    flavours: any[],
+    search: string,
+    availability: FlavourAvailabilityFilter,
+    setup: FlavourSetupFilter,
+    seasonal: FlavourSeasonalFilter,
+) {
+    const q = search.trim().toLowerCase();
+    return flavours.filter((f) => {
+        if (q) {
+            const haystack = [
+                f.flavourName,
+                f.description,
+                f.allergens,
+                ...(f.exclusiveCustomers || []).map((c: any) => c.businessName),
+            ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+            if (!haystack.includes(q)) return false;
+        }
+
+        const available = isFlavourAvailableForOrdering(f);
+        if (availability === "available" && !available) return false;
+        if (availability === "hidden" && available) return false;
+
+        if (setup === "setup" && !f.id) return false;
+        if (setup === "not_setup" && f.id) return false;
+
+        if (seasonal === "seasonal" && !f.isSeasonal) return false;
+        if (seasonal === "year_round" && f.isSeasonal) return false;
+
+        return true;
+    });
+}
+
 function ProductsTab() {
     const queryClient = useQueryClient();
     const { toast } = useToast();
@@ -2709,6 +2754,14 @@ function ProductsTab() {
     const [showCreateFullFlavour, setShowCreateFullFlavour] = useState(false);
     const [showCreateExclusiveFlavour, setShowCreateExclusiveFlavour] = useState(false);
     const [editingFlavour, setEditingFlavour] = useState<any | null>(null);
+    const [flavourSearch, setFlavourSearch] = useState("");
+    const [availabilityFilter, setAvailabilityFilter] = useState<FlavourAvailabilityFilter>("all");
+    const [setupFilter, setSetupFilter] = useState<FlavourSetupFilter>("all");
+    const [seasonalFilter, setSeasonalFilter] = useState<FlavourSeasonalFilter>("all");
+    const [selectedFlavourIds, setSelectedFlavourIds] = useState<Set<number>>(new Set());
+    const [bulkUpdating, setBulkUpdating] = useState(false);
+
+    const debouncedFlavourSearch = useDebounce(flavourSearch, 200);
 
     const catalogParams = catalogQueryParams(catalogView, customerFilterId);
 
@@ -2758,6 +2811,67 @@ function ProductsTab() {
     const wholesaleFlavours = wholesaleFlavoursQ.data || [];
     const customers = customersQ.data || [];
 
+    const filteredFlavours = useMemo(
+        () =>
+            filterWholesaleFlavours(
+                wholesaleFlavours,
+                debouncedFlavourSearch,
+                availabilityFilter,
+                setupFilter,
+                seasonalFilter,
+            ),
+        [wholesaleFlavours, debouncedFlavourSearch, availabilityFilter, setupFilter, seasonalFilter],
+    );
+
+    const allFilteredSelected =
+        filteredFlavours.length > 0 &&
+        filteredFlavours.every((f: any) => selectedFlavourIds.has(f.flavourId));
+
+    const toggleFlavourSelection = (flavourId: number) => {
+        setSelectedFlavourIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(flavourId)) next.delete(flavourId);
+            else next.add(flavourId);
+            return next;
+        });
+    };
+
+    const toggleAllFilteredFlavours = () => {
+        if (allFilteredSelected) {
+            setSelectedFlavourIds((prev) => {
+                const next = new Set(prev);
+                for (const f of filteredFlavours) next.delete(f.flavourId);
+                return next;
+            });
+        } else {
+            setSelectedFlavourIds((prev) => {
+                const next = new Set(prev);
+                for (const f of filteredFlavours) next.add(f.flavourId);
+                return next;
+            });
+        }
+    };
+
+    const bulkSetFlavourActive = async (active: boolean) => {
+        const ids = [...selectedFlavourIds];
+        if (ids.length === 0) return;
+        setBulkUpdating(true);
+        try {
+            const result = await api.bulkUpdateWholesaleFlavourActive(ids, active);
+            setSelectedFlavourIds(new Set());
+            queryClient.invalidateQueries({ queryKey: ["wholesale-flavours"] });
+            queryClient.invalidateQueries({ queryKey: ["wholesale-products"] });
+            toast({
+                title: active ? "Flavours shown for ordering" : "Flavours hidden from ordering",
+                description: `${result.total ?? ids.length} flavour(s) updated`,
+            });
+        } catch (err: any) {
+            toast({ title: "Bulk update failed", description: err.message, variant: "destructive" });
+        } finally {
+            setBulkUpdating(false);
+        }
+    };
+
     const catalogTitle =
         catalogView === "standard"
             ? "Standard catalog — visible to all wholesale clients"
@@ -2773,7 +2887,8 @@ function ProductsTab() {
                 <p className="font-medium">How wholesale flavours work</p>
                 <ul className="text-blue-800/90 space-y-1 list-disc list-inside">
                     <li><strong>Create New Flavour</strong> — adds a brand-new flavour name, wholesale profile, and optional size pricing.</li>
-                    <li><strong>Pencil icon</strong> on any row — set up or edit wholesale metadata, catalog access (all clients vs specific clients), and active status. Set prices in the matrix.</li>
+                    <li><strong>Pencil icon</strong> on any row — set up or edit wholesale metadata, catalog access (all clients vs specific clients), and availability. Set prices in the matrix.</li>
+                    <li><strong>Search & multi-select</strong> — filter the list, then bulk <strong>show</strong> or <strong>hide</strong> flavours from client ordering.</li>
                 </ul>
             </div>
 
@@ -2853,23 +2968,133 @@ function ProductsTab() {
 
             {(catalogView !== "customer" || customerFilterId) && (
                 <WholesaleProductMatrix
-                    flavours={wholesaleFlavours}
+                    flavours={filteredFlavours}
                     sizes={sizes}
                     products={products}
                 />
             )}
 
             <Card>
-                <CardHeader>
+                <CardHeader className="space-y-4">
                     <CardTitle>
                         {catalogView === "exclusive" ? "Exclusive Flavour Profiles" : "Wholesale Flavour Profiles"}
                     </CardTitle>
+                    <div className="flex flex-col gap-3">
+                        <div className="relative max-w-md">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Input
+                                placeholder="Search flavours, allergens, clients…"
+                                value={flavourSearch}
+                                onChange={(e) => setFlavourSearch(e.target.value)}
+                                className="pl-9"
+                            />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <Select
+                                value={availabilityFilter}
+                                onValueChange={(v) => setAvailabilityFilter(v as FlavourAvailabilityFilter)}
+                            >
+                                <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="Availability" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All availability</SelectItem>
+                                    <SelectItem value="available">Available for ordering</SelectItem>
+                                    <SelectItem value="hidden">Hidden from ordering</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Select
+                                value={setupFilter}
+                                onValueChange={(v) => setSetupFilter(v as FlavourSetupFilter)}
+                            >
+                                <SelectTrigger className="w-[160px]">
+                                    <SelectValue placeholder="Setup" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All setup states</SelectItem>
+                                    <SelectItem value="setup">Wholesale set up</SelectItem>
+                                    <SelectItem value="not_setup">Not set up yet</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Select
+                                value={seasonalFilter}
+                                onValueChange={(v) => setSeasonalFilter(v as FlavourSeasonalFilter)}
+                            >
+                                <SelectTrigger className="w-[150px]">
+                                    <SelectValue placeholder="Type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All types</SelectItem>
+                                    <SelectItem value="seasonal">Seasonal only</SelectItem>
+                                    <SelectItem value="year_round">Year-round only</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            {(flavourSearch || availabilityFilter !== "all" || setupFilter !== "all" || seasonalFilter !== "all") && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                        setFlavourSearch("");
+                                        setAvailabilityFilter("all");
+                                        setSetupFilter("all");
+                                        setSeasonalFilter("all");
+                                    }}
+                                >
+                                    Clear filters
+                                </Button>
+                            )}
+                        </div>
+                        {selectedFlavourIds.size > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#A1AB74]/30 bg-[#A1AB74]/10 px-3 py-2">
+                                <span className="text-sm font-medium text-gray-700">
+                                    {selectedFlavourIds.size} selected
+                                </span>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-white"
+                                    disabled={bulkUpdating}
+                                    onClick={() => bulkSetFlavourActive(true)}
+                                >
+                                    <Eye className="h-4 w-4 mr-1" />
+                                    Show for ordering
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-white"
+                                    disabled={bulkUpdating}
+                                    onClick={() => bulkSetFlavourActive(false)}
+                                >
+                                    <EyeOff className="h-4 w-4 mr-1" />
+                                    Hide from ordering
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setSelectedFlavourIds(new Set())}
+                                >
+                                    Clear selection
+                                </Button>
+                            </div>
+                        )}
+                        <p className="text-xs text-gray-500">
+                            Showing {filteredFlavours.length} of {wholesaleFlavours.length} flavours
+                        </p>
+                    </div>
                 </CardHeader>
                 <CardContent className="p-0">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b bg-gray-50 text-left">
+                                    <th className="px-4 py-3 w-10">
+                                        <Checkbox
+                                            checked={allFilteredSelected}
+                                            onCheckedChange={toggleAllFilteredFlavours}
+                                            aria-label="Select all filtered flavours"
+                                        />
+                                    </th>
                                     <th className="px-4 py-3 font-medium">Flavour</th>
                                     <th className="px-4 py-3 font-medium">Catalog</th>
                                     <th className="px-4 py-3 font-medium">Assigned Clients</th>
@@ -2880,8 +3105,18 @@ function ProductsTab() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {wholesaleFlavours.map((f: any) => (
-                                    <tr key={f.flavourId} className="border-b hover:bg-gray-50">
+                                {filteredFlavours.map((f: any) => (
+                                    <tr
+                                        key={f.flavourId}
+                                        className={`border-b hover:bg-gray-50 ${!isFlavourAvailableForOrdering(f) ? "opacity-60" : ""} ${selectedFlavourIds.has(f.flavourId) ? "bg-[#A1AB74]/5" : ""}`}
+                                    >
+                                        <td className="px-4 py-3">
+                                            <Checkbox
+                                                checked={selectedFlavourIds.has(f.flavourId)}
+                                                onCheckedChange={() => toggleFlavourSelection(f.flavourId)}
+                                                aria-label={`Select ${f.flavourName}`}
+                                            />
+                                        </td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="font-medium">{f.flavourName}</span>
@@ -2924,8 +3159,8 @@ function ProductsTab() {
                                             </Badge>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <Badge className={f.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}>
-                                                {f.active ? "Active" : "Inactive"}
+                                            <Badge className={isFlavourAvailableForOrdering(f) ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}>
+                                                {isFlavourAvailableForOrdering(f) ? "Available" : "Hidden"}
                                             </Badge>
                                         </td>
                                         <td className="px-4 py-3">
@@ -2962,6 +3197,13 @@ function ProductsTab() {
                                         </td>
                                     </tr>
                                 ))}
+                                {filteredFlavours.length === 0 && (
+                                    <tr>
+                                        <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
+                                            No flavours match your search or filters
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
