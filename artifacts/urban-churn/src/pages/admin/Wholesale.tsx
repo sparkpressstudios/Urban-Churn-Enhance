@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -2708,7 +2708,6 @@ function ProductsTab() {
     const [showFlavourDialog, setShowFlavourDialog] = useState(false);
     const [showCreateFullFlavour, setShowCreateFullFlavour] = useState(false);
     const [showCreateExclusiveFlavour, setShowCreateExclusiveFlavour] = useState(false);
-    const [manageExclusiveFlavour, setManageExclusiveFlavour] = useState<any | null>(null);
     const [editingFlavour, setEditingFlavour] = useState<any | null>(null);
 
     const catalogParams = catalogQueryParams(catalogView, customerFilterId);
@@ -2764,6 +2763,11 @@ function ProductsTab() {
     const wholesaleFlavours = wholesaleFlavoursQ.data || [];
     const customers = customersQ.data || [];
 
+    const linkedFlavourIds = useMemo(
+        () => new Set<number>(wholesaleFlavours.map((f: any) => f.flavourId as number)),
+        [wholesaleFlavours],
+    );
+
     const catalogTitle =
         catalogView === "standard"
             ? "Standard catalog — visible to all wholesale clients"
@@ -2775,11 +2779,13 @@ function ProductsTab() {
 
     return (
         <div className="space-y-4">
-            <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-4 text-sm text-blue-900">
-                <p className="font-medium mb-1">Catalog setup</p>
-                <p className="text-blue-800/90">
-                    <strong>Standard</strong> flavours appear for every client. <strong>Exclusive</strong> flavours are hidden unless assigned to that client — use this for custom or private-label flavours.
-                </p>
+            <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-4 text-sm text-blue-900 space-y-2">
+                <p className="font-medium">How wholesale flavours work</p>
+                <ul className="text-blue-800/90 space-y-1 list-disc list-inside">
+                    <li><strong>Create New Flavour</strong> — adds a brand-new flavour name, wholesale profile, and optional size pricing (visible to all clients).</li>
+                    <li><strong>Add Existing Retail Flavour</strong> — links a flavour already in your shop catalog to wholesale (metadata only; set prices in the matrix).</li>
+                    <li><strong>Edit (pencil)</strong> — update description, allergens, active status, and choose <strong>all clients</strong> or <strong>specific clients only</strong>.</li>
+                </ul>
             </div>
 
             <Card>
@@ -2842,12 +2848,12 @@ function ProductsTab() {
                     {catalogView === "standard" && (
                         <Button variant="outline" onClick={() => setShowCreateFullFlavour(true)}>
                             <Plus className="mr-1 h-4 w-4" />
-                            New Flavour
+                            Create New Flavour
                         </Button>
                     )}
                     <Button variant="outline" onClick={() => { setEditingFlavour(null); setShowFlavourDialog(true); }}>
                         <Plus className="mr-1 h-4 w-4" />
-                        Add Flavour Metadata
+                        Add Existing Retail Flavour
                     </Button>
                     <Button variant="outline" onClick={() => { setEditingSize(null); setShowSizeDialog(true); }}>
                         <Plus className="mr-1 h-4 w-4" />
@@ -2932,17 +2938,12 @@ function ProductsTab() {
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex gap-1">
-                                                {f.isExclusive && f.id && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        title="Manage assigned clients"
-                                                        onClick={() => setManageExclusiveFlavour(f)}
-                                                    >
-                                                        <Users className="h-4 w-4" />
-                                                    </Button>
-                                                )}
-                                                <Button size="sm" variant="ghost" onClick={() => { setEditingFlavour(f); setShowFlavourDialog(true); }}>
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    title="Edit flavour, catalog access, and client assignments"
+                                                    onClick={() => { setEditingFlavour(f); setShowFlavourDialog(true); }}
+                                                >
                                                     <Pencil className="h-4 w-4" />
                                                 </Button>
                                                 <Button
@@ -3145,23 +3146,10 @@ function ProductsTab() {
                 />
             )}
 
-            {manageExclusiveFlavour && (
-                <ManageExclusiveCustomersDialog
-                    flavour={manageExclusiveFlavour}
-                    customers={customers}
-                    onClose={() => setManageExclusiveFlavour(null)}
-                    onSaved={() => {
-                        setManageExclusiveFlavour(null);
-                        queryClient.invalidateQueries({ queryKey: ["wholesale-flavours"] });
-                        queryClient.invalidateQueries({ queryKey: ["wholesale-products"] });
-                        toast({ title: "Client assignments updated" });
-                    }}
-                />
-            )}
-
             {showFlavourDialog && (
                 <AddWholesaleFlavourDialog
                     baseFlavours={flavoursQ.data || []}
+                    linkedFlavourIds={linkedFlavourIds}
                     customers={customers}
                     flavour={editingFlavour}
                     onClose={() => {
@@ -3383,6 +3371,62 @@ function CreateFullFlavourDialog({
     );
 }
 
+type CatalogAccess = "all" | "exclusive";
+
+function CatalogVisibilityFields({
+    catalogAccess,
+    onCatalogAccessChange,
+    customers,
+    customerIds,
+    onCustomerIdsChange,
+}: {
+    catalogAccess: CatalogAccess;
+    onCatalogAccessChange: (value: CatalogAccess) => void;
+    customers: any[];
+    customerIds: number[];
+    onCustomerIdsChange: (ids: number[]) => void;
+}) {
+    return (
+        <div className="space-y-3 rounded-lg border border-gray-200 p-3 bg-gray-50/60">
+            <p className="text-sm font-medium text-gray-800">Who can order this flavour?</p>
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <input
+                    type="radio"
+                    name="catalogAccess"
+                    checked={catalogAccess === "all"}
+                    onChange={() => onCatalogAccessChange("all")}
+                    className="mt-0.5"
+                />
+                <span>
+                    <strong>All wholesale clients</strong>
+                    <span className="block text-xs text-gray-500">Standard catalog — everyone sees it in their portal</span>
+                </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <input
+                    type="radio"
+                    name="catalogAccess"
+                    checked={catalogAccess === "exclusive"}
+                    onChange={() => onCatalogAccessChange("exclusive")}
+                    className="mt-0.5"
+                />
+                <span>
+                    <strong>Specific clients only</strong>
+                    <span className="block text-xs text-gray-500">Exclusive — hidden from all other clients</span>
+                </span>
+            </label>
+            {catalogAccess === "exclusive" && (
+                <CustomerAssignmentPicker
+                    customers={customers}
+                    selectedIds={customerIds}
+                    onChange={onCustomerIdsChange}
+                    searchPlaceholder="Search clients to assign…"
+                />
+            )}
+        </div>
+    );
+}
+
 function CustomerAssignmentPicker({
     customers,
     selectedIds,
@@ -3559,96 +3603,51 @@ function CreateExclusiveFlavourDialog({
     );
 }
 
-function ManageExclusiveCustomersDialog({
-    flavour,
-    customers,
-    onClose,
-    onSaved,
-}: {
-    flavour: any;
-    customers: any[];
-    onClose: () => void;
-    onSaved: () => void;
-}) {
-    const initialIds = (flavour.exclusiveCustomers || []).map((c: any) => c.id);
-    const [customerIds, setCustomerIds] = useState<number[]>(initialIds);
-    const [saving, setSaving] = useState(false);
-
-    const handleSave = async () => {
-        if (!flavour.id) return;
-        setSaving(true);
-        try {
-            await api.updateWholesaleExclusiveCustomers(flavour.id, customerIds);
-            onSaved();
-        } catch (e: any) {
-            alert(e.message);
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <Dialog open onOpenChange={onClose}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>Manage Client Access</DialogTitle>
-                </DialogHeader>
-                <p className="text-sm text-gray-600 -mt-2">
-                    Choose which wholesale clients can see <strong>{flavour.flavourName}</strong> in their portal.
-                </p>
-                <CustomerAssignmentPicker
-                    customers={customers}
-                    selectedIds={customerIds}
-                    onChange={setCustomerIds}
-                    searchPlaceholder="Filter clients…"
-                />
-                <Button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="w-full bg-violet-600 hover:bg-violet-700"
-                >
-                    {saving ? "Saving…" : "Save Assignments"}
-                </Button>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
 function AddWholesaleFlavourDialog({
     baseFlavours,
+    linkedFlavourIds,
     customers,
     flavour,
     onClose,
     onSaved,
 }: {
     baseFlavours: any[];
+    linkedFlavourIds: Set<number>;
     customers: any[];
     flavour?: any | null;
     onClose: () => void;
     onSaved: () => void;
 }) {
+    const isEditing = !!flavour;
     const [form, setForm] = useState({
         flavourId: flavour?.flavourId ? String(flavour.flavourId) : "",
         description: flavour?.description || "",
         allergens: flavour?.allergens || "",
         isSeasonal: flavour?.isSeasonal ?? false,
-        isExclusive: flavour?.isExclusive ?? false,
         active: flavour?.active ?? true,
         sortOrder: String(flavour?.sortOrder ?? 0),
     });
+    const [catalogAccess, setCatalogAccess] = useState<CatalogAccess>(
+        flavour?.isExclusive ? "exclusive" : "all",
+    );
     const [customerIds, setCustomerIds] = useState<number[]>(
         (flavour?.exclusiveCustomers || []).map((c: any) => c.id),
     );
     const [saving, setSaving] = useState(false);
 
+    const selectableFlavours = isEditing
+        ? baseFlavours
+        : baseFlavours.filter((f) => !linkedFlavourIds.has(f.id));
+
     const handleSave = async () => {
         if (!form.flavourId) return;
-        if (form.isExclusive && customerIds.length === 0) {
+        if (catalogAccess === "exclusive" && customerIds.length === 0) {
             alert("Select at least one client for exclusive flavours");
             return;
         }
         setSaving(true);
         try {
+            const isExclusive = catalogAccess === "exclusive";
             const payload: Record<string, unknown> = {
                 flavourId: parseInt(form.flavourId),
                 description: form.description,
@@ -3656,16 +3655,11 @@ function AddWholesaleFlavourDialog({
                 isSeasonal: form.isSeasonal,
                 active: form.active,
                 sortOrder: parseInt(form.sortOrder) || 0,
+                isExclusive,
+                customerIds: isExclusive ? customerIds : [],
             };
 
             if (flavour?.id) {
-                payload.isExclusive = form.isExclusive;
-                if (form.isExclusive) {
-                    payload.customerIds = customerIds;
-                } else {
-                    payload.isExclusive = false;
-                    payload.customerIds = [];
-                }
                 await api.updateWholesaleFlavour(flavour.id, payload);
             } else {
                 await api.createWholesaleFlavour(payload);
@@ -3680,27 +3674,50 @@ function AddWholesaleFlavourDialog({
 
     return (
         <Dialog open onOpenChange={onClose}>
-            <DialogContent>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>{flavour ? "Edit Wholesale Flavour" : "Add Wholesale Flavour"}</DialogTitle>
+                    <DialogTitle>
+                        {isEditing ? "Edit Flavour & Catalog Access" : "Add Existing Retail Flavour"}
+                    </DialogTitle>
                 </DialogHeader>
+                {isEditing ? (
+                    <p className="text-sm text-gray-600 -mt-2">
+                        Editing <strong>{flavour.flavourName}</strong> — update wholesale details and who can see it.
+                    </p>
+                ) : (
+                    <p className="text-sm text-gray-600 -mt-2">
+                        Link a flavour from your shop catalog to wholesale. Set size prices in the matrix after saving.
+                    </p>
+                )}
                 <div className="space-y-3">
-                    <Select
-                        value={form.flavourId}
-                        onValueChange={(v) => setForm({ ...form, flavourId: v })}
-                        disabled={!!flavour?.id}
-                    >
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select flavor *" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {baseFlavours.map((f: any) => (
-                                <SelectItem key={f.id} value={String(f.id)}>
-                                    {f.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    {isEditing ? (
+                        <div className="rounded-md border bg-gray-50 px-3 py-2 text-sm">
+                            <span className="text-gray-500">Flavour: </span>
+                            <span className="font-medium">{flavour.flavourName}</span>
+                        </div>
+                    ) : (
+                        <Select
+                            value={form.flavourId}
+                            onValueChange={(v) => setForm({ ...form, flavourId: v })}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select retail flavour *" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {selectableFlavours.length === 0 ? (
+                                    <SelectItem value="__none" disabled>
+                                        All retail flavours are already in wholesale
+                                    </SelectItem>
+                                ) : (
+                                    selectableFlavours.map((f: any) => (
+                                        <SelectItem key={f.id} value={String(f.id)}>
+                                            {f.name}
+                                        </SelectItem>
+                                    ))
+                                )}
+                            </SelectContent>
+                        </Select>
+                    )}
                     <Textarea
                         placeholder="Wholesale description"
                         value={form.description}
@@ -3736,30 +3753,18 @@ function AddWholesaleFlavourDialog({
                         value={form.sortOrder}
                         onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
                     />
-                    {flavour?.id && (
-                        <>
-                            <label className="flex items-center gap-2 text-sm text-gray-700">
-                                <input
-                                    type="checkbox"
-                                    checked={form.isExclusive}
-                                    onChange={(e) => setForm({ ...form, isExclusive: e.target.checked })}
-                                />
-                                Client-exclusive flavour (hidden from other clients)
-                            </label>
-                            {form.isExclusive && (
-                                <div>
-                                    <p className="text-sm font-medium mb-2">Assigned clients</p>
-                                    <CustomerAssignmentPicker
-                                        customers={customers}
-                                        selectedIds={customerIds}
-                                        onChange={setCustomerIds}
-                                    />
-                                </div>
-                            )}
-                        </>
-                    )}
-                    <Button onClick={handleSave} disabled={saving} className="w-full">
-                        {saving ? "Saving…" : flavour ? "Save Flavour" : "Add Flavour"}
+                    <CatalogVisibilityFields
+                        catalogAccess={catalogAccess}
+                        onCatalogAccessChange={(value) => {
+                            setCatalogAccess(value);
+                            if (value === "all") setCustomerIds([]);
+                        }}
+                        customers={customers}
+                        customerIds={customerIds}
+                        onCustomerIdsChange={setCustomerIds}
+                    />
+                    <Button onClick={handleSave} disabled={saving || (!isEditing && !form.flavourId)} className="w-full">
+                        {saving ? "Saving…" : isEditing ? "Save Changes" : "Add to Wholesale"}
                     </Button>
                 </div>
             </DialogContent>

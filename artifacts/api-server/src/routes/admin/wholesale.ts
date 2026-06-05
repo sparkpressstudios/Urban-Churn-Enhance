@@ -475,17 +475,34 @@ router.get("/flavours", async (req, res) => {
 });
 
 router.post("/flavours", async (req, res) => {
-    const { flavourId, description, allergens, isSeasonal, active, sortOrder } = req.body;
+    const {
+        flavourId,
+        description,
+        allergens,
+        isSeasonal,
+        isExclusive,
+        active,
+        sortOrder,
+        customerIds,
+    } = req.body;
 
     if (!flavourId) {
         res.status(400).json({ error: "flavourId is required" });
         return;
     }
 
+    const exclusive = isExclusive === true;
+    if (exclusive && (!Array.isArray(customerIds) || customerIds.length === 0)) {
+        res.status(400).json({ error: "At least one customerId is required for exclusive flavours" });
+        return;
+    }
+
+    const numericFlavourId = Number(flavourId);
+
     const [existing] = await db
         .select({ id: wholesaleFlavoursTable.id })
         .from(wholesaleFlavoursTable)
-        .where(eq(wholesaleFlavoursTable.flavourId, Number(flavourId)))
+        .where(eq(wholesaleFlavoursTable.flavourId, numericFlavourId))
         .limit(1);
 
     if (existing) {
@@ -495,12 +512,21 @@ router.post("/flavours", async (req, res) => {
                 description: description ?? "",
                 allergens: allergens ?? "",
                 isSeasonal: isSeasonal === true,
+                isExclusive: exclusive,
                 active: active !== false,
                 sortOrder: sortOrder || 0,
                 updatedAt: new Date(),
             })
             .where(eq(wholesaleFlavoursTable.id, existing.id))
             .returning();
+
+        if (Array.isArray(customerIds)) {
+            await syncExclusiveCustomers(numericFlavourId, customerIds);
+        } else if (isExclusive === false) {
+            await db
+                .delete(wholesaleCustomerExclusiveFlavoursTable)
+                .where(eq(wholesaleCustomerExclusiveFlavoursTable.flavourId, numericFlavourId));
+        }
 
         res.json(updated);
         return;
@@ -509,14 +535,19 @@ router.post("/flavours", async (req, res) => {
     const [created] = await db
         .insert(wholesaleFlavoursTable)
         .values({
-            flavourId: Number(flavourId),
+            flavourId: numericFlavourId,
             description: description ?? "",
             allergens: allergens ?? "",
             isSeasonal: isSeasonal === true,
+            isExclusive: exclusive,
             active: active !== false,
             sortOrder: sortOrder || 0,
         })
         .returning();
+
+    if (exclusive && Array.isArray(customerIds)) {
+        await syncExclusiveCustomers(numericFlavourId, customerIds);
+    }
 
     res.status(201).json(created);
 });
