@@ -551,6 +551,8 @@ export const api = {
     deleteWholesaleFlavour: (id: number) =>
         apiFetch(`/admin/wholesale/flavours/${id}`, { method: "DELETE" }),
     getWholesaleSizes: () => apiFetch("/admin/wholesale/sizes"),
+    ensureWholesaleCanonicalSizes: () =>
+        apiFetch("/admin/wholesale/sizes/ensure-canonical", { method: "POST" }),
     createWholesaleSize: (data: any) =>
         apiFetch("/admin/wholesale/sizes", { method: "POST", body: JSON.stringify(data) }),
     updateWholesaleSize: (id: number, data: any) =>

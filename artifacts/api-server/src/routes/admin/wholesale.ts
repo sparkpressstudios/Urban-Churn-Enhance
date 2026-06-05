@@ -965,6 +965,43 @@ router.get("/sizes", async (_req, res) => {
     res.json(sizes);
 });
 
+const CANONICAL_WHOLESALE_SIZES = [
+    { name: "3 Gallon", slug: "3-gallon", description: "3 gallon wholesale bucket", sizeCategory: "3_gallon" as const, sortOrder: 10 },
+    { name: "1.5 Gallon", slug: "1-5-gallon", description: "1.5 gallon wholesale bucket", sizeCategory: null, sortOrder: 20 },
+    { name: "Half Gallon", slug: "half-gallon", description: "Half gallon wholesale package", sizeCategory: "half_gallon" as const, sortOrder: 90 },
+    { name: "Pint", slug: "pint", description: "Pint wholesale package", sizeCategory: "pint" as const, sortOrder: 100 },
+];
+
+router.post("/sizes/ensure-canonical", async (_req, res) => {
+    let created = 0;
+    for (const def of CANONICAL_WHOLESALE_SIZES) {
+        const [existing] = await db
+            .select({ id: wholesaleSizesTable.id })
+            .from(wholesaleSizesTable)
+            .where(eq(wholesaleSizesTable.slug, def.slug))
+            .limit(1);
+
+        if (existing) continue;
+
+        await db.insert(wholesaleSizesTable).values({
+            name: def.name,
+            slug: def.slug,
+            description: def.description,
+            sizeCategory: def.sizeCategory,
+            active: true,
+            sortOrder: def.sortOrder,
+        });
+        created++;
+    }
+
+    const sizes = await db
+        .select()
+        .from(wholesaleSizesTable)
+        .orderBy(asc(wholesaleSizesTable.sortOrder), asc(wholesaleSizesTable.name));
+
+    res.json({ created, sizes });
+});
+
 router.post("/sizes", async (req, res) => {
     const { name, slug, description, sizeCategory, active, sortOrder } = req.body;
 
