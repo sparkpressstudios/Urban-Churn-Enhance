@@ -11,7 +11,7 @@ import {
     customersTable,
     flavoursTable,
 } from "@workspace/db/schema";
-import { eq, desc, and, asc, sql } from "drizzle-orm";
+import { eq, desc, and, asc, sql, count, sum, gte, or } from "drizzle-orm";
 import { requireCustomer } from "../middlewares/customer-auth";
 import {
     sendWholesalePortalOrderConfirmation,
@@ -278,6 +278,139 @@ router.post("/orders", async (req, res) => {
 });
 
 // ── GET /orders – list customer's wholesale orders ──
+router.get("/dashboard", async (req, res) => {
+    const wc = await getWholesaleCustomer(req.customer!.userId);
+    if (!wc) {
+        res.status(403).json({ error: "No active wholesale account" });
+        return;
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const activeStatuses = ["pending_review", "confirmed", "in_production", "ready"] as const;
+
+    const [totalRow] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.wholesaleCustomerId, wc.id));
+
+    const [deliveredRow] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                eq(wholesaleOrdersTable.wholesaleCustomerId, wc.id),
+                eq(wholesaleOrdersTable.status, "delivered"),
+            ),
+        );
+
+    const [activeRow] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                eq(wholesaleOrdersTable.wholesaleCustomerId, wc.id),
+                or(
+                    eq(wholesaleOrdersTable.status, "pending_review"),
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                    eq(wholesaleOrdersTable.status, "ready"),
+                )!,
+            ),
+        );
+
+    const [outstandingRow] = await db
+        .select({ total: sum(wholesaleOrdersTable.subtotalCents) })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                eq(wholesaleOrdersTable.wholesaleCustomerId, wc.id),
+                or(
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                    eq(wholesaleOrdersTable.status, "ready"),
+                )!,
+                sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`,
+            ),
+        );
+
+    const activeOrders = await db
+        .select({
+            id: wholesaleOrdersTable.id,
+            orderNumber: wholesaleOrdersTable.orderNumber,
+            status: wholesaleOrdersTable.status,
+            subtotalCents: wholesaleOrdersTable.subtotalCents,
+            paymentStatus: wholesaleOrdersTable.paymentStatus,
+            requestedDeliveryDate: wholesaleOrdersTable.requestedDeliveryDate,
+            confirmedDeliveryDate: wholesaleOrdersTable.confirmedDeliveryDate,
+            deliveryMethod: wholesaleOrdersTable.deliveryMethod,
+            createdAt: wholesaleOrdersTable.createdAt,
+        })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                eq(wholesaleOrdersTable.wholesaleCustomerId, wc.id),
+                or(
+                    eq(wholesaleOrdersTable.status, "pending_review"),
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                    eq(wholesaleOrdersTable.status, "ready"),
+                )!,
+            ),
+        )
+        .orderBy(desc(wholesaleOrdersTable.createdAt))
+        .limit(10);
+
+    const [nextDelivery] = await db
+        .select({
+            id: wholesaleOrdersTable.id,
+            orderNumber: wholesaleOrdersTable.orderNumber,
+            status: wholesaleOrdersTable.status,
+            confirmedDeliveryDate: wholesaleOrdersTable.confirmedDeliveryDate,
+            deliveryMethod: wholesaleOrdersTable.deliveryMethod,
+        })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                eq(wholesaleOrdersTable.wholesaleCustomerId, wc.id),
+                or(
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                    eq(wholesaleOrdersTable.status, "ready"),
+                )!,
+                gte(wholesaleOrdersTable.confirmedDeliveryDate, todayStr),
+            ),
+        )
+        .orderBy(asc(wholesaleOrdersTable.confirmedDeliveryDate))
+        .limit(1);
+
+    const recentOrders = await db
+        .select({
+            id: wholesaleOrdersTable.id,
+            orderNumber: wholesaleOrdersTable.orderNumber,
+            status: wholesaleOrdersTable.status,
+            subtotalCents: wholesaleOrdersTable.subtotalCents,
+            paymentStatus: wholesaleOrdersTable.paymentStatus,
+            createdAt: wholesaleOrdersTable.createdAt,
+            confirmedDeliveryDate: wholesaleOrdersTable.confirmedDeliveryDate,
+        })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.wholesaleCustomerId, wc.id))
+        .orderBy(desc(wholesaleOrdersTable.createdAt))
+        .limit(5);
+
+    res.json({
+        orderCounts: {
+            total: Number(totalRow?.count || 0),
+            active: Number(activeRow?.count || 0),
+            delivered: Number(deliveredRow?.count || 0),
+        },
+        outstandingBalanceCents: Number(outstandingRow?.total || 0),
+        activeOrders,
+        nextDelivery: nextDelivery || null,
+        recentOrders,
+    });
+});
+
 router.get("/orders", async (req, res) => {
     const wc = await getWholesaleCustomer(req.customer!.userId);
     if (!wc) {
