@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { Label } from "@/components/ui/label";
 import { Save } from "lucide-react";
 
 type MatrixCell = {
@@ -204,7 +205,7 @@ function MatrixRow({
                 const cell = getCell(flavour.flavourId, size.id);
                 return (
                     <td key={size.id} className="px-1 py-1 align-top">
-                        <div className="space-y-1 rounded border border-gray-100 p-1.5 bg-white">
+                        <div className="space-y-1.5 rounded border border-gray-100 p-1.5 bg-white">
                             <label className="flex items-center gap-1">
                                 <input
                                     type="checkbox"
@@ -216,25 +217,27 @@ function MatrixRow({
                                         })
                                     }
                                 />
-                                <span className="text-[10px] text-gray-500">On</span>
+                                <span className="text-[10px] text-gray-600 font-medium">Available</span>
                             </label>
                             {cell.enabled && (
                                 <>
-                                    <Input
-                                        type="number"
-                                        step="0.01"
-                                        min={0}
-                                        className="h-7 text-xs px-1"
-                                        value={(cell.priceCents / 100).toFixed(2)}
-                                        onChange={(e) =>
-                                            setCell(flavour.flavourId, size.id, {
-                                                priceCents: Math.round(parseFloat(e.target.value || "0") * 100),
-                                                enabled: true,
-                                                available: true,
-                                            })
-                                        }
-                                        placeholder="$"
-                                    />
+                                    <div className="space-y-0.5">
+                                        <Label className="text-[10px] text-gray-500">Price ($)</Label>
+                                        <Input
+                                            type="number"
+                                            step="0.01"
+                                            min={0}
+                                            className="h-7 text-xs px-1"
+                                            value={(cell.priceCents / 100).toFixed(2)}
+                                            onChange={(e) =>
+                                                setCell(flavour.flavourId, size.id, {
+                                                    priceCents: Math.round(parseFloat(e.target.value || "0") * 100),
+                                                    enabled: true,
+                                                    available: true,
+                                                })
+                                            }
+                                        />
+                                    </div>
                                     <label className="flex items-center gap-1">
                                         <input
                                             type="checkbox"
@@ -245,21 +248,23 @@ function MatrixRow({
                                                 })
                                             }
                                         />
-                                        <span className="text-[10px] text-gray-500">Stock</span>
+                                        <span className="text-[10px] text-gray-600 font-medium">Track inventory</span>
                                     </label>
                                     {cell.manageStock && (
-                                        <Input
-                                            type="number"
-                                            min={0}
-                                            className="h-7 text-xs px-1"
-                                            value={cell.stockQuantity}
-                                            onChange={(e) =>
-                                                setCell(flavour.flavourId, size.id, {
-                                                    stockQuantity: parseInt(e.target.value) || 0,
-                                                })
-                                            }
-                                            placeholder="Qty"
-                                        />
+                                        <div className="space-y-0.5">
+                                            <Label className="text-[10px] text-gray-500">Inventory</Label>
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                className="h-7 text-xs px-1"
+                                                value={cell.stockQuantity}
+                                                onChange={(e) =>
+                                                    setCell(flavour.flavourId, size.id, {
+                                                        stockQuantity: parseInt(e.target.value) || 0,
+                                                    })
+                                                }
+                                            />
+                                        </div>
                                     )}
                                 </>
                             )}

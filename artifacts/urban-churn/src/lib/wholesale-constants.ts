@@ -46,6 +46,16 @@ export const WHOLESALE_ORDER_FILTERS = [
     { value: "cancelled", label: "Cancelled" },
 ] as const;
 
+/** Standard wholesale package sizes (matched by slug in wholesale_sizes). */
+export const WHOLESALE_CANONICAL_SIZES = [
+    { slug: "pint", label: "Pint" },
+    { slug: "half-gallon", label: "Half Gallon" },
+    { slug: "1-5-gallon", label: "1.5 Gallon" },
+    { slug: "3-gallon", label: "3 Gallon" },
+] as const;
+
+export type WholesaleCanonicalSizeSlug = (typeof WHOLESALE_CANONICAL_SIZES)[number]["slug"];
+
 export function parseWholesaleOrderFilter(value: string): { status?: string; filter?: string } {
     if (value.startsWith("filter:")) {
         return { filter: value.replace("filter:", "") };

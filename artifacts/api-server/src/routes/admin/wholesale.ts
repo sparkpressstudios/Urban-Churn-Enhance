@@ -1171,6 +1171,89 @@ router.post("/products", async (req, res) => {
     res.status(201).json(product);
 });
 
+router.put("/products/bulk/size-availability", async (req, res) => {
+    const { flavourIds, wholesaleSizeIds, enabled, defaultPriceCents } = req.body;
+
+    if (!Array.isArray(flavourIds) || flavourIds.length === 0) {
+        res.status(400).json({ error: "flavourIds array is required" });
+        return;
+    }
+    if (!Array.isArray(wholesaleSizeIds) || wholesaleSizeIds.length === 0) {
+        res.status(400).json({ error: "wholesaleSizeIds array is required" });
+        return;
+    }
+    if (typeof enabled !== "boolean") {
+        res.status(400).json({ error: "enabled boolean is required" });
+        return;
+    }
+
+    const sizeRows = await db
+        .select()
+        .from(wholesaleSizesTable)
+        .where(inArray(wholesaleSizesTable.id, wholesaleSizeIds.map(Number)));
+
+    if (sizeRows.length === 0) {
+        res.status(400).json({ error: "No valid wholesale sizes found" });
+        return;
+    }
+
+    const priceCents = Math.max(0, Math.round(Number(defaultPriceCents) || 0));
+
+    let updated = 0;
+    let created = 0;
+    let disabled = 0;
+    let skipped = 0;
+
+    for (const rawFlavourId of flavourIds) {
+        const flavourId = Number(rawFlavourId);
+        if (!flavourId || Number.isNaN(flavourId)) continue;
+
+        for (const size of sizeRows) {
+            const [existing] = await db
+                .select()
+                .from(wholesaleProductsTable)
+                .where(
+                    and(
+                        eq(wholesaleProductsTable.flavourId, flavourId),
+                        eq(wholesaleProductsTable.wholesaleSizeId, size.id),
+                    ),
+                )
+                .limit(1);
+
+            if (enabled) {
+                if (existing) {
+                    await db
+                        .update(wholesaleProductsTable)
+                        .set({ available: true, updatedAt: new Date() })
+                        .where(eq(wholesaleProductsTable.id, existing.id));
+                    updated++;
+                } else if (priceCents > 0) {
+                    await db.insert(wholesaleProductsTable).values({
+                        flavourId,
+                        wholesaleSizeId: size.id,
+                        name: size.name,
+                        unitDescription: size.description || "",
+                        priceCents,
+                        sizeCategory: size.sizeCategory,
+                        available: true,
+                    });
+                    created++;
+                } else {
+                    skipped++;
+                }
+            } else if (existing) {
+                await db
+                    .update(wholesaleProductsTable)
+                    .set({ available: false, updatedAt: new Date() })
+                    .where(eq(wholesaleProductsTable.id, existing.id));
+                disabled++;
+            }
+        }
+    }
+
+    res.json({ updated, created, disabled, skipped, total: updated + created + disabled });
+});
+
 router.put("/products/:id", async (req, res) => {
     const id = Number(req.params.id);
     const { flavourId, wholesaleSizeId, name, unitDescription, priceCents, available, sortOrder, sizeCategory, manageStock, stockQuantity, lowStockThreshold } = req.body;

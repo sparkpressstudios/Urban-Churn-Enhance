@@ -538,6 +538,16 @@ export const api = {
             method: "PUT",
             body: JSON.stringify({ flavourIds, active }),
         }),
+    bulkUpdateWholesaleSizeAvailability: (data: {
+        flavourIds: number[];
+        wholesaleSizeIds: number[];
+        enabled: boolean;
+        defaultPriceCents?: number;
+    }) =>
+        apiFetch("/admin/wholesale/products/bulk/size-availability", {
+            method: "PUT",
+            body: JSON.stringify(data),
+        }),
     deleteWholesaleFlavour: (id: number) =>
         apiFetch(`/admin/wholesale/flavours/${id}`, { method: "DELETE" }),
     getWholesaleSizes: () => apiFetch("/admin/wholesale/sizes"),

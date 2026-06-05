@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -11,7 +11,9 @@ import {
     WHOLESALE_PAYMENT_STATUS_LABELS,
     formatWholesaleOrderStatus,
     parseWholesaleOrderFilter,
+    WHOLESALE_CANONICAL_SIZES,
 } from "@/lib/wholesale-constants";
+import { Label } from "@/components/ui/label";
 import { WholesaleProductMatrix } from "@/components/admin/WholesaleProductMatrix";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -2706,6 +2708,73 @@ function isFlavourAvailableForOrdering(flavour: { active?: boolean }) {
     return flavour.active !== false;
 }
 
+function resolveCanonicalSizes(sizes: any[]) {
+    return WHOLESALE_CANONICAL_SIZES.map((def) => ({
+        ...def,
+        size: sizes.find((s) => s.slug === def.slug),
+    }));
+}
+
+function getFlavourEnabledSizeIds(flavourId: number, products: any[]) {
+    return new Set(
+        products
+            .filter((p) => p.flavourId === flavourId && p.available !== false && p.wholesaleSizeId)
+            .map((p) => p.wholesaleSizeId as number),
+    );
+}
+
+function FormSection({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+    return (
+        <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50/40 p-3">
+            <div>
+                <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
+                {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
+            </div>
+            {children}
+        </div>
+    );
+}
+
+function WholesaleSizeCheckboxPicker({
+    canonicalSizes,
+    selectedSizeIds,
+    onChange,
+}: {
+    canonicalSizes: ReturnType<typeof resolveCanonicalSizes>;
+    selectedSizeIds: Set<number>;
+    onChange: (ids: Set<number>) => void;
+}) {
+    const toggle = (sizeId: number) => {
+        const next = new Set(selectedSizeIds);
+        if (next.has(sizeId)) next.delete(sizeId);
+        else next.add(sizeId);
+        onChange(next);
+    };
+
+    return (
+        <div className="grid grid-cols-2 gap-2">
+            {canonicalSizes.map(({ slug, label, size }) =>
+                size ? (
+                    <label
+                        key={slug}
+                        className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm cursor-pointer hover:border-[#A1AB74]/50"
+                    >
+                        <Checkbox
+                            checked={selectedSizeIds.has(size.id)}
+                            onCheckedChange={() => toggle(size.id)}
+                        />
+                        <span>{label}</span>
+                    </label>
+                ) : (
+                    <div key={slug} className="rounded-md border border-dashed border-gray-200 px-3 py-2 text-xs text-gray-400">
+                        {label} — add in Sizes
+                    </div>
+                ),
+            )}
+        </div>
+    );
+}
+
 function filterWholesaleFlavours(
     flavours: any[],
     search: string,
@@ -2760,6 +2829,8 @@ function ProductsTab() {
     const [seasonalFilter, setSeasonalFilter] = useState<FlavourSeasonalFilter>("all");
     const [selectedFlavourIds, setSelectedFlavourIds] = useState<Set<number>>(new Set());
     const [bulkUpdating, setBulkUpdating] = useState(false);
+    const [bulkSelectedSizeIds, setBulkSelectedSizeIds] = useState<Set<number>>(new Set());
+    const [bulkSizeDefaultPrice, setBulkSizeDefaultPrice] = useState("45.00");
 
     const debouncedFlavourSearch = useDebounce(flavourSearch, 200);
 
@@ -2811,6 +2882,13 @@ function ProductsTab() {
     const wholesaleFlavours = wholesaleFlavoursQ.data || [];
     const customers = customersQ.data || [];
 
+    const canonicalSizes = useMemo(() => resolveCanonicalSizes(sizes), [sizes]);
+
+    const allCanonicalSizeIds = useMemo(
+        () => canonicalSizes.map((s) => s.size?.id).filter((id): id is number => !!id),
+        [canonicalSizes],
+    );
+
     const filteredFlavours = useMemo(
         () =>
             filterWholesaleFlavours(
@@ -2852,6 +2930,82 @@ function ProductsTab() {
         }
     };
 
+    const bulkApplySizeAvailability = async () => {
+        const ids = [...selectedFlavourIds];
+        if (ids.length === 0 || bulkSelectedSizeIds.size === 0) return;
+
+        const cents = Math.round(parseFloat(bulkSizeDefaultPrice) * 100);
+        if (!cents || cents <= 0) {
+            toast({ title: "Enter a default price for newly enabled sizes", variant: "destructive" });
+            return;
+        }
+
+        setBulkUpdating(true);
+        try {
+            const result = await api.bulkUpdateWholesaleSizeAvailability({
+                flavourIds: ids,
+                wholesaleSizeIds: [...bulkSelectedSizeIds],
+                enabled: true,
+                defaultPriceCents: cents,
+            });
+            queryClient.invalidateQueries({ queryKey: ["wholesale-products"] });
+            toast({
+                title: "Package sizes enabled",
+                description: `${ids.length} flavour(s), ${result.total ?? 0} size slot(s) updated`,
+            });
+        } catch (err: any) {
+            toast({ title: "Size update failed", description: err.message, variant: "destructive" });
+        } finally {
+            setBulkUpdating(false);
+        }
+    };
+
+    const bulkHideSelectedSizes = async () => {
+        const ids = [...selectedFlavourIds];
+        if (ids.length === 0 || bulkSelectedSizeIds.size === 0) return;
+
+        setBulkUpdating(true);
+        try {
+            const result = await api.bulkUpdateWholesaleSizeAvailability({
+                flavourIds: ids,
+                wholesaleSizeIds: [...bulkSelectedSizeIds],
+                enabled: false,
+            });
+            queryClient.invalidateQueries({ queryKey: ["wholesale-products"] });
+            toast({
+                title: "Package sizes hidden",
+                description: `${result.total ?? 0} size slot(s) removed from ordering`,
+            });
+        } catch (err: any) {
+            toast({ title: "Size update failed", description: err.message, variant: "destructive" });
+        } finally {
+            setBulkUpdating(false);
+        }
+    };
+
+    const bulkDisableAllSizes = async () => {
+        const ids = [...selectedFlavourIds];
+        if (ids.length === 0 || allCanonicalSizeIds.length === 0) return;
+
+        setBulkUpdating(true);
+        try {
+            const result = await api.bulkUpdateWholesaleSizeAvailability({
+                flavourIds: ids,
+                wholesaleSizeIds: allCanonicalSizeIds,
+                enabled: false,
+            });
+            queryClient.invalidateQueries({ queryKey: ["wholesale-products"] });
+            toast({
+                title: "Sizes disabled for selected flavours",
+                description: `${result.total ?? 0} size slot(s) hidden from ordering`,
+            });
+        } catch (err: any) {
+            toast({ title: "Size update failed", description: err.message, variant: "destructive" });
+        } finally {
+            setBulkUpdating(false);
+        }
+    };
+
     const bulkSetFlavourActive = async (active: boolean) => {
         const ids = [...selectedFlavourIds];
         if (ids.length === 0) return;
@@ -2888,7 +3042,7 @@ function ProductsTab() {
                 <ul className="text-blue-800/90 space-y-1 list-disc list-inside">
                     <li><strong>Create New Flavour</strong> — adds a brand-new flavour name, wholesale profile, and optional size pricing.</li>
                     <li><strong>Pencil icon</strong> on any row — set up or edit wholesale metadata, catalog access (all clients vs specific clients), and availability. Set prices in the matrix.</li>
-                    <li><strong>Search & multi-select</strong> — filter the list, then bulk <strong>show</strong> or <strong>hide</strong> flavours from client ordering.</li>
+                    <li><strong>Search & multi-select</strong> — bulk show/hide flavours, or enable package sizes (Pint, Half Gallon, 1.5 Gallon, 3 Gallon) for many flavours at once.</li>
                 </ul>
             </div>
 
@@ -3045,37 +3199,91 @@ function ProductsTab() {
                             )}
                         </div>
                         {selectedFlavourIds.size > 0 && (
-                            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#A1AB74]/30 bg-[#A1AB74]/10 px-3 py-2">
-                                <span className="text-sm font-medium text-gray-700">
-                                    {selectedFlavourIds.size} selected
-                                </span>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="bg-white"
-                                    disabled={bulkUpdating}
-                                    onClick={() => bulkSetFlavourActive(true)}
-                                >
-                                    <Eye className="h-4 w-4 mr-1" />
-                                    Show for ordering
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="bg-white"
-                                    disabled={bulkUpdating}
-                                    onClick={() => bulkSetFlavourActive(false)}
-                                >
-                                    <EyeOff className="h-4 w-4 mr-1" />
-                                    Hide from ordering
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => setSelectedFlavourIds(new Set())}
-                                >
-                                    Clear selection
-                                </Button>
+                            <div className="space-y-3 rounded-lg border border-[#A1AB74]/30 bg-[#A1AB74]/10 px-3 py-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-medium text-gray-700">
+                                        {selectedFlavourIds.size} flavour{selectedFlavourIds.size === 1 ? "" : "s"} selected
+                                    </span>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="bg-white"
+                                        disabled={bulkUpdating}
+                                        onClick={() => bulkSetFlavourActive(true)}
+                                    >
+                                        <Eye className="h-4 w-4 mr-1" />
+                                        Show for ordering
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="bg-white"
+                                        disabled={bulkUpdating}
+                                        onClick={() => bulkSetFlavourActive(false)}
+                                    >
+                                        <EyeOff className="h-4 w-4 mr-1" />
+                                        Hide from ordering
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setSelectedFlavourIds(new Set())}
+                                    >
+                                        Clear selection
+                                    </Button>
+                                </div>
+                                <div className="border-t border-[#A1AB74]/20 pt-3 space-y-2">
+                                    <p className="text-sm font-medium text-gray-800">Available package sizes</p>
+                                    <p className="text-xs text-gray-600">
+                                        Choose which sizes (Pint, Half Gallon, 1.5 Gallon, 3 Gallon) selected flavours can be ordered in.
+                                    </p>
+                                    <WholesaleSizeCheckboxPicker
+                                        canonicalSizes={canonicalSizes}
+                                        selectedSizeIds={bulkSelectedSizeIds}
+                                        onChange={setBulkSelectedSizeIds}
+                                    />
+                                    <div className="flex flex-wrap items-end gap-2">
+                                        <div className="space-y-1">
+                                            <Label htmlFor="bulk-size-default-price" className="text-xs">
+                                                Default price for new sizes ($)
+                                            </Label>
+                                            <Input
+                                                id="bulk-size-default-price"
+                                                type="number"
+                                                step="0.01"
+                                                min={0}
+                                                className="h-8 w-28 text-sm"
+                                                value={bulkSizeDefaultPrice}
+                                                onChange={(e) => setBulkSizeDefaultPrice(e.target.value)}
+                                            />
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            disabled={bulkUpdating || bulkSelectedSizeIds.size === 0}
+                                            onClick={bulkApplySizeAvailability}
+                                        >
+                                            Enable selected sizes
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="bg-white"
+                                            disabled={bulkUpdating || bulkSelectedSizeIds.size === 0}
+                                            onClick={bulkHideSelectedSizes}
+                                        >
+                                            Hide selected sizes
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="bg-white"
+                                            disabled={bulkUpdating}
+                                            onClick={bulkDisableAllSizes}
+                                        >
+                                            Hide all sizes
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
                         )}
                         <p className="text-xs text-gray-500">
@@ -3383,6 +3591,9 @@ function ProductsTab() {
             {showFlavourDialog && editingFlavour && (
                 <AddWholesaleFlavourDialog
                     customers={customers}
+                    canonicalSizes={canonicalSizes}
+                    products={products}
+                    allCanonicalSizeIds={allCanonicalSizeIds}
                     flavour={editingFlavour}
                     onClose={() => {
                         setShowFlavourDialog(false);
@@ -3393,6 +3604,7 @@ function ProductsTab() {
                         setShowFlavourDialog(false);
                         setEditingFlavour(null);
                         queryClient.invalidateQueries({ queryKey: ["wholesale-flavours"] });
+                        queryClient.invalidateQueries({ queryKey: ["wholesale-products"] });
                         toast({ title: wasSetup ? "Wholesale flavour set up" : "Flavour profile updated" });
                     }}
                 />
@@ -3838,11 +4050,17 @@ function CreateExclusiveFlavourDialog({
 
 function AddWholesaleFlavourDialog({
     customers,
+    canonicalSizes,
+    products,
+    allCanonicalSizeIds,
     flavour,
     onClose,
     onSaved,
 }: {
     customers: any[];
+    canonicalSizes: ReturnType<typeof resolveCanonicalSizes>;
+    products: any[];
+    allCanonicalSizeIds: number[];
     flavour: any;
     onClose: () => void;
     onSaved: () => void;
@@ -3862,6 +4080,10 @@ function AddWholesaleFlavourDialog({
     const [customerIds, setCustomerIds] = useState<number[]>(
         (flavour.exclusiveCustomers || []).map((c: any) => c.id),
     );
+    const [enabledSizeIds, setEnabledSizeIds] = useState<Set<number>>(() =>
+        getFlavourEnabledSizeIds(flavour.flavourId, products),
+    );
+    const [sizeDefaultPrice, setSizeDefaultPrice] = useState("45.00");
     const [saving, setSaving] = useState(false);
 
     const handleSave = async () => {
@@ -3870,6 +4092,19 @@ function AddWholesaleFlavourDialog({
             alert("Select at least one client for exclusive flavours");
             return;
         }
+
+        const needsNewSizePrice = [...enabledSizeIds].some((sizeId) => {
+            const existing = products.find(
+                (p) => p.flavourId === flavour.flavourId && p.wholesaleSizeId === sizeId,
+            );
+            return !existing;
+        });
+        const defaultPriceCents = Math.round(parseFloat(sizeDefaultPrice) * 100);
+        if (needsNewSizePrice && (!defaultPriceCents || defaultPriceCents <= 0)) {
+            alert("Enter a default price for newly enabled package sizes");
+            return;
+        }
+
         setSaving(true);
         try {
             const isExclusive = catalogAccess === "exclusive";
@@ -3889,6 +4124,26 @@ function AddWholesaleFlavourDialog({
             } else {
                 await api.createWholesaleFlavour(payload);
             }
+
+            const enabled = [...enabledSizeIds].filter((id) => allCanonicalSizeIds.includes(id));
+            const disabled = allCanonicalSizeIds.filter((id) => !enabled.includes(id));
+
+            if (enabled.length > 0) {
+                await api.bulkUpdateWholesaleSizeAvailability({
+                    flavourIds: [flavour.flavourId],
+                    wholesaleSizeIds: enabled,
+                    enabled: true,
+                    defaultPriceCents,
+                });
+            }
+            if (disabled.length > 0) {
+                await api.bulkUpdateWholesaleSizeAvailability({
+                    flavourIds: [flavour.flavourId],
+                    wholesaleSizeIds: disabled,
+                    enabled: false,
+                });
+            }
+
             onSaved();
         } catch (e: any) {
             alert(e.message);
@@ -3902,56 +4157,102 @@ function AddWholesaleFlavourDialog({
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>
-                        {isFirstSetup ? "Set Up Wholesale Flavour" : "Edit Flavour & Catalog Access"}
+                        {isFirstSetup ? "Set Up Wholesale Flavour" : "Edit Wholesale Flavour"}
                     </DialogTitle>
                 </DialogHeader>
                 <p className="text-sm text-gray-600 -mt-2">
                     {isFirstSetup ? (
-                        <>Configure wholesale settings for <strong>{flavour.flavourName}</strong>. Set size prices in the matrix after saving.</>
+                        <>Configure wholesale settings for <strong>{flavour.flavourName}</strong>.</>
                     ) : (
-                        <>Update wholesale details and catalog access for <strong>{flavour.flavourName}</strong>.</>
+                        <>Update metadata, package sizes, and catalog access for <strong>{flavour.flavourName}</strong>.</>
                     )}
                 </p>
-                <div className="space-y-3">
-                    <div className="rounded-md border bg-gray-50 px-3 py-2 text-sm">
-                        <span className="text-gray-500">Flavour: </span>
-                        <span className="font-medium">{flavour.flavourName}</span>
-                    </div>
-                    <Textarea
-                        placeholder="Wholesale description"
-                        value={form.description}
-                        onChange={(e) => setForm({ ...form, description: e.target.value })}
-                        rows={3}
-                    />
-                    <Input
-                        placeholder="Allergens (e.g. Dairy, Soy, Gluten)"
-                        value={form.allergens}
-                        onChange={(e) => setForm({ ...form, allergens: e.target.value })}
-                    />
-                    <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-4">
+                    <FormSection title="Flavour">
+                        <div className="text-sm font-medium">{flavour.flavourName}</div>
+                    </FormSection>
+
+                    <FormSection title="Wholesale details" description="Shown to clients in the ordering portal.">
+                        <div className="space-y-2">
+                            <Label htmlFor="wholesale-description">Description</Label>
+                            <Textarea
+                                id="wholesale-description"
+                                placeholder="Wholesale description for this flavour"
+                                value={form.description}
+                                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                                rows={3}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="wholesale-allergens">Allergens</Label>
+                            <Input
+                                id="wholesale-allergens"
+                                placeholder="e.g. Dairy, Soy, Gluten"
+                                value={form.allergens}
+                                onChange={(e) => setForm({ ...form, allergens: e.target.value })}
+                            />
+                        </div>
                         <label className="flex items-center gap-2 text-sm text-gray-700">
-                            <input
-                                type="checkbox"
+                            <Checkbox
                                 checked={form.isSeasonal}
-                                onChange={(e) => setForm({ ...form, isSeasonal: e.target.checked })}
+                                onCheckedChange={(checked) =>
+                                    setForm({ ...form, isSeasonal: checked === true })
+                                }
                             />
-                            Seasonal
+                            Seasonal flavour
                         </label>
+                    </FormSection>
+
+                    <FormSection
+                        title="Portal availability"
+                        description="Control whether this flavour appears for ordering at all."
+                    >
                         <label className="flex items-center gap-2 text-sm text-gray-700">
-                            <input
-                                type="checkbox"
+                            <Checkbox
                                 checked={form.active}
-                                onChange={(e) => setForm({ ...form, active: e.target.checked })}
+                                onCheckedChange={(checked) =>
+                                    setForm({ ...form, active: checked === true })
+                                }
                             />
-                            Active for portal
+                            Available for ordering in the wholesale portal
                         </label>
-                    </div>
-                    <Input
-                        placeholder="Sort order"
-                        type="number"
-                        value={form.sortOrder}
-                        onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
-                    />
+                        <div className="space-y-2">
+                            <Label htmlFor="wholesale-sort-order">Sort order</Label>
+                            <Input
+                                id="wholesale-sort-order"
+                                type="number"
+                                value={form.sortOrder}
+                                onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
+                            />
+                            <p className="text-xs text-gray-500">Lower numbers appear first in the portal.</p>
+                        </div>
+                    </FormSection>
+
+                    <FormSection
+                        title="Available package sizes"
+                        description="Which sizes clients can order for this flavour. Adjust prices in the matrix."
+                    >
+                        <WholesaleSizeCheckboxPicker
+                            canonicalSizes={canonicalSizes}
+                            selectedSizeIds={enabledSizeIds}
+                            onChange={setEnabledSizeIds}
+                        />
+                        <div className="space-y-2">
+                            <Label htmlFor="size-default-price">Default price for new sizes ($)</Label>
+                            <Input
+                                id="size-default-price"
+                                type="number"
+                                step="0.01"
+                                min={0}
+                                value={sizeDefaultPrice}
+                                onChange={(e) => setSizeDefaultPrice(e.target.value)}
+                            />
+                            <p className="text-xs text-gray-500">
+                                Used when enabling a size that does not have a price yet. Existing prices are kept.
+                            </p>
+                        </div>
+                    </FormSection>
+
                     <CatalogVisibilityFields
                         catalogAccess={catalogAccess}
                         onCatalogAccessChange={(value) => {
@@ -3962,6 +4263,7 @@ function AddWholesaleFlavourDialog({
                         customerIds={customerIds}
                         onCustomerIdsChange={setCustomerIds}
                     />
+
                     <Button onClick={handleSave} disabled={saving} className="w-full">
                         {saving ? "Saving…" : isFirstSetup ? "Set Up for Wholesale" : "Save Changes"}
                     </Button>
