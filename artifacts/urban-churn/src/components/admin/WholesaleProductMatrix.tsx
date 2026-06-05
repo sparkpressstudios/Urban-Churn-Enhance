@@ -113,23 +113,6 @@ export function WholesaleProductMatrix({
         },
     });
 
-    const enableAllSizes = async (flavourId: number, defaultPrice: string) => {
-        const cents = Math.round(parseFloat(defaultPrice) * 100);
-        if (!cents || cents <= 0) {
-            toast({ title: "Enter a valid default price first", variant: "destructive" });
-            return;
-        }
-        try {
-            await api.enableWholesaleFlavourSizes(flavourId, {
-                defaultPriceCents: cents,
-            });
-            queryClient.invalidateQueries({ queryKey: ["wholesale-products"] });
-            toast({ title: "Sizes enabled for flavour" });
-        } catch (err: any) {
-            toast({ title: "Error", description: err.message, variant: "destructive" });
-        }
-    };
-
     if (activeSizes.length === 0 || activeFlavours.length === 0) {
         return null;
     }
@@ -157,7 +140,6 @@ export function WholesaleProductMatrix({
                                     {size.name}
                                 </th>
                             ))}
-                            <th className="px-2 py-2 text-left font-medium">Quick</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -168,7 +150,6 @@ export function WholesaleProductMatrix({
                                 sizes={activeSizes}
                                 getCell={getCell}
                                 setCell={setCell}
-                                onEnableAll={(price) => enableAllSizes(flavour.flavourId, price)}
                             />
                         ))}
                     </tbody>
@@ -183,16 +164,12 @@ function MatrixRow({
     sizes,
     getCell,
     setCell,
-    onEnableAll,
 }: {
     flavour: any;
     sizes: any[];
     getCell: (flavourId: number, sizeId: number) => MatrixCell;
     setCell: (flavourId: number, sizeId: number, patch: Partial<MatrixCell>) => void;
-    onEnableAll: (price: string) => void;
 }) {
-    const [bulkPrice, setBulkPrice] = useState("");
-
     return (
         <tr className="border-b hover:bg-slate-50">
             <td className="px-3 py-2 sticky left-0 bg-white">
@@ -272,21 +249,6 @@ function MatrixRow({
                     </td>
                 );
             })}
-            <td className="px-2 py-2 align-top">
-                <div className="flex gap-1">
-                    <Input
-                        type="number"
-                        step="0.01"
-                        className="h-7 w-16 text-xs"
-                        placeholder="$"
-                        value={bulkPrice}
-                        onChange={(e) => setBulkPrice(e.target.value)}
-                    />
-                    <Button size="sm" variant="outline" className="h-7 text-[10px] px-2" onClick={() => onEnableAll(bulkPrice)}>
-                        All
-                    </Button>
-                </div>
-            </td>
         </tr>
     );
 }

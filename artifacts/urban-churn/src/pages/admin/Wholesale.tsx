@@ -2554,12 +2554,11 @@ function buildInitialSizePricing(
     flavourId: number,
     products: any[],
     canonicalSizes: ReturnType<typeof resolveCanonicalSizes>,
-    defaultPriceDollars = "45.00",
 ): Record<string, SizePricingRow> {
     const rows: Record<string, SizePricingRow> = {};
     for (const { slug, size } of canonicalSizes) {
         if (!size) {
-            rows[slug] = { enabled: false, priceDollars: defaultPriceDollars };
+            rows[slug] = { enabled: false, priceDollars: "" };
             continue;
         }
         const product = products.find(
@@ -2567,12 +2566,19 @@ function buildInitialSizePricing(
         );
         rows[slug] = {
             enabled: product?.available !== false && !!product,
-            priceDollars: product
-                ? (product.priceCents / 100).toFixed(2)
-                : defaultPriceDollars,
+            priceDollars: product ? (product.priceCents / 100).toFixed(2) : "",
         };
     }
     return rows;
+}
+
+function enabledSizesMissingPrice(
+    pricing: Record<string, SizePricingRow>,
+    canonicalSizes: ReturnType<typeof resolveCanonicalSizes>,
+) {
+    return canonicalSizes
+        .filter(({ slug, size }) => size && pricing[slug]?.enabled)
+        .some(({ slug }) => !parsePriceDollars(pricing[slug]?.priceDollars || ""));
 }
 
 function parsePriceDollars(value: string): number {
@@ -2584,7 +2590,6 @@ function buildMatrixCellsFromPricing(
     flavourId: number,
     pricing: Record<string, SizePricingRow>,
     canonicalSizes: ReturnType<typeof resolveCanonicalSizes>,
-    fallbackPriceCents: number,
     products: any[] = [],
 ) {
     const cells: {
@@ -2603,9 +2608,10 @@ function buildMatrixCellsFromPricing(
         const existing = products.find(
             (p) => p.flavourId === flavourId && p.wholesaleSizeId === size.id,
         );
-        const priceCents = parsePriceDollars(row.priceDollars) || fallbackPriceCents;
 
         if (row.enabled) {
+            const priceCents = parsePriceDollars(row.priceDollars);
+            if (!priceCents) continue;
             cells.push({
                 flavourId,
                 wholesaleSizeId: size.id,
@@ -2781,10 +2787,9 @@ function ProductsTab() {
     const [bulkUpdating, setBulkUpdating] = useState(false);
     const [bulkSizePricing, setBulkSizePricing] = useState<Record<string, SizePricingRow>>(() =>
         Object.fromEntries(
-            WHOLESALE_CANONICAL_SIZES.map((s) => [s.slug, { enabled: false, priceDollars: "45.00" }]),
+            WHOLESALE_CANONICAL_SIZES.map((s) => [s.slug, { enabled: false, priceDollars: "" }]),
         ),
     );
-    const [bulkSizeDefaultPrice, setBulkSizeDefaultPrice] = useState("45.00");
     const [ensuringSizes, setEnsuringSizes] = useState(false);
 
     const debouncedFlavourSearch = useDebounce(flavourSearch, 200);
@@ -2918,20 +2923,8 @@ function ProductsTab() {
         const ids = [...selectedFlavourIds];
         if (ids.length === 0 || bulkSelectedSizeIds.size === 0) return;
 
-        const fallbackCents = parsePriceDollars(bulkSizeDefaultPrice);
-        if (!fallbackCents) {
-            toast({ title: "Enter a default price for newly enabled sizes", variant: "destructive" });
-            return;
-        }
-
-        const enabledSlugs = canonicalSizes
-            .filter(({ slug, size }) => size && bulkSizePricing[slug]?.enabled)
-            .map(({ slug }) => slug);
-        const missingPrice = enabledSlugs.some(
-            (slug) => !parsePriceDollars(bulkSizePricing[slug]?.priceDollars || ""),
-        );
-        if (missingPrice && !fallbackCents) {
-            toast({ title: "Set a price for each enabled size or a default price", variant: "destructive" });
+        if (enabledSizesMissingPrice(bulkSizePricing, canonicalSizes)) {
+            toast({ title: "Enter a price for each enabled size", variant: "destructive" });
             return;
         }
 
@@ -2942,7 +2935,6 @@ function ProductsTab() {
                     flavourId,
                     bulkSizePricing,
                     canonicalSizes,
-                    fallbackCents,
                     products,
                 ).filter((c) => c.enabled),
             );
@@ -3289,23 +3281,6 @@ function ProductsTab() {
                                                 Hide all sizes
                                             </Button>
                                         </div>
-                                    </div>
-                                    <div className="rounded-md border border-slate-200 bg-white px-3 py-2 space-y-1">
-                                        <Label htmlFor="bulk-size-default-price" className="text-xs font-medium text-slate-900">
-                                            Default price for new sizes ($)
-                                        </Label>
-                                        <Input
-                                            id="bulk-size-default-price"
-                                            type="number"
-                                            step="0.01"
-                                            min={0}
-                                            className="h-8 w-32 text-sm"
-                                            value={bulkSizeDefaultPrice}
-                                            onChange={(e) => setBulkSizeDefaultPrice(e.target.value)}
-                                        />
-                                        <p className="text-xs text-slate-600">
-                                            Used only when a checked size has no price entered. Existing prices are kept.
-                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -4107,7 +4082,6 @@ function AddWholesaleFlavourDialog({
     const [customerIds, setCustomerIds] = useState<number[]>(
         (flavour.exclusiveCustomers || []).map((c: any) => c.id),
     );
-    const [sizeDefaultPrice, setSizeDefaultPrice] = useState("45.00");
     const [sizePricing, setSizePricing] = useState<Record<string, SizePricingRow>>(() =>
         buildInitialSizePricing(flavour.flavourId, products, canonicalSizes),
     );
@@ -4142,22 +4116,8 @@ function AddWholesaleFlavourDialog({
             return;
         }
 
-        const fallbackCents = parsePriceDollars(sizeDefaultPrice);
-        const enabledSlugs = canonicalSizes
-            .filter(({ slug, size }) => size && sizePricing[slug]?.enabled)
-            .map(({ slug }) => slug);
-        const needsNewProduct = enabledSlugs.some((slug) => {
-            const size = canonicalSizes.find((s) => s.slug === slug)?.size;
-            if (!size) return false;
-            return !products.find(
-                (p) => p.flavourId === flavour.flavourId && p.wholesaleSizeId === size.id,
-            );
-        });
-        const missingRowPrice = enabledSlugs.some(
-            (slug) => !parsePriceDollars(sizePricing[slug]?.priceDollars || ""),
-        );
-        if ((needsNewProduct || missingRowPrice) && !fallbackCents) {
-            alert("Enter a price for each enabled size or a default price below");
+        if (enabledSizesMissingPrice(sizePricing, canonicalSizes)) {
+            alert("Enter a price for each enabled size");
             return;
         }
 
@@ -4185,7 +4145,6 @@ function AddWholesaleFlavourDialog({
                 flavour.flavourId,
                 sizePricing,
                 canonicalSizes,
-                fallbackCents,
                 products,
             );
             if (cells.length > 0) {
@@ -4287,26 +4246,6 @@ function AddWholesaleFlavourDialog({
                             onEnsureSizes={onEnsureSizes}
                             ensuringSizes={ensuringSizes}
                         />
-                    </FormSection>
-
-                    <FormSection
-                        title="Pricing defaults"
-                        description="Fallback when enabling a size that does not have a price yet."
-                    >
-                        <div className="space-y-2">
-                            <Label htmlFor="size-default-price">Default price for new sizes ($)</Label>
-                            <Input
-                                id="size-default-price"
-                                type="number"
-                                step="0.01"
-                                min={0}
-                                value={sizeDefaultPrice}
-                                onChange={(e) => setSizeDefaultPrice(e.target.value)}
-                            />
-                            <p className="text-xs text-slate-600">
-                                Existing prices are kept. This default is only used for newly enabled sizes with a blank price.
-                            </p>
-                        </div>
                     </FormSection>
 
                     <CatalogVisibilityFields
