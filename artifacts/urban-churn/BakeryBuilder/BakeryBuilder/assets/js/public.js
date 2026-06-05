@@ -365,18 +365,39 @@
 
     function initDatePicker() {
         const dateInput = $('#pickup_date');
-        const leadTimeHours = ucboData.leadTimeHours || 96;
-        const minDate = new Date();
-        minDate.setDate(minDate.getDate() + Math.ceil(leadTimeHours / 24));
+        const leadTimeBusinessDays = ucboData.leadTimeBusinessDays || Math.ceil((ucboData.leadTimeHours || 96) / 24);
+        const minDate = addBusinessDays(new Date(), leadTimeBusinessDays);
         minDate.setHours(0, 0, 0, 0); // Reset to start of day
 
-        const minDateString = minDate.toISOString().split('T')[0];
+        const minDateString = formatDateForInput(minDate);
         dateInput.attr('min', minDateString);
         
         // Set default value to the minimum date so picker opens to correct month
         if (!dateInput.val()) {
             dateInput.val(minDateString);
         }
+    }
+
+    function addBusinessDays(startDate, businessDays) {
+        const result = new Date(startDate);
+        let addedDays = 0;
+
+        while (addedDays < businessDays) {
+            result.setDate(result.getDate() + 1);
+            const dayOfWeek = result.getDay();
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                addedDays += 1;
+            }
+        }
+
+        return result;
+    }
+
+    function formatDateForInput(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     function handleOrderTypeChange() {

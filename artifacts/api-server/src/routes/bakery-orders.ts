@@ -100,7 +100,20 @@ function calculateTotalCents(
     return totalCents;
 }
 
-const LEAD_TIME_HOURS = 96;
+const LEAD_TIME_BUSINESS_DAYS = 4;
+
+function addBusinessDays(from: Date, businessDays: number): Date {
+    const result = new Date(from);
+    let daysAdded = 0;
+    while (daysAdded < businessDays) {
+        result.setDate(result.getDate() + 1);
+        const day = result.getDay();
+        if (day !== 0 && day !== 6) {
+            daysAdded += 1;
+        }
+    }
+    return result;
+}
 
 router.post("/", upload.single("inspirationPhoto"), async (req, res) => {
     try {
@@ -169,13 +182,12 @@ router.post("/", upload.single("inspirationPhoto"), async (req, res) => {
             return;
         }
 
-        // Validate lead time (96 hours minimum)
+        // Validate lead time (minimum business days, not calendar days)
         const pickupDateTime = new Date(`${pickupDate}T${pickupTime}`);
-        const minPickupDate = new Date();
-        minPickupDate.setHours(minPickupDate.getHours() + LEAD_TIME_HOURS);
+        const minPickupDate = addBusinessDays(new Date(), LEAD_TIME_BUSINESS_DAYS);
         if (pickupDateTime < minPickupDate) {
             res.status(400).json({
-                error: "Pickup date must be at least 96 hours (4 days) from now",
+                error: `Pickup date must be at least ${LEAD_TIME_BUSINESS_DAYS} business days from now`,
             });
             return;
         }

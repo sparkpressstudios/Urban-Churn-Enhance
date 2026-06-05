@@ -41,7 +41,8 @@ class UCBO_Form_Handler {
         }
         
         $settings = get_option('ucbo_settings');
-        $lead_time_hours = isset($settings['lead_time_hours']) ? $settings['lead_time_hours'] : 96;
+        $lead_time_hours = isset($settings['lead_time_hours']) ? absint($settings['lead_time_hours']) : 96;
+        $lead_time_business_days = max(1, (int) ceil($lead_time_hours / 24));
         
         $timezone = wp_timezone();
         
@@ -54,12 +55,10 @@ class UCBO_Form_Handler {
         }
         
         $current_datetime_obj = new DateTime('now', $timezone);
-        $current_timestamp = $current_datetime_obj->getTimestamp();
-        $min_pickup_time = $current_timestamp + ($lead_time_hours * 3600);
-        
-        if ($pickup_timestamp < $min_pickup_time) {
-            $days = ceil($lead_time_hours / 24);
-            wp_send_json_error(array('message' => sprintf('Please select a pickup date at least %d hours (%d days) from now. All orders require advance notice for preparation.', $lead_time_hours, $days)));
+        $min_pickup_datetime_obj = $this->add_business_days($current_datetime_obj, $lead_time_business_days);
+
+        if ($pickup_timestamp < $min_pickup_datetime_obj->getTimestamp()) {
+            wp_send_json_error(array('message' => sprintf('Please select a pickup date at least %d business days from today (Monday-Friday only). Earliest available pickup is %s.', $lead_time_business_days, $min_pickup_datetime_obj->format('F j, Y'))));
             return;
         }
         
@@ -324,18 +323,19 @@ class UCBO_Form_Handler {
         $settings = get_option('ucbo_settings');
         $business_name = isset($settings['business_name']) ? $settings['business_name'] : 'Urban Churn Louise Drive Scoop Shop & Bakery';
         
-        $subject = sprintf('Order Confirmation #%d - %s', $order_id, $business_name);
+        $subject = sprintf('Order Request Received #%d - %s', $order_id, $business_name);
         
         $customer_phone = get_post_meta($order_id, '_ucbo_customer_phone', true);
         $pickup_date = get_post_meta($order_id, '_ucbo_pickup_date', true);
         $pickup_time = get_post_meta($order_id, '_ucbo_pickup_time', true);
         
-        $message = "Thank you for your order!\n\n";
+        $message = "Thank you for your order request!\n\n";
         $message .= "Dear " . $customer_name . ",\n\n";
-        $message .= "We have received your bakery order. Here are the details:\n\n";
+        $message .= "We have received your bakery order request. This email is not an order confirmation.\n";
+        $message .= "Your order will be confirmed once a bakery team member reaches out to review details and finalize payment.\n\n";
         
         $message .= "═══════════════════════════════════════════════\n";
-        $message .= "ORDER CONFIRMATION\n";
+        $message .= "ORDER REQUEST RECEIVED\n";
         $message .= "═══════════════════════════════════════════════\n\n";
         
         $message .= "Order Number: #" . $order_id . "\n";
@@ -435,6 +435,8 @@ class UCBO_Form_Handler {
         $message .= "• Confirm all details and customizations\n";
         $message .= "• Provide final pricing and payment options\n";
         $message .= "• Answer any questions you may have\n\n";
+        $message .= "Please note: this message confirms receipt of your request only.\n";
+        $message .= "Your bakery order is confirmed only after our team reaches out.\n\n";
         
         $message .= "CONTACT INFORMATION\n\n";
         $message .= $business_name . "\n";
@@ -447,7 +449,7 @@ class UCBO_Form_Handler {
         $message .= "please reply to this email or call us directly.\n\n";
         $message .= "Thank you for choosing " . $business_name . "!\n\n";
         $message .= "═══════════════════════════════════════════════\n";
-        $message .= "This is an automated confirmation. We will contact you soon!\n";
+        $message .= "This is an automated request receipt, not a final order confirmation.\n";
         
         $headers = array('Content-Type: text/plain; charset=UTF-8');
         
@@ -468,5 +470,20 @@ class UCBO_Form_Handler {
             update_post_meta($post_id, '_ucbo_inspiration_photo', $movefile['url']);
             update_post_meta($post_id, '_ucbo_inspiration_photo_path', $movefile['file']);
         }
+    }
+
+    private function add_business_days(DateTime $start_datetime, $business_days) {
+        $result = clone $start_datetime;
+        $added_days = 0;
+
+        while ($added_days < $business_days) {
+            $result->modify('+1 day');
+            $day_of_week = (int) $result->format('N');
+            if ($day_of_week <= 5) {
+                $added_days++;
+            }
+        }
+
+        return $result;
     }
 }
