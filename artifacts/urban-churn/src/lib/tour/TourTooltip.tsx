@@ -29,9 +29,10 @@ export function TourTooltip({
                 <div className="flex items-center gap-3">
                     <button
                         {...skipProps}
+                        title="Tutorial will reappear in 7 days. Use the Tour button to open it anytime."
                         className="text-xs text-gray-500 hover:text-gray-300 transition-colors underline underline-offset-2"
                     >
-                        Skip
+                        Hide for 7 days
                     </button>
                     <span className="text-xs text-gray-600">
                         {index + 1} / {size}
