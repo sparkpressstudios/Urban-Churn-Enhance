@@ -489,7 +489,7 @@ router.get("/flavours", async (req, res) => {
             isSeasonal: row.isSeasonal ?? row.tag === "seasonal",
             isExclusive: row.isExclusive ?? false,
             exclusiveCustomers: exclusiveMap.get(row.flavourId) || [],
-            active: row.active ?? true,
+            active: row.wholesaleFlavourId != null ? row.active !== false : false,
             sortOrder: row.sortOrder ?? 0,
             updatedAt: row.updatedAt,
         })),

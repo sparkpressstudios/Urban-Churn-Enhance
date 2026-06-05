@@ -2519,7 +2519,9 @@ type FlavourAvailabilityFilter = "all" | "available" | "hidden";
 type FlavourSetupFilter = "all" | "setup" | "not_setup";
 type FlavourSeasonalFilter = "all" | "seasonal" | "year_round";
 
-function isFlavourAvailableForOrdering(flavour: { active?: boolean }) {
+/** Manual portal visibility — set explicitly via pencil or bulk actions, not derived from sizes. */
+function isFlavourVisibleInPortal(flavour: { id?: number | null; active?: boolean }) {
+    if (!flavour.id) return false;
     return flavour.active !== false;
 }
 
@@ -2744,9 +2746,9 @@ function filterWholesaleFlavours(
             if (!haystack.includes(q)) return false;
         }
 
-        const available = isFlavourAvailableForOrdering(f);
-        if (availability === "available" && !available) return false;
-        if (availability === "hidden" && available) return false;
+        const visible = isFlavourVisibleInPortal(f);
+        if (availability === "available" && !visible) return false;
+        if (availability === "hidden" && visible) return false;
 
         const wholesaleSetup = isFlavourWholesaleSetup(f, products);
         if (setup === "setup" && !wholesaleSetup) return false;
@@ -3024,7 +3026,7 @@ function ProductsTab() {
             queryClient.invalidateQueries({ queryKey: ["wholesale-flavours"] });
             queryClient.invalidateQueries({ queryKey: ["wholesale-products"] });
             toast({
-                title: active ? "Flavours visible in portal" : "Flavours hidden from portal",
+                title: active ? "Flavours set to visible" : "Flavours set to hidden",
                 description: `${result.total ?? ids.length} flavour(s) updated`,
             });
         } catch (err: any) {
@@ -3050,8 +3052,8 @@ function ProductsTab() {
                 <ul className="text-blue-800/90 space-y-1 list-disc list-inside">
                     <li><strong>Create New Flavour</strong> — adds a brand-new flavour name, wholesale profile, and optional size pricing.</li>
                     <li><strong>Pencil icon</strong> on any row — set up or edit wholesale metadata, package sizes, per-size pricing, catalog access, and availability.</li>
-                    <li><strong>Portal visibility</strong> — controls whether clients see a flavour in their ordering catalog. Separate from package sizes and prices.</li>
-                    <li><strong>Search & multi-select</strong> — bulk show/hide flavours in the portal, or set package sizes and prices for many flavours at once.</li>
+                    <li><strong>Visibility</strong> — you choose whether each flavour is visible or hidden in the client portal (pencil icon or bulk actions). Separate from package sizes and prices.</li>
+                    <li><strong>Search & multi-select</strong> — bulk set visibility, or apply package sizes and prices to many flavours at once.</li>
                 </ul>
             </div>
 
@@ -3162,8 +3164,8 @@ function ProductsTab() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All availability</SelectItem>
-                                    <SelectItem value="available">Visible in portal</SelectItem>
-                                    <SelectItem value="hidden">Hidden from portal</SelectItem>
+                                    <SelectItem value="available">Visible</SelectItem>
+                                    <SelectItem value="hidden">Hidden</SelectItem>
                                 </SelectContent>
                             </Select>
                             <Select
@@ -3221,7 +3223,7 @@ function ProductsTab() {
                                         onClick={() => bulkSetFlavourActive(true)}
                                     >
                                         <Eye className="h-4 w-4 mr-1" />
-                                        Show in portal
+                                        Set visible
                                     </Button>
                                     <Button
                                         size="sm"
@@ -3231,7 +3233,7 @@ function ProductsTab() {
                                         onClick={() => bulkSetFlavourActive(false)}
                                     >
                                         <EyeOff className="h-4 w-4 mr-1" />
-                                        Hide from portal
+                                        Set hidden
                                     </Button>
                                     <Button
                                         size="sm"
@@ -3242,8 +3244,8 @@ function ProductsTab() {
                                     </Button>
                                 </div>
                                 <p className="text-xs text-slate-700">
-                                    <strong>Portal visibility</strong> only controls whether clients see these flavours in their ordering catalog.
-                                    It does not change descriptions, package sizes, or prices.
+                                    <strong>Visibility</strong> is your manual on/off for the client portal.
+                                    Package sizes and prices below are separate — a visible flavour still needs sizes enabled to be orderable.
                                 </p>
                                 <div className="border-t border-[#A1AB74]/20 pt-3 space-y-4">
                                     <div>
@@ -3330,7 +3332,7 @@ function ProductsTab() {
                                     <th className="px-4 py-3 font-medium">Assigned Clients</th>
                                     <th className="px-4 py-3 font-medium">Allergens</th>
                                     <th className="px-4 py-3 font-medium">Type</th>
-                                    <th className="px-4 py-3 font-medium">Portal</th>
+                                    <th className="px-4 py-3 font-medium">Visibility</th>
                                     <th className="px-4 py-3 font-medium">Actions</th>
                                 </tr>
                             </thead>
@@ -3338,7 +3340,7 @@ function ProductsTab() {
                                 {filteredFlavours.map((f: any) => (
                                     <tr
                                         key={f.flavourId}
-                                        className={`border-b hover:bg-slate-50 ${!isFlavourAvailableForOrdering(f) ? "opacity-60" : ""} ${selectedFlavourIds.has(f.flavourId) ? "bg-[#A1AB74]/5" : ""}`}
+                                        className={`border-b hover:bg-slate-50 ${!isFlavourVisibleInPortal(f) ? "opacity-60" : ""} ${selectedFlavourIds.has(f.flavourId) ? "bg-[#A1AB74]/5" : ""}`}
                                     >
                                         <td className="px-4 py-3">
                                             <Checkbox
@@ -3389,8 +3391,8 @@ function ProductsTab() {
                                             </Badge>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <Badge className={isFlavourAvailableForOrdering(f) ? "bg-green-100 text-green-700" : "bg-gray-100 text-slate-700"}>
-                                                {isFlavourAvailableForOrdering(f) ? "In portal" : "Not in portal"}
+                                            <Badge className={isFlavourVisibleInPortal(f) ? "bg-green-100 text-green-700" : "bg-gray-100 text-slate-700"}>
+                                                {isFlavourVisibleInPortal(f) ? "Visible" : "Hidden"}
                                             </Badge>
                                         </td>
                                         <td className="px-4 py-3">
@@ -4096,7 +4098,7 @@ function AddWholesaleFlavourDialog({
         description: flavour.description || "",
         allergens: flavour.allergens || "",
         isSeasonal: flavour.isSeasonal ?? false,
-        active: flavour.active ?? true,
+        active: flavour.active === true,
         sortOrder: String(flavour.sortOrder ?? 0),
     });
     const [catalogAccess, setCatalogAccess] = useState<CatalogAccess>(
@@ -4251,7 +4253,7 @@ function AddWholesaleFlavourDialog({
 
                     <FormSection
                         title="Portal visibility"
-                        description="Whether wholesale clients see this flavour in their ordering catalog. Does not affect sizes or prices."
+                        description="Your manual choice whether clients see this flavour in their ordering catalog. Does not change sizes or prices."
                     >
                         <label className="flex items-center gap-2 text-sm text-slate-800">
                             <Checkbox
@@ -4260,7 +4262,7 @@ function AddWholesaleFlavourDialog({
                                     setForm({ ...form, active: checked === true })
                                 }
                             />
-                            Visible in the wholesale ordering portal
+                            Visible in the wholesale portal
                         </label>
                         <div className="space-y-2">
                             <Label htmlFor="wholesale-sort-order">Sort order</Label>
