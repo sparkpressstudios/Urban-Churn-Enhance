@@ -8,19 +8,31 @@ import { ogTagsMiddleware } from "./middlewares/og-tags";
 
 const app: Express = express();
 
-// Trust the first proxy (Replit reverse proxy)
+// Trust the first proxy (Railway reverse proxy)
 app.set("trust proxy", 1);
 
-// CORS: whitelist specific origins or allow all in development
+// CORS: whitelist specific origins, keep development permissive, and fail closed in production.
 const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
-  : undefined;
-if (!allowedOrigins && process.env.NODE_ENV === "production") {
-  console.warn("[CORS] CORS_ORIGINS not set in production — allowing all origins. Set CORS_ORIGINS to restrict.");
+  ?.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const isProduction = process.env.NODE_ENV === "production";
+
+if ((!allowedOrigins || allowedOrigins.length === 0) && isProduction) {
+  console.warn("[CORS] CORS_ORIGINS not set in production — rejecting cross-origin browser requests.");
 }
+
+const corsOrigin: cors.CorsOptions["origin"] = allowedOrigins && allowedOrigins.length > 0
+  ? allowedOrigins
+  : isProduction
+    ? (origin, callback) => {
+        callback(null, origin === undefined);
+      }
+    : true;
+
 app.use(
   cors({
-    origin: allowedOrigins ?? true,
+    origin: corsOrigin,
     credentials: true,
   }),
 );

@@ -15,6 +15,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
+- **Hosting**: Railway
 
 ## Structure
 
@@ -48,6 +49,10 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
 - `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
 
+## Deployment
+
+Production runs on Railway from the `main` branch. Configure environment variables in the Railway service dashboard (for example `DATABASE_URL`, `RESEND_API_KEY`, `SQUARE_LOCATION_ID`, and other secrets referenced in the API server).
+
 ## Packages
 
 ### `artifacts/api-server` (`@workspace/api-server`)
@@ -69,10 +74,10 @@ Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client insta
 - `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
 - `src/schema/index.ts` — barrel re-export of all models
 - `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
+- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`)
 - Exports: `.` (pool, db, schema), `./schema` (schema only)
 
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
+In development, use `pnpm --filter @workspace/db run push`, with `pnpm --filter @workspace/db run push-force` as a fallback. Apply production schema changes through your Railway deployment workflow.
 
 ### `lib/api-spec` (`@workspace/api-spec`)
 

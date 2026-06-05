@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
-    "seed": "tsx ./src/seed.ts",
+    "seed-wholesale-catalog": "tsx ./src/seed-wholesale-catalog.ts",
     "import-customers": "tsx ./src/import-customers.ts",
     "enrich-from-wp-xml": "tsx ./src/enrich-customers-from-wp-xml.ts",
     "import-wp-flavours": "tsx ./src/import-wp-flavours.ts",

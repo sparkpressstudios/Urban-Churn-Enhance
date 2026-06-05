@@ -348,7 +348,7 @@ router.post("/resend", async (req, res) => {
         // Parse the email with OpenAI
         let parsed;
         try {
-            parsed = await parseWholesaleEmail(bodyText || bodyHtml, subject);
+            parsed = await parseWholesaleEmail(bodyText || bodyHtml, subject, undefined, customer.id);
         } catch (parseError: any) {
             console.error(
                 "[WEBHOOK] Failed to parse wholesale email:",

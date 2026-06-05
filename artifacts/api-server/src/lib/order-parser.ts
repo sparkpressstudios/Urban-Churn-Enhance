@@ -1,7 +1,12 @@
 import OpenAI from "openai";
 import { db } from "@workspace/db";
-import { flavoursTable, wholesaleProductsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import {
+    flavoursTable,
+    wholesaleFlavoursTable,
+    wholesaleProductsTable,
+} from "@workspace/db/schema";
+import { and, eq } from "drizzle-orm";
+import { wholesaleCustomerCatalogVisibility } from "./wholesale-utils";
 
 const openai = process.env.OPENAI_API_KEY
     ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -24,8 +29,18 @@ export interface ParsedOrder {
     ambiguities: string[];
 }
 
-async function buildProductCatalog(): Promise<string> {
-    const products = await db
+async function fetchCustomerProducts(wholesaleCustomerId?: number) {
+    const conditions = [eq(wholesaleProductsTable.available, true)];
+    if (wholesaleCustomerId) {
+        conditions.push(
+            wholesaleCustomerCatalogVisibility(
+                wholesaleCustomerId,
+                wholesaleProductsTable.flavourId,
+            ),
+        );
+    }
+
+    return db
         .select({
             id: wholesaleProductsTable.id,
             name: wholesaleProductsTable.name,
@@ -39,7 +54,15 @@ async function buildProductCatalog(): Promise<string> {
             flavoursTable,
             eq(wholesaleProductsTable.flavourId, flavoursTable.id),
         )
-        .where(eq(wholesaleProductsTable.available, true));
+        .leftJoin(
+            wholesaleFlavoursTable,
+            eq(wholesaleFlavoursTable.flavourId, wholesaleProductsTable.flavourId),
+        )
+        .where(and(...conditions));
+}
+
+async function buildProductCatalog(wholesaleCustomerId?: number): Promise<string> {
+    const products = await fetchCustomerProducts(wholesaleCustomerId);
 
     if (products.length === 0) {
         // Fall back to just flavour names
@@ -98,6 +121,7 @@ export async function parseWholesaleEmail(
     emailBody: string,
     emailSubject: string,
     attachmentText?: string,
+    wholesaleCustomerId?: number,
 ): Promise<ParsedOrder> {
     if (!openai) {
         console.warn("[ORDER-PARSER] No OPENAI_API_KEY, returning empty parse");
@@ -110,7 +134,7 @@ export async function parseWholesaleEmail(
         };
     }
 
-    const catalog = await buildProductCatalog();
+    const catalog = await buildProductCatalog(wholesaleCustomerId);
     const today = new Date().toISOString().split("T")[0];
 
     const userContent = [
@@ -159,21 +183,7 @@ export async function parseWholesaleEmail(
         };
     }
 
-    // Validate and enrich parsed items against the actual catalog
-    const products = await db
-        .select({
-            id: wholesaleProductsTable.id,
-            name: wholesaleProductsTable.name,
-            flavourId: wholesaleProductsTable.flavourId,
-            flavourName: flavoursTable.name,
-            priceCents: wholesaleProductsTable.priceCents,
-        })
-        .from(wholesaleProductsTable)
-        .innerJoin(
-            flavoursTable,
-            eq(wholesaleProductsTable.flavourId, flavoursTable.id),
-        )
-        .where(eq(wholesaleProductsTable.available, true));
+    const products = await fetchCustomerProducts(wholesaleCustomerId);
 
     for (const item of parsed.items) {
         // Try to match against catalog

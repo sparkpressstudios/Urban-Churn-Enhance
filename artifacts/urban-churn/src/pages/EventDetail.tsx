@@ -118,6 +118,12 @@ export default function EventDetail() {
                 setAccountMode("guest");
             } else if (code === "INVALID_CREDENTIALS") {
                 toast({ title: "Incorrect password", description: "The password you entered is incorrect. Try again or reset your password.", variant: "destructive" });
+            } else if (typeof code === "string" && code.startsWith("PAYMENT_")) {
+                toast({
+                    title: "Payment not completed",
+                    description: error.message || "Your tickets were not purchased. Please try again.",
+                    variant: "destructive",
+                });
             } else {
                 toast({ title: "Purchase Failed", description: error.message || "Something went wrong. Please try again.", variant: "destructive" });
             }

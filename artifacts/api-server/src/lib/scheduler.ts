@@ -11,7 +11,7 @@ import {
     flavoursTable,
     bakeryOrdersTable,
 } from "@workspace/db/schema";
-import { eq, and, lte, sql, inArray, ne, isNotNull, notInArray } from "drizzle-orm";
+import { eq, and, or, lte, sql, inArray, ne, isNotNull, notInArray } from "drizzle-orm";
 import {
     sendAdminOrdersClosedReminder,
     sendCustomerPickupReminder,
@@ -23,6 +23,11 @@ import type { LocationInfo } from "./email";
 
 /** All scheduled jobs and date math use the business timezone */
 const BUSINESS_TZ = "America/New_York";
+
+const orderPaidForFulfillment = or(
+    eq(ordersTable.paymentStatus, "paid"),
+    eq(ordersTable.totalCents, 0),
+);
 
 /**
  * Get start-of-day boundaries in Eastern timezone as UTC Date objects.
@@ -208,6 +213,7 @@ export async function markOrdersReadyForPickup() {
                     and(
                         inArray(ordersTable.id, orderIds),
                         inArray(ordersTable.status, ["pending", "confirmed"]),
+                        orderPaidForFulfillment,
                     ),
                 )
                 .returning({ id: ordersTable.id, orderNumber: ordersTable.orderNumber });
@@ -682,6 +688,7 @@ async function getOrdersForWindow(window: {
                 eq(orderItemsTable.preOrderWindowId, window.id),
                 ne(ordersTable.status, "cancelled"),
                 ne(ordersTable.status, "refunded"),
+                orderPaidForFulfillment,
             ),
         );
 
@@ -717,6 +724,7 @@ async function getOrdersForWindow(window: {
                     ne(ordersTable.status, "cancelled"),
                     ne(ordersTable.status, "refunded"),
                     eq(productsTable.flavourId, window.flavourId),
+                    orderPaidForFulfillment,
                 ),
             );
         finalRows = legacyRows;

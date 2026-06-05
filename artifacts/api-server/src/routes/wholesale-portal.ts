@@ -8,8 +8,11 @@ import {
     wholesaleOrderItemsTable,
     wholesaleProductsTable,
     wholesaleSizesTable,
+    wholesaleVendorLocationsTable,
     customersTable,
     flavoursTable,
+    wholesaleDeliveryRunsTable,
+    wholesaleDeliveryRunStopsTable,
 } from "@workspace/db/schema";
 import { eq, desc, and, asc, sql } from "drizzle-orm";
 import { requireCustomer } from "../middlewares/customer-auth";
@@ -18,16 +21,14 @@ import {
     sendAdminWholesalePortalOrderAlert,
 } from "../lib/email";
 import {
-    wholesaleDeliveryRunsTable,
-    wholesaleDeliveryRunStopsTable,
-} from "@workspace/db/schema";
+    isDateBeforeMinBusinessDays,
+    wholesaleCustomerCatalogVisibility,
+} from "../lib/wholesale-utils";
 
 const router: IRouter = Router();
 
-// All routes require customer auth
 router.use(requireCustomer);
 
-// Helper: get the wholesale customer linked to the logged-in customer
 async function getWholesaleCustomer(customerId: number) {
     const [customer] = await db
         .select({
@@ -53,7 +54,6 @@ async function getWholesaleCustomer(customerId: number) {
     return wc || null;
 }
 
-// ── GET /profile – wholesale customer profile ──
 router.get("/profile", async (req, res) => {
     const wc = await getWholesaleCustomer(req.customer!.userId);
     if (!wc) {
@@ -63,7 +63,22 @@ router.get("/profile", async (req, res) => {
     res.json(wc);
 });
 
-// ── GET /products – available wholesale products grouped by size category ──
+router.get("/vendor-locations", async (req, res) => {
+    const wc = await getWholesaleCustomer(req.customer!.userId);
+    if (!wc) {
+        res.status(403).json({ error: "No active wholesale account" });
+        return;
+    }
+
+    const locations = await db
+        .select()
+        .from(wholesaleVendorLocationsTable)
+        .where(eq(wholesaleVendorLocationsTable.wholesaleCustomerId, wc.id))
+        .orderBy(desc(wholesaleVendorLocationsTable.isDefault), asc(wholesaleVendorLocationsTable.name));
+
+    res.json(locations);
+});
+
 router.get("/products", async (req, res) => {
     const wc = await getWholesaleCustomer(req.customer!.userId);
     if (!wc) {
@@ -79,6 +94,7 @@ router.get("/products", async (req, res) => {
             flavourDescription: wholesaleFlavoursTable.description,
             flavourAllergens: wholesaleFlavoursTable.allergens,
             flavourIsSeasonal: wholesaleFlavoursTable.isSeasonal,
+            flavourIsExclusive: wholesaleFlavoursTable.isExclusive,
             name: wholesaleProductsTable.name,
             wholesaleSizeId: wholesaleProductsTable.wholesaleSizeId,
             sizeCategory: wholesaleProductsTable.sizeCategory,
@@ -88,6 +104,9 @@ router.get("/products", async (req, res) => {
             sizeSortOrder: wholesaleSizesTable.sortOrder,
             unitDescription: wholesaleProductsTable.unitDescription,
             priceCents: wholesaleProductsTable.priceCents,
+            manageStock: wholesaleProductsTable.manageStock,
+            stockQuantity: wholesaleProductsTable.stockQuantity,
+            lowStockThreshold: wholesaleProductsTable.lowStockThreshold,
             sortOrder: wholesaleProductsTable.sortOrder,
         })
         .from(wholesaleProductsTable)
@@ -107,6 +126,7 @@ router.get("/products", async (req, res) => {
             and(
                 eq(wholesaleProductsTable.available, true),
                 sql`COALESCE(${wholesaleFlavoursTable.active}, true) = true`,
+                wholesaleCustomerCatalogVisibility(wc.id, wholesaleProductsTable.flavourId),
             ),
         )
         .orderBy(
@@ -114,10 +134,15 @@ router.get("/products", async (req, res) => {
             asc(wholesaleProductsTable.sortOrder),
         );
 
-    res.json(products);
+    res.json(
+        products.map((p) => ({
+            ...p,
+            outOfStock: p.manageStock && p.stockQuantity <= 0,
+            lowStock: p.manageStock && p.stockQuantity > 0 && p.stockQuantity <= p.lowStockThreshold,
+        })),
+    );
 });
 
-// ── POST /orders – submit a new wholesale order ──
 router.post("/orders", async (req, res) => {
     const wc = await getWholesaleCustomer(req.customer!.userId);
     if (!wc) {
@@ -125,38 +150,60 @@ router.post("/orders", async (req, res) => {
         return;
     }
 
-    const { items, requestedDeliveryDate, deliveryMethod, notes } = req.body;
+    const {
+        items,
+        requestedDeliveryDate,
+        deliveryMethod,
+        notes,
+        isRushOrder,
+        rushNotes,
+        vendorLocationId,
+    } = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
         res.status(400).json({ error: "At least one item is required" });
         return;
     }
 
-    // Validate delivery date: must be at least 3 business days out
-    if (requestedDeliveryDate) {
-        const requested = new Date(requestedDeliveryDate + "T00:00:00");
-        const now = new Date();
-        now.setHours(0, 0, 0, 0);
+    const rush = isRushOrder === true;
 
-        let businessDays = 0;
-        const cursor = new Date(now);
-        while (businessDays < 3) {
-            cursor.setDate(cursor.getDate() + 1);
-            const day = cursor.getDay();
-            if (day !== 0 && day !== 6) businessDays++;
-        }
-
-        if (requested < cursor) {
+    if (requestedDeliveryDate && !rush) {
+        if (isDateBeforeMinBusinessDays(requestedDeliveryDate, 3)) {
             res.status(400).json({
-                error: "Delivery date must be at least 3 business days from today",
+                error: "Delivery date must be at least 3 business days from today, or select Rush Order",
             });
             return;
         }
     }
 
-    // Validate items — fetch products to get prices
+    if (vendorLocationId) {
+        const [loc] = await db
+            .select({ id: wholesaleVendorLocationsTable.id })
+            .from(wholesaleVendorLocationsTable)
+            .where(
+                and(
+                    eq(wholesaleVendorLocationsTable.id, Number(vendorLocationId)),
+                    eq(wholesaleVendorLocationsTable.wholesaleCustomerId, wc.id),
+                ),
+            )
+            .limit(1);
+        if (!loc) {
+            res.status(400).json({ error: "Invalid delivery location" });
+            return;
+        }
+    }
+
     const productIds = items.map((i: any) => i.wholesaleProductId).filter(Boolean);
-    const productsMap = new Map<number, { priceCents: number; name: string; flavourName?: string }>();
+    const productsMap = new Map<
+        number,
+        {
+            priceCents: number;
+            name: string;
+            flavourName: string;
+            manageStock: boolean;
+            stockQuantity: number;
+        }
+    >();
 
     if (productIds.length > 0) {
         const products = await db
@@ -165,20 +212,29 @@ router.post("/orders", async (req, res) => {
                 priceCents: wholesaleProductsTable.priceCents,
                 name: wholesaleProductsTable.name,
                 flavourName: flavoursTable.name,
+                manageStock: wholesaleProductsTable.manageStock,
+                stockQuantity: wholesaleProductsTable.stockQuantity,
             })
             .from(wholesaleProductsTable)
             .innerJoin(flavoursTable, eq(wholesaleProductsTable.flavourId, flavoursTable.id))
-            .where(eq(wholesaleProductsTable.available, true));
+            .leftJoin(
+                wholesaleFlavoursTable,
+                eq(wholesaleFlavoursTable.flavourId, wholesaleProductsTable.flavourId),
+            )
+            .where(
+                and(
+                    eq(wholesaleProductsTable.available, true),
+                    wholesaleCustomerCatalogVisibility(wc.id, wholesaleProductsTable.flavourId),
+                ),
+            );
 
         for (const p of products) {
             productsMap.set(p.id, p);
         }
     }
 
-    // Generate order number
     const orderNumber = `WO-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
 
-    // Calculate items and subtotal
     let subtotalCents = 0;
     const orderItems: {
         wholesaleProductId: number | null;
@@ -199,18 +255,23 @@ router.post("/orders", async (req, res) => {
                 res.status(400).json({ error: `Product ${item.wholesaleProductId} not found or unavailable` });
                 return;
             }
+            if (product.manageStock && product.stockQuantity < qty) {
+                res.status(400).json({
+                    error: `Insufficient stock for ${product.flavourName} — ${product.name} (available: ${product.stockQuantity})`,
+                });
+                return;
+            }
             subtotalCents += product.priceCents * qty;
             orderItems.push({
                 wholesaleProductId: item.wholesaleProductId,
                 flavourId: null,
-                productDescription: product.name,
+                productDescription: `${product.flavourName} — ${product.name}`,
                 quantity: qty,
                 unitPriceCents: product.priceCents,
                 matched: true,
                 notes: item.notes || "",
             });
         } else if (item.customDescription) {
-            // Custom flavour request (no product match)
             orderItems.push({
                 wholesaleProductId: null,
                 flavourId: null,
@@ -223,7 +284,16 @@ router.post("/orders", async (req, res) => {
         }
     }
 
-    // Create order
+    if (orderItems.length === 0) {
+        res.status(400).json({ error: "No valid items in order" });
+        return;
+    }
+
+    const adminNotesParts = [notes || ""];
+    if (rush) {
+        adminNotesParts.push(`[RUSH ORDER${rushNotes ? `: ${rushNotes}` : ""}]`);
+    }
+
     const [order] = await db
         .insert(wholesaleOrdersTable)
         .values({
@@ -232,22 +302,21 @@ router.post("/orders", async (req, res) => {
             status: "pending_review",
             requestedDeliveryDate: requestedDeliveryDate || null,
             deliveryMethod: deliveryMethod || wc.deliveryMethod || "delivery",
+            isRushOrder: rush,
+            rushNotes: rush ? (rushNotes || "") : "",
+            vendorLocationId: vendorLocationId ? Number(vendorLocationId) : null,
             subtotalCents,
-            adminNotes: notes || "",
+            adminNotes: adminNotesParts.filter(Boolean).join("\n"),
         })
         .returning();
 
-    // Create order items
-    if (orderItems.length > 0) {
-        await db.insert(wholesaleOrderItemsTable).values(
-            orderItems.map((item) => ({
-                ...item,
-                wholesaleOrderId: order.id,
-            })),
-        );
-    }
+    await db.insert(wholesaleOrderItemsTable).values(
+        orderItems.map((item) => ({
+            ...item,
+            wholesaleOrderId: order.id,
+        })),
+    );
 
-    // Send emails (fire-and-forget)
     const emailItems = orderItems.map((item) => ({
         description: item.productDescription,
         quantity: item.quantity,
@@ -272,12 +341,13 @@ router.post("/orders", async (req, res) => {
         subtotalCents,
         deliveryMethod: order.deliveryMethod,
         requestedDeliveryDate: requestedDeliveryDate || null,
+        isRushOrder: rush,
+        rushNotes: rushNotes || "",
     }).catch((e) => console.error("[EMAIL] Admin wholesale order alert failed:", e));
 
     res.status(201).json(order);
 });
 
-// ── GET /orders – list customer's wholesale orders ──
 router.get("/orders", async (req, res) => {
     const wc = await getWholesaleCustomer(req.customer!.userId);
     if (!wc) {
@@ -295,7 +365,6 @@ router.get("/orders", async (req, res) => {
     res.json(orders);
 });
 
-// ── GET /orders/:id – order detail ──
 router.get("/orders/:id", async (req, res) => {
     const wc = await getWholesaleCustomer(req.customer!.userId);
     if (!wc) {
@@ -333,7 +402,6 @@ router.get("/orders/:id", async (req, res) => {
         .from(wholesaleOrderItemsTable)
         .where(eq(wholesaleOrderItemsTable.wholesaleOrderId, order.id));
 
-    // Include delivery run stop info if available
     const [deliveryStop] = await db
         .select({
             stopStatus: wholesaleDeliveryRunStopsTable.status,

@@ -318,6 +318,65 @@ export async function sendAdminNewOrderAlert(order: {
   return send(ADMIN_EMAIL, `🍦 New Order #${order.orderNumber} — $${(order.totalCents / 100).toFixed(2)}`, html);
 }
 
+export async function sendOrderPaymentFailed(order: {
+  orderNumber: string;
+  customerName: string;
+  customerEmail: string;
+  totalCents: number;
+  detail?: string;
+}) {
+  const detailLine = order.detail
+    ? `<p style="color:#6b7280;font-size:14px">${order.detail}</p>`
+    : "";
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      ${HEADER_HTML}
+      <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 12px 12px">
+        <h2 style="margin-top:0">Payment Not Completed</h2>
+        <p>Hi ${order.customerName},</p>
+        <p>We could not process payment for pre-order <strong>#${order.orderNumber}</strong> ($${(order.totalCents / 100).toFixed(2)}). Your order was <strong>not confirmed</strong> and no items were reserved.</p>
+        ${detailLine}
+        <p>Please return to <a href="${process.env.PUBLIC_URL || "https://urbanchurn.com"}/pre-order" style="color:#A1AB74;font-weight:bold">our pre-order page</a> and try again with a different card, or contact us at <a href="mailto:contact@urbanchurn.com" style="color:#A1AB74">contact@urbanchurn.com</a> or <a href="tel:7172087256" style="color:#A1AB74">(717) 208-7256</a>.</p>
+        ${FOOTER_HTML}
+      </div>
+    </div>`;
+
+  return send(
+    order.customerEmail,
+    `Payment failed — Order #${order.orderNumber} not placed`,
+    html,
+  );
+}
+
+export async function sendAdminPaymentFailedAlert(order: {
+  orderNumber: string;
+  customerName: string;
+  customerEmail: string;
+  totalCents: number;
+  detail?: string;
+}) {
+  if (!ADMIN_EMAIL) return null;
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      ${HEADER_HTML}
+      <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 12px 12px">
+        <h2 style="color:#b45309;margin-top:0">⚠️ Payment Failed — Order Cancelled</h2>
+        <ul>
+          <li><strong>Order:</strong> #${order.orderNumber}</li>
+          <li><strong>Customer:</strong> ${order.customerName} (${order.customerEmail})</li>
+          <li><strong>Amount:</strong> $${(order.totalCents / 100).toFixed(2)}</li>
+          ${order.detail ? `<li><strong>Detail:</strong> ${order.detail}</li>` : ""}
+        </ul>
+        <p style="font-size:13px;color:#6b7280">The order was automatically cancelled and inventory was restored. No confirmation email was sent to the customer.</p>
+        ${FOOTER_HTML}
+      </div>
+    </div>`;
+
+  return send(ADMIN_EMAIL, `⚠️ Payment failed — #${order.orderNumber}`, html);
+}
+
 export async function sendAdminLowStockAlert(products: { flavourName: string; sizeName: string; stockQuantity: number }[]) {
   if (!ADMIN_EMAIL || products.length === 0) return null;
 
@@ -1493,12 +1552,19 @@ export async function sendAdminWholesalePortalOrderAlert(opts: {
   subtotalCents: number;
   deliveryMethod: string;
   requestedDeliveryDate: string | null;
+  isRushOrder?: boolean;
+  rushNotes?: string;
 }) {
   if (!ADMIN_EMAIL) return null;
+
+  const rushBanner = opts.isRushOrder
+    ? `<p style="background:#fef3c7;color:#92400e;padding:12px;border-radius:8px;font-weight:bold">⚡ RUSH ORDER${opts.rushNotes ? `: ${opts.rushNotes}` : ""}</p>`
+    : "";
 
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
       <h2 style="color:#111">📦 New Wholesale Portal Order: #${opts.orderNumber}</h2>
+      ${rushBanner}
       <ul>
         <li><strong>Business:</strong> ${opts.businessName}</li>
         <li><strong>Items:</strong> ${opts.itemCount}</li>
@@ -1509,7 +1575,8 @@ export async function sendAdminWholesalePortalOrderAlert(opts: {
       <p><a href="${process.env.APP_URL || ""}/admin/wholesale" style="color:#A1AB74">View in Dashboard →</a></p>
     </div>`;
 
-  return send(ADMIN_EMAIL, `📦 Wholesale Portal Order #${opts.orderNumber} — ${opts.businessName}`, html);
+  const subjectPrefix = opts.isRushOrder ? "⚡ RUSH " : "📦 ";
+  return send(ADMIN_EMAIL, `${subjectPrefix}Wholesale Portal Order #${opts.orderNumber} — ${opts.businessName}`, html);
 }
 
 // ── Wholesale Welcome Email (auto-created account with temp password) ──

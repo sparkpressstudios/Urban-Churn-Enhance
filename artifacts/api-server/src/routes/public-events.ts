@@ -12,7 +12,9 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, asc, gte, sql, inArray } from "drizzle-orm";
 import * as crypto from "node:crypto";
-import { createPayment, createSquareOrder, isSquareConfigured, getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId, linkCustomerToSquareOrder } from "../lib/square";
+import { refundPayment, isSquareConfigured, getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId, linkCustomerToSquareOrder } from "../lib/square";
+import { chargeBeforeOrderPersist, CheckoutPaymentError } from "../lib/checkout-payment";
+import { respondPaymentError } from "../lib/payment-errors";
 import { sendTicketConfirmation } from "../lib/email";
 import { sendEventQuestionNotification } from "../lib/email";
 import { hashPassword, verifyPassword } from "../lib/password";
@@ -352,213 +354,203 @@ router.post("/events/:id/purchase", async (req, res) => {
             return;
         }
 
-        const result = await db.transaction(async (tx) => {
-            // Validate ticket types and calculate total
-            let totalCents = 0;
-            const validatedItems: {
-                ticketTypeId: number;
-                ticketTypeName: string;
-                priceCents: number;
-                quantity: number;
-            }[] = [];
+        // Validate ticket availability (read-only) before charging
+        let totalCents = 0;
+        const validatedItems: {
+            ticketTypeId: number;
+            ticketTypeName: string;
+            priceCents: number;
+            quantity: number;
+        }[] = [];
 
-            for (const item of items) {
-                const [ticketType] = await tx
-                    .select()
-                    .from(eventTicketTypesTable)
-                    .where(
-                        and(
-                            eq(eventTicketTypesTable.id, item.ticketTypeId),
-                            eq(eventTicketTypesTable.eventId, eventId),
-                            eq(eventTicketTypesTable.active, true),
-                        ),
-                    )
-                    .limit(1);
-
-                if (!ticketType) {
-                    throw new Error(`PURCHASE_ERROR:Ticket type ${item.ticketTypeId} not found`);
-                }
-
-                const available = ticketType.quantity - ticketType.quantitySold;
-                if (item.quantity > available) {
-                    throw new Error(`PURCHASE_ERROR:Only ${available} tickets available for "${ticketType.name}"`);
-                }
-
-                if (item.quantity > ticketType.maxPerOrder) {
-                    throw new Error(`PURCHASE_ERROR:Maximum ${ticketType.maxPerOrder} tickets per order for "${ticketType.name}"`);
-                }
-
-                totalCents += ticketType.priceCents * item.quantity;
-                validatedItems.push({
-                    ticketTypeId: ticketType.id,
-                    ticketTypeName: ticketType.name,
-                    priceCents: ticketType.priceCents,
-                    quantity: item.quantity,
-                });
-            }
-
-            // Generate order number
-            const orderNumber = `EVT-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-
-            // Create order (payment processed after transaction commits)
-            const [order] = await tx
-                .insert(eventOrdersTable)
-                .values({
-                    orderNumber,
-                    eventId,
-                    customerName,
-                    customerEmail,
-                    customerPhone: customerPhone ?? "",
-                    status: totalCents === 0 ? "confirmed" : "pending",
-                    totalCents,
-                })
-                .returning();
-
-            // Create order items and individual tickets
-            const allTickets: {
-                ticketCode: string;
-                ticketTypeName: string;
-                priceCents: number;
-            }[] = [];
-
-            for (const item of validatedItems) {
-                await tx.insert(eventOrderItemsTable).values({
-                    eventOrderId: order.id,
-                    ticketTypeId: item.ticketTypeId,
-                    ticketTypeName: item.ticketTypeName,
-                    priceCents: item.priceCents,
-                    quantity: item.quantity,
-                });
-
-                // Atomic update with availability check to prevent overselling
-                const updated = await tx
-                    .update(eventTicketTypesTable)
-                    .set({
-                        quantitySold: sql`${eventTicketTypesTable.quantitySold} + ${item.quantity}`,
-                        updatedAt: new Date(),
-                    })
-                    .where(
-                        and(
-                            eq(eventTicketTypesTable.id, item.ticketTypeId),
-                            sql`${eventTicketTypesTable.quantity} - ${eventTicketTypesTable.quantitySold} >= ${item.quantity}`,
-                        ),
-                    )
-                    .returning();
-
-                if (updated.length === 0) {
-                    throw new Error(`PURCHASE_ERROR:Tickets no longer available for "${item.ticketTypeName}"`);
-                }
-
-                // Create individual tickets
-                for (let i = 0; i < item.quantity; i++) {
-                    const ticketCode = crypto.randomBytes(16).toString("hex");
-                    await tx.insert(eventTicketsTable).values({
-                        eventOrderId: order.id,
-                        eventId,
-                        ticketTypeId: item.ticketTypeId,
-                        ticketCode,
-                        attendeeName: customerName,
-                        attendeeEmail: customerEmail,
-                        status: "active",
-                    });
-                    allTickets.push({
-                        ticketCode,
-                        ticketTypeName: item.ticketTypeName,
-                        priceCents: item.priceCents,
-                    });
-                }
-            }
-
-            // Check if event is now sold out
-            const remainingTypes = await tx
-                .select({
-                    available: sql<number>`${eventTicketTypesTable.quantity} - ${eventTicketTypesTable.quantitySold}`,
-                })
+        for (const item of items) {
+            const [ticketType] = await db
+                .select()
                 .from(eventTicketTypesTable)
                 .where(
                     and(
+                        eq(eventTicketTypesTable.id, item.ticketTypeId),
                         eq(eventTicketTypesTable.eventId, eventId),
                         eq(eventTicketTypesTable.active, true),
                     ),
-                );
+                )
+                .limit(1);
 
-            const totalRemaining = remainingTypes.reduce(
-                (sum, t) => sum + t.available,
-                0,
-            );
-            if (totalRemaining <= 0) {
-                await tx
-                    .update(eventsTable)
-                    .set({ status: "sold_out", updatedAt: new Date() })
-                    .where(eq(eventsTable.id, eventId));
+            if (!ticketType) {
+                res.status(400).json({ error: `Ticket type ${item.ticketTypeId} not found` });
+                return;
             }
 
-            return { order, allTickets, totalCents, validatedItems };
-        });
+            const available = ticketType.quantity - ticketType.quantitySold;
+            if (item.quantity > available) {
+                res.status(400).json({ error: `Only ${available} tickets available for "${ticketType.name}"` });
+                return;
+            }
 
-        // Process Square payment AFTER transaction commits (prevents charging customer if DB rolls back)
+            if (item.quantity > ticketType.maxPerOrder) {
+                res.status(400).json({
+                    error: `Maximum ${ticketType.maxPerOrder} tickets per order for "${ticketType.name}"`,
+                });
+                return;
+            }
+
+            totalCents += ticketType.priceCents * item.quantity;
+            validatedItems.push({
+                ticketTypeId: ticketType.id,
+                ticketTypeName: ticketType.name,
+                priceCents: ticketType.priceCents,
+                quantity: item.quantity,
+            });
+        }
+
+        if (totalCents > 0 && !sourceId) {
+            respondPaymentError(res, "PAYMENT_REQUIRED", 400);
+            return;
+        }
+
+        const orderNumber = `EVT-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+
         let squareOrderId: string | null = null;
         let squarePaymentId: string | null = null;
-        let paymentFailed = false;
+        let onlineSalesLocationId: string | null = null;
 
-        if (result.totalCents > 0 && sourceId) {
-            // Use the Online Sales Square location for all ticket order routing
-            const onlineSalesLocationId = await getOnlineSalesLocationId();
-
-            if (onlineSalesLocationId) {
-                try {
-                    const sqOrder = await createSquareOrder(
-                        onlineSalesLocationId,
-                        result.order.orderNumber,
-                        result.validatedItems.map((item) => ({
-                            name: `${event.title} — ${item.ticketTypeName}`,
-                            quantity: item.quantity,
-                            priceCents: item.priceCents,
-                        })),
-                    );
-                    squareOrderId = sqOrder.id ?? null;
-                } catch (e) {
-                    console.error("[SQUARE] Order creation failed:", e);
-                }
-            }
-
+        if (totalCents > 0) {
             try {
-                const payment = await createPayment(
-                    result.totalCents,
-                    sourceId,
+                const paymentResult = await chargeBeforeOrderPersist({
+                    orderNumber,
+                    chargeCents: totalCents,
+                    sourceId: sourceId!,
                     customerEmail,
-                    squareOrderId ?? undefined,
-                    undefined,
-                    onlineSalesLocationId ?? undefined,
-                );
-                squarePaymentId = payment.id ?? null;
-            } catch {
-                // Payment failed — order exists as "pending", not confirmed
-                // Can be retried or cancelled by admin
-                console.error("[SQUARE] Payment failed for order:", result.order.orderNumber);
-                paymentFailed = true;
+                    lineItems: validatedItems.map((item) => ({
+                        name: `${event.title} — ${item.ticketTypeName}`,
+                        quantity: item.quantity,
+                        priceCents: item.priceCents,
+                    })),
+                });
+                squareOrderId = paymentResult.squareOrderId;
+                squarePaymentId = paymentResult.squarePaymentId;
+                onlineSalesLocationId = paymentResult.locationId;
+            } catch (e) {
+                if (e instanceof CheckoutPaymentError) {
+                    console.error(`[CHECKOUT] Event payment blocked: ${e.logDetail}`);
+                    respondPaymentError(res, e.code, e.code === "PAYMENTS_UNAVAILABLE" ? 503 : 402);
+                    return;
+                }
+                console.error("[CHECKOUT] Unexpected event payment error:", e);
+                respondPaymentError(res, "PAYMENT_PROCESSING_ERROR", 402);
+                return;
             }
         }
 
-        // Update order with Square references and confirm status
-        if (squareOrderId || squarePaymentId) {
-            await db
-                .update(eventOrdersTable)
-                .set({
-                    ...(squareOrderId ? { squareOrderId } : {}),
-                    ...(squarePaymentId ? { squarePaymentId } : {}),
-                    ...(squarePaymentId ? { status: "confirmed" as const } : {}),
-                    updatedAt: new Date(),
-                })
-                .where(eq(eventOrdersTable.id, result.order.id));
-        }
+        let result: {
+            order: typeof eventOrdersTable.$inferSelect;
+            allTickets: { ticketCode: string; ticketTypeName: string; priceCents: number }[];
+            totalCents: number;
+            validatedItems: typeof validatedItems;
+        };
 
-        if (paymentFailed) {
-            res.status(402).json({
-                error: "Payment failed. Your order was created as pending.",
-                orderNumber: result.order.orderNumber,
+        try {
+            result = await db.transaction(async (tx) => {
+                const [order] = await tx
+                    .insert(eventOrdersTable)
+                    .values({
+                        orderNumber,
+                        eventId,
+                        customerName,
+                        customerEmail,
+                        customerPhone: customerPhone ?? "",
+                        status: "confirmed",
+                        totalCents,
+                        squareOrderId,
+                        squarePaymentId,
+                    })
+                    .returning();
+
+                const allTickets: {
+                    ticketCode: string;
+                    ticketTypeName: string;
+                    priceCents: number;
+                }[] = [];
+
+                for (const item of validatedItems) {
+                    await tx.insert(eventOrderItemsTable).values({
+                        eventOrderId: order.id,
+                        ticketTypeId: item.ticketTypeId,
+                        ticketTypeName: item.ticketTypeName,
+                        priceCents: item.priceCents,
+                        quantity: item.quantity,
+                    });
+
+                    const updated = await tx
+                        .update(eventTicketTypesTable)
+                        .set({
+                            quantitySold: sql`${eventTicketTypesTable.quantitySold} + ${item.quantity}`,
+                            updatedAt: new Date(),
+                        })
+                        .where(
+                            and(
+                                eq(eventTicketTypesTable.id, item.ticketTypeId),
+                                sql`${eventTicketTypesTable.quantity} - ${eventTicketTypesTable.quantitySold} >= ${item.quantity}`,
+                            ),
+                        )
+                        .returning();
+
+                    if (updated.length === 0) {
+                        throw new Error(`PURCHASE_ERROR:Tickets no longer available for "${item.ticketTypeName}"`);
+                    }
+
+                    for (let i = 0; i < item.quantity; i++) {
+                        const ticketCode = crypto.randomBytes(16).toString("hex");
+                        await tx.insert(eventTicketsTable).values({
+                            eventOrderId: order.id,
+                            eventId,
+                            ticketTypeId: item.ticketTypeId,
+                            ticketCode,
+                            attendeeName: customerName,
+                            attendeeEmail: customerEmail,
+                            status: "active",
+                        });
+                        allTickets.push({
+                            ticketCode,
+                            ticketTypeName: item.ticketTypeName,
+                            priceCents: item.priceCents,
+                        });
+                    }
+                }
+
+                const remainingTypes = await tx
+                    .select({
+                        available: sql<number>`${eventTicketTypesTable.quantity} - ${eventTicketTypesTable.quantitySold}`,
+                    })
+                    .from(eventTicketTypesTable)
+                    .where(
+                        and(
+                            eq(eventTicketTypesTable.eventId, eventId),
+                            eq(eventTicketTypesTable.active, true),
+                        ),
+                    );
+
+                const totalRemaining = remainingTypes.reduce((sum, t) => sum + t.available, 0);
+                if (totalRemaining <= 0) {
+                    await tx
+                        .update(eventsTable)
+                        .set({ status: "sold_out", updatedAt: new Date() })
+                        .where(eq(eventsTable.id, eventId));
+                }
+
+                return { order, allTickets, totalCents, validatedItems };
             });
-            return;
+        } catch (e: unknown) {
+            if (squarePaymentId && totalCents > 0) {
+                await refundPayment(squarePaymentId, totalCents).catch((refundErr) =>
+                    console.error("[SQUARE] Refund after failed ticket persist:", refundErr),
+                );
+            }
+            if (e instanceof Error && e.message?.startsWith("PURCHASE_ERROR:")) {
+                res.status(400).json({ error: e.message.replace("PURCHASE_ERROR:", "") });
+                return;
+            }
+            throw e;
         }
 
         // ── Square Customer Sync + Loyalty Accrual (non-blocking) ──
@@ -683,16 +675,16 @@ router.post("/events/:id/purchase", async (req, res) => {
             "TBA";
 
         sendTicketConfirmation({
-            orderNumber: result.order.orderNumber,
-            customerName,
-            customerEmail,
-            totalCents: result.totalCents,
-            eventTitle: event.title,
-            eventDate: event.eventDate,
-            startTime: event.startTime,
-            venueName: locationName,
-            tickets: result.allTickets,
-        }).catch((e) => console.error("[EMAIL] Ticket confirmation failed:", e));
+                orderNumber: result.order.orderNumber,
+                customerName,
+                customerEmail,
+                totalCents: result.totalCents,
+                eventTitle: event.title,
+                eventDate: event.eventDate,
+                startTime: event.startTime,
+                venueName: locationName,
+                tickets: result.allTickets,
+            }).catch((e) => console.error("[EMAIL] Ticket confirmation failed:", e));
 
         // Set auth cookie if account was created or logged in
         if (authToken) {
