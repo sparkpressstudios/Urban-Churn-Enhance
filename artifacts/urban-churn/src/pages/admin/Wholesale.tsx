@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -2734,11 +2734,6 @@ function ProductsTab() {
         queryFn: () => api.getWholesaleCustomers({ status: "active" }),
     });
 
-    const flavoursQ = useQuery({
-        queryKey: ["flavours"],
-        queryFn: () => api.getFlavours(),
-    });
-
     const deleteMutation = useMutation({
         mutationFn: (id: number) => api.deleteWholesaleProduct(id),
         onSuccess: () => {
@@ -2763,11 +2758,6 @@ function ProductsTab() {
     const wholesaleFlavours = wholesaleFlavoursQ.data || [];
     const customers = customersQ.data || [];
 
-    const linkedFlavourIds = useMemo(
-        () => new Set<number>(wholesaleFlavours.map((f: any) => f.flavourId as number)),
-        [wholesaleFlavours],
-    );
-
     const catalogTitle =
         catalogView === "standard"
             ? "Standard catalog — visible to all wholesale clients"
@@ -2782,9 +2772,8 @@ function ProductsTab() {
             <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-4 text-sm text-blue-900 space-y-2">
                 <p className="font-medium">How wholesale flavours work</p>
                 <ul className="text-blue-800/90 space-y-1 list-disc list-inside">
-                    <li><strong>Create New Flavour</strong> — adds a brand-new flavour name, wholesale profile, and optional size pricing (visible to all clients).</li>
-                    <li><strong>Add Existing Retail Flavour</strong> — links a flavour already in your shop catalog to wholesale (metadata only; set prices in the matrix).</li>
-                    <li><strong>Edit (pencil)</strong> — update description, allergens, active status, and choose <strong>all clients</strong> or <strong>specific clients only</strong>.</li>
+                    <li><strong>Create New Flavour</strong> — adds a brand-new flavour name, wholesale profile, and optional size pricing.</li>
+                    <li><strong>Pencil icon</strong> on any row — set up or edit wholesale metadata, catalog access (all clients vs specific clients), and active status. Set prices in the matrix.</li>
                 </ul>
             </div>
 
@@ -2851,10 +2840,6 @@ function ProductsTab() {
                             Create New Flavour
                         </Button>
                     )}
-                    <Button variant="outline" onClick={() => { setEditingFlavour(null); setShowFlavourDialog(true); }}>
-                        <Plus className="mr-1 h-4 w-4" />
-                        Add Existing Retail Flavour
-                    </Button>
                     <Button variant="outline" onClick={() => { setEditingSize(null); setShowSizeDialog(true); }}>
                         <Plus className="mr-1 h-4 w-4" />
                         Add Size
@@ -2898,7 +2883,14 @@ function ProductsTab() {
                                 {wholesaleFlavours.map((f: any) => (
                                     <tr key={f.flavourId} className="border-b hover:bg-gray-50">
                                         <td className="px-4 py-3">
-                                            <div className="font-medium">{f.flavourName}</div>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-medium">{f.flavourName}</span>
+                                                {!f.id && (
+                                                    <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300">
+                                                        Not set up — click pencil
+                                                    </Badge>
+                                                )}
+                                            </div>
                                             <div className="text-xs text-gray-500 line-clamp-2 max-w-[28rem]">{f.description || "—"}</div>
                                         </td>
                                         <td className="px-4 py-3">
@@ -2941,7 +2933,7 @@ function ProductsTab() {
                                                 <Button
                                                     size="sm"
                                                     variant="ghost"
-                                                    title="Edit flavour, catalog access, and client assignments"
+                                                    title={f.id ? "Edit wholesale metadata and catalog access" : "Set up wholesale for this flavour"}
                                                     onClick={() => { setEditingFlavour(f); setShowFlavourDialog(true); }}
                                                 >
                                                     <Pencil className="h-4 w-4" />
@@ -3146,10 +3138,8 @@ function ProductsTab() {
                 />
             )}
 
-            {showFlavourDialog && (
+            {showFlavourDialog && editingFlavour && (
                 <AddWholesaleFlavourDialog
-                    baseFlavours={flavoursQ.data || []}
-                    linkedFlavourIds={linkedFlavourIds}
                     customers={customers}
                     flavour={editingFlavour}
                     onClose={() => {
@@ -3157,10 +3147,11 @@ function ProductsTab() {
                         setEditingFlavour(null);
                     }}
                     onSaved={() => {
+                        const wasSetup = !editingFlavour.id;
                         setShowFlavourDialog(false);
                         setEditingFlavour(null);
                         queryClient.invalidateQueries({ queryKey: ["wholesale-flavours"] });
-                        toast({ title: editingFlavour ? "Flavour profile updated" : "Flavour profile added" });
+                        toast({ title: wasSetup ? "Wholesale flavour set up" : "Flavour profile updated" });
                     }}
                 />
             )}
@@ -3604,40 +3595,32 @@ function CreateExclusiveFlavourDialog({
 }
 
 function AddWholesaleFlavourDialog({
-    baseFlavours,
-    linkedFlavourIds,
     customers,
     flavour,
     onClose,
     onSaved,
 }: {
-    baseFlavours: any[];
-    linkedFlavourIds: Set<number>;
     customers: any[];
-    flavour?: any | null;
+    flavour: any;
     onClose: () => void;
     onSaved: () => void;
 }) {
-    const isEditing = !!flavour;
+    const isFirstSetup = !flavour.id;
     const [form, setForm] = useState({
-        flavourId: flavour?.flavourId ? String(flavour.flavourId) : "",
-        description: flavour?.description || "",
-        allergens: flavour?.allergens || "",
-        isSeasonal: flavour?.isSeasonal ?? false,
-        active: flavour?.active ?? true,
-        sortOrder: String(flavour?.sortOrder ?? 0),
+        flavourId: String(flavour.flavourId),
+        description: flavour.description || "",
+        allergens: flavour.allergens || "",
+        isSeasonal: flavour.isSeasonal ?? false,
+        active: flavour.active ?? true,
+        sortOrder: String(flavour.sortOrder ?? 0),
     });
     const [catalogAccess, setCatalogAccess] = useState<CatalogAccess>(
-        flavour?.isExclusive ? "exclusive" : "all",
+        flavour.isExclusive ? "exclusive" : "all",
     );
     const [customerIds, setCustomerIds] = useState<number[]>(
-        (flavour?.exclusiveCustomers || []).map((c: any) => c.id),
+        (flavour.exclusiveCustomers || []).map((c: any) => c.id),
     );
     const [saving, setSaving] = useState(false);
-
-    const selectableFlavours = isEditing
-        ? baseFlavours
-        : baseFlavours.filter((f) => !linkedFlavourIds.has(f.id));
 
     const handleSave = async () => {
         if (!form.flavourId) return;
@@ -3659,7 +3642,7 @@ function AddWholesaleFlavourDialog({
                 customerIds: isExclusive ? customerIds : [],
             };
 
-            if (flavour?.id) {
+            if (flavour.id) {
                 await api.updateWholesaleFlavour(flavour.id, payload);
             } else {
                 await api.createWholesaleFlavour(payload);
@@ -3677,47 +3660,21 @@ function AddWholesaleFlavourDialog({
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>
-                        {isEditing ? "Edit Flavour & Catalog Access" : "Add Existing Retail Flavour"}
+                        {isFirstSetup ? "Set Up Wholesale Flavour" : "Edit Flavour & Catalog Access"}
                     </DialogTitle>
                 </DialogHeader>
-                {isEditing ? (
-                    <p className="text-sm text-gray-600 -mt-2">
-                        Editing <strong>{flavour.flavourName}</strong> — update wholesale details and who can see it.
-                    </p>
-                ) : (
-                    <p className="text-sm text-gray-600 -mt-2">
-                        Link a flavour from your shop catalog to wholesale. Set size prices in the matrix after saving.
-                    </p>
-                )}
-                <div className="space-y-3">
-                    {isEditing ? (
-                        <div className="rounded-md border bg-gray-50 px-3 py-2 text-sm">
-                            <span className="text-gray-500">Flavour: </span>
-                            <span className="font-medium">{flavour.flavourName}</span>
-                        </div>
+                <p className="text-sm text-gray-600 -mt-2">
+                    {isFirstSetup ? (
+                        <>Configure wholesale settings for <strong>{flavour.flavourName}</strong>. Set size prices in the matrix after saving.</>
                     ) : (
-                        <Select
-                            value={form.flavourId}
-                            onValueChange={(v) => setForm({ ...form, flavourId: v })}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select retail flavour *" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {selectableFlavours.length === 0 ? (
-                                    <SelectItem value="__none" disabled>
-                                        All retail flavours are already in wholesale
-                                    </SelectItem>
-                                ) : (
-                                    selectableFlavours.map((f: any) => (
-                                        <SelectItem key={f.id} value={String(f.id)}>
-                                            {f.name}
-                                        </SelectItem>
-                                    ))
-                                )}
-                            </SelectContent>
-                        </Select>
+                        <>Update wholesale details and catalog access for <strong>{flavour.flavourName}</strong>.</>
                     )}
+                </p>
+                <div className="space-y-3">
+                    <div className="rounded-md border bg-gray-50 px-3 py-2 text-sm">
+                        <span className="text-gray-500">Flavour: </span>
+                        <span className="font-medium">{flavour.flavourName}</span>
+                    </div>
                     <Textarea
                         placeholder="Wholesale description"
                         value={form.description}
@@ -3763,8 +3720,8 @@ function AddWholesaleFlavourDialog({
                         customerIds={customerIds}
                         onCustomerIdsChange={setCustomerIds}
                     />
-                    <Button onClick={handleSave} disabled={saving || (!isEditing && !form.flavourId)} className="w-full">
-                        {saving ? "Saving…" : isEditing ? "Save Changes" : "Add to Wholesale"}
+                    <Button onClick={handleSave} disabled={saving} className="w-full">
+                        {saving ? "Saving…" : isFirstSetup ? "Set Up for Wholesale" : "Save Changes"}
                     </Button>
                 </div>
             </DialogContent>
