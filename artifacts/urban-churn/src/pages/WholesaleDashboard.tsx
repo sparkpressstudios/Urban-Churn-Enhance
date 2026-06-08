@@ -7,14 +7,15 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { TourProvider, useTour } from "@/lib/tour";
 import { wholesaleDashboardSteps } from "@/lib/tour/tour-steps";
+import { WHOLESALE_ORDER_STATUS_LABELS } from "@/lib/wholesale-constants";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-    pending_review: { label: "Pending Review", color: "bg-yellow-500/20 text-yellow-300" },
-    confirmed: { label: "Confirmed", color: "bg-blue-500/20 text-blue-300" },
-    in_production: { label: "In Production", color: "bg-purple-500/20 text-purple-300" },
-    ready: { label: "Ready", color: "bg-green-500/20 text-green-300" },
-    delivered: { label: "Delivered", color: "bg-emerald-500/20 text-emerald-300" },
-    cancelled: { label: "Cancelled", color: "bg-red-500/20 text-red-300" },
+    pending_review: { label: WHOLESALE_ORDER_STATUS_LABELS.pending_review, color: "bg-yellow-500/20 text-yellow-300" },
+    confirmed: { label: WHOLESALE_ORDER_STATUS_LABELS.confirmed, color: "bg-blue-500/20 text-blue-300" },
+    in_production: { label: WHOLESALE_ORDER_STATUS_LABELS.in_production, color: "bg-purple-500/20 text-purple-300" },
+    ready: { label: WHOLESALE_ORDER_STATUS_LABELS.ready, color: "bg-green-500/20 text-green-300" },
+    delivered: { label: WHOLESALE_ORDER_STATUS_LABELS.delivered, color: "bg-emerald-500/20 text-emerald-300" },
+    cancelled: { label: WHOLESALE_ORDER_STATUS_LABELS.cancelled, color: "bg-red-500/20 text-red-300" },
 };
 
 export default function WholesaleDashboard() {
@@ -159,29 +160,39 @@ export default function WholesaleDashboard() {
                             {orders.map((order: any) => {
                                 const status = STATUS_LABELS[order.status] || { label: order.status, color: "bg-white/10 text-gray-700" };
                                 return (
-                                    <Link
+                                    <div
                                         key={order.id}
-                                        href={`/wholesale/portal/order/${order.id}`}
-                                        className="block bg-black/40 backdrop-blur-sm border border-white/10 rounded-xl p-4 sm:p-5 hover:bg-white/10 transition-colors"
+                                        className="bg-black/40 backdrop-blur-sm border border-white/10 rounded-xl p-4 sm:p-5 hover:bg-white/5 transition-colors"
                                     >
                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                            <div>
-                                                <span className="text-white font-medium">#{order.orderNumber}</span>
-                                                <span className="text-white/50 ml-3 text-sm">
-                                                    {new Date(order.createdAt).toLocaleDateString("en-US", {
-                                                        month: "short",
-                                                        day: "numeric",
-                                                        year: "numeric",
-                                                    })}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-3">
+                                            <Link href={`/wholesale/portal/order/${order.id}`} className="min-w-0 flex-1">
+                                                <div>
+                                                    <span className="text-white font-medium">#{order.orderNumber}</span>
+                                                    {order.isRushOrder && (
+                                                        <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200">RUSH</span>
+                                                    )}
+                                                    <span className="text-white/50 ml-3 text-sm">
+                                                        {new Date(order.createdAt).toLocaleDateString("en-US", {
+                                                            month: "short",
+                                                            day: "numeric",
+                                                            year: "numeric",
+                                                        })}
+                                                    </span>
+                                                </div>
+                                            </Link>
+                                            <div className="flex items-center gap-2 shrink-0">
                                                 <span className="text-white/70 text-sm">
                                                     ${(order.subtotalCents / 100).toFixed(2)}
                                                 </span>
                                                 <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
                                                     {status.label}
                                                 </span>
+                                                <Link
+                                                    href={`/wholesale/portal/order?reorder=${order.id}`}
+                                                    className="text-xs text-[#A1AB74] hover:underline px-2 py-1"
+                                                >
+                                                    Reorder
+                                                </Link>
                                             </div>
                                         </div>
                                         {order.requestedDeliveryDate && (
@@ -190,7 +201,7 @@ export default function WholesaleDashboard() {
                                                 {" · "}{order.deliveryMethod === "pickup" ? "Pickup" : "Delivery"}
                                             </p>
                                         )}
-                                    </Link>
+                                    </div>
                                 );
                             })}
                         </div>

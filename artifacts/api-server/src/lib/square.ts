@@ -648,6 +648,24 @@ export async function createAndPublishWholesaleInvoice(params: {
     };
 }
 
+export async function cancelWholesaleInvoice(squareInvoiceId: string): Promise<void> {
+    const client = await getSquareClient();
+    if (!client) {
+        throw new Error("Square is not configured. Cannot cancel invoice.");
+    }
+
+    const invoiceResponse = await client.invoices.get({ invoiceId: squareInvoiceId });
+    const version = invoiceResponse.invoice?.version;
+    if (version === undefined || version === null) {
+        throw new Error("Could not retrieve invoice version from Square");
+    }
+
+    await client.invoices.cancel({
+        invoiceId: squareInvoiceId,
+        version,
+    });
+}
+
 // ── Square Gift Cards ──
 
 export async function createDigitalGiftCard(locationId: string): Promise<{ id: string; gan: string } | null> {
