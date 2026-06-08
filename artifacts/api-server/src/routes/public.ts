@@ -41,7 +41,7 @@ import {
     sendFundraisingFormConfirmation,
     sendWelcomeEmail,
 } from "../lib/email";
-import { createSquareOrder, createPayment, isSquareConfigured, getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId, linkCustomerToSquareOrder } from "../lib/square";
+import { createSquareOrder, createPayment, isSquareConfigured, getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId } from "../lib/square";
 import { resolveOrderLineFromCatalog, revertUnpaidOrder } from "../lib/order-payment";
 
 const router: IRouter = Router();
@@ -788,6 +788,39 @@ router.post("/orders", async (req, res) => {
 
     // Process Square payment before sending confirmation emails
 
+    // Sync Square customer early so orders/payments can be linked before completion
+    let sqCustId: string | null = null;
+    let customerPhoneForSquare: string | undefined;
+    if (customerId) {
+        const [customerRecord] = await db
+            .select({
+                squareCustomerId: customersTable.squareCustomerId,
+                firstName: customersTable.firstName,
+                lastName: customersTable.lastName,
+                phone: customersTable.phone,
+            })
+            .from(customersTable)
+            .where(eq(customersTable.id, customerId))
+            .limit(1);
+
+        customerPhoneForSquare = customerRecord?.phone || customerPhone || undefined;
+        sqCustId = customerRecord?.squareCustomerId ?? null;
+
+        if (!sqCustId) {
+            const nameParts = customerName.trim().split(/\s+/);
+            sqCustId = await getOrCreateSquareCustomer(
+                normalizedEmail,
+                customerRecord?.firstName || nameParts[0] || "",
+                customerRecord?.lastName || nameParts.slice(1).join(" ") || "",
+                customerPhoneForSquare,
+            );
+            if (sqCustId) {
+                await db.update(customersTable)
+                    .set({ squareCustomerId: sqCustId, updatedAt: new Date() })
+                    .where(eq(customersTable.id, customerId));
+            }
+        }
+    }
     // Route all online sales to the Online Sales location (not individual POS devices)
     let squareOrderId: string | null = null;
     let squarePaymentId: string | null = null;
@@ -807,7 +840,7 @@ router.post("/orders", async (req, res) => {
                     priceCents: item.priceCents,
                 })),
                 discountCents > 0 ? discountCents : undefined,
-                { isPreOrder },
+                { isPreOrder, customerId: sqCustId ?? undefined },
             );
             squareOrderId = sqOrder.id ?? null;
         } catch (e) {
@@ -825,7 +858,7 @@ router.post("/orders", async (req, res) => {
                 sourceId,
                 normalizedEmail,
                 squareOrderId,
-                undefined,
+                sqCustId ?? undefined,
                 onlineSalesSquareLocationId ?? undefined,
             );
             squarePaymentId = payment.id ?? null;
@@ -845,7 +878,7 @@ router.post("/orders", async (req, res) => {
                 sourceId,
                 normalizedEmail,
                 undefined,
-                undefined,
+                sqCustId ?? undefined,
                 onlineSalesSquareLocationId ?? undefined,
             );
             squarePaymentId = payment.id ?? null;
@@ -950,45 +983,17 @@ router.post("/orders", async (req, res) => {
         );
     }
 
-    // ── Square Customer Sync + Loyalty Accrual (non-blocking) ──
+    // ── Square Loyalty Accrual (non-blocking) ──
     if (customerId && paymentStatus === "paid") {
         try {
-            // Get current customer record
-            const [customer] = await db
-                .select({ squareCustomerId: customersTable.squareCustomerId, firstName: customersTable.firstName, lastName: customersTable.lastName, phone: customersTable.phone })
-                .from(customersTable)
-                .where(eq(customersTable.id, customerId))
-                .limit(1);
-
-            let sqCustId = customer?.squareCustomerId ?? null;
-
-            // Sync customer to Square if not yet linked
-            if (!sqCustId) {
-                const nameParts = customerName.trim().split(/\s+/);
-                sqCustId = await getOrCreateSquareCustomer(
-                    normalizedEmail,
-                    customer?.firstName || nameParts[0] || "",
-                    customer?.lastName || nameParts.slice(1).join(" ") || "",
-                    customer?.phone || customerPhone,
-                );
-                if (sqCustId) {
-                    await db.update(customersTable)
-                        .set({ squareCustomerId: sqCustId, updatedAt: new Date() })
-                        .where(eq(customersTable.id, customerId));
-                }
-            }
-
-            // Link customer to the Square order so loyalty rules can resolve
-            if (sqCustId && squareOrderId && onlineSalesSquareLocationId) {
-                await linkCustomerToSquareOrder(squareOrderId, onlineSalesSquareLocationId, sqCustId);
-            }
-
-            // Accumulate loyalty points
             if (sqCustId && onlineSalesSquareLocationId) {
                 const program = await getSquareLoyaltyProgram();
                 if (program && program.status === "ACTIVE") {
-                    const customerPhone_ = customer?.phone || customerPhone;
-                    const loyaltyAccount = await getOrCreateLoyaltyAccount(sqCustId, program.id, customerPhone_ || undefined);
+                    const loyaltyAccount = await getOrCreateLoyaltyAccount(
+                        sqCustId,
+                        program.id,
+                        customerPhoneForSquare,
+                    );
                     if (loyaltyAccount) {
                         let accrued = false;
 
@@ -1019,7 +1024,7 @@ router.post("/orders", async (req, res) => {
                 }
             }
         } catch (e) {
-            console.error("[SQUARE] Customer sync / loyalty accrual failed (non-blocking):", e);
+            console.error("[SQUARE] Loyalty accrual failed (non-blocking):", e);
         }
     }
 

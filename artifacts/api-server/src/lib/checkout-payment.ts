@@ -37,6 +37,7 @@ export async function chargeBeforeOrderPersist(opts: {
     lineItems: { name: string; quantity: number; priceCents: number }[];
     discountCents?: number;
     isPreOrder?: boolean;
+    squareCustomerId?: string;
 }): Promise<{ squareOrderId: string | null; squarePaymentId: string; locationId: string }> {
     const locationId = await assertPaymentsReady();
 
@@ -47,7 +48,10 @@ export async function chargeBeforeOrderPersist(opts: {
             opts.orderNumber,
             opts.lineItems,
             opts.discountCents && opts.discountCents > 0 ? opts.discountCents : undefined,
-            opts.isPreOrder ? { isPreOrder: true } : undefined,
+            {
+                ...(opts.isPreOrder ? { isPreOrder: true } : {}),
+                ...(opts.squareCustomerId ? { customerId: opts.squareCustomerId } : {}),
+            },
         );
         squareOrderId = sqOrder.id ?? null;
     } catch (e) {
@@ -60,7 +64,7 @@ export async function chargeBeforeOrderPersist(opts: {
             opts.sourceId,
             opts.customerEmail,
             squareOrderId ?? undefined,
-            undefined,
+            opts.squareCustomerId,
             locationId,
         );
         const squarePaymentId = payment.id;

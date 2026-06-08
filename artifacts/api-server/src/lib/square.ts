@@ -211,6 +211,51 @@ export async function createSquareOrder(
     }
 }
 
+/** Normalize a phone number to E.164 for Square loyalty APIs (+1XXXXXXXXXX for US). */
+export function normalizePhoneForSquare(phone: string): string | null {
+    const trimmed = phone.trim();
+    if (!trimmed) return null;
+
+    const digits = trimmed.replace(/\D/g, "");
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+    if (trimmed.startsWith("+") && digits.length >= 10) return `+${digits}`;
+
+    return null;
+}
+
+function isSquareOrderNotUpdatableError(e: unknown): boolean {
+    if (!(e instanceof SquareError)) return false;
+    return e.errors?.some((err) =>
+        err.code === "BAD_REQUEST" &&
+        typeof (err as { detail?: string }).detail === "string" &&
+        ((err as { detail?: string }).detail!.includes("cannot be updated") ||
+            (err as { detail?: string }).detail!.includes("COMPLETED")),
+    ) ?? false;
+}
+
+function isPhoneAlreadyAssociatedError(e: unknown): boolean {
+    if (!(e instanceof SquareError)) return false;
+    return e.errors?.some((err) =>
+        err.code === "BAD_REQUEST" &&
+        typeof (err as { detail?: string }).detail === "string" &&
+        (err as { detail?: string }).detail!.includes("Phone number already associated"),
+    ) ?? false;
+}
+
+function loyaltyAccountFrom(account: {
+    id?: string;
+    balance?: number;
+    lifetimePoints?: number;
+}) {
+    if (!account.id) return null;
+    return {
+        accountId: account.id,
+        balance: account.balance ?? 0,
+        lifetimePoints: account.lifetimePoints ?? 0,
+    };
+}
+
 export async function linkCustomerToSquareOrder(
     squareOrderId: string,
     squareLocationId: string,
@@ -221,18 +266,24 @@ export async function linkCustomerToSquareOrder(
 
     try {
         const current = await client.orders.get({ orderId: squareOrderId });
-        const version = current.order?.version;
+        const order = current.order;
+
+        if (order?.customerId === squareCustomerId) return true;
+        if (order?.state === "COMPLETED" || order?.state === "CANCELED") {
+            return false;
+        }
 
         await client.orders.update({
             orderId: squareOrderId,
             order: {
                 locationId: squareLocationId,
                 customerId: squareCustomerId,
-                version,
+                version: order?.version,
             },
         });
         return true;
     } catch (e) {
+        if (isSquareOrderNotUpdatableError(e)) return false;
         console.error("[SQUARE] Failed to link customer to order:", e);
         return false;
     }
@@ -397,35 +448,48 @@ export async function getOrCreateLoyaltyAccount(
         },
     });
 
-    const existing = searchResponse.loyaltyAccounts?.[0];
-    if (existing) {
-        return {
-            accountId: existing.id!,
-            balance: existing.balance ?? 0,
-            lifetimePoints: existing.lifetimePoints ?? 0,
-        };
+    const existingByCustomer = searchResponse.loyaltyAccounts?.[0];
+    if (existingByCustomer) {
+        return loyaltyAccountFrom(existingByCustomer);
     }
 
-    // Square requires a phone number mapping to create a loyalty account
-    // If no phone is available, we can't enroll this customer
-    if (!phone) return null;
+    const normalizedPhone = phone ? normalizePhoneForSquare(phone) : null;
+    if (!normalizedPhone) return null;
 
-    const createResponse = await client.loyalty.accounts.create({
-        loyaltyAccount: {
-            programId,
-            mapping: { phoneNumber: phone },
+    // Phone may already be enrolled in-store under a different customer record
+    const searchByPhone = await client.loyalty.accounts.search({
+        query: {
+            mappings: [{ phoneNumber: normalizedPhone }],
         },
-        idempotencyKey: crypto.randomUUID(),
     });
+    const existingByPhone = searchByPhone.loyaltyAccounts?.[0];
+    if (existingByPhone) {
+        return loyaltyAccountFrom(existingByPhone);
+    }
 
-    const account = createResponse.loyaltyAccount;
-    if (!account) return null;
+    try {
+        const createResponse = await client.loyalty.accounts.create({
+            loyaltyAccount: {
+                programId,
+                mapping: { phoneNumber: normalizedPhone },
+            },
+            idempotencyKey: crypto.randomUUID(),
+        });
 
-    return {
-        accountId: account.id!,
-        balance: account.balance ?? 0,
-        lifetimePoints: account.lifetimePoints ?? 0,
-    };
+        return loyaltyAccountFrom(createResponse.loyaltyAccount ?? {});
+    } catch (e) {
+        if (isPhoneAlreadyAssociatedError(e)) {
+            const retrySearch = await client.loyalty.accounts.search({
+                query: {
+                    mappings: [{ phoneNumber: normalizedPhone }],
+                },
+            });
+            const existing = retrySearch.loyaltyAccounts?.[0];
+            if (existing) return loyaltyAccountFrom(existing);
+        }
+        console.error("[SQUARE] Failed to get or create loyalty account:", e);
+        return null;
+    }
 }
 
 export async function calculateLoyaltyPoints(
