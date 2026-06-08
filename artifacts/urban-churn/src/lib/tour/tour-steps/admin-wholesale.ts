@@ -30,6 +30,6 @@ export const adminWholesaleSteps: Step[] = [
         target: '[data-tour="admin-wholesale-flow"]',
         title: "How It Works",
         content:
-            "The workflow: Customer emails order → Resend receives it → AI parses the items → You review & confirm → Schedule delivery.",
+            "Expand this panel anytime for the full workflow: Customer emails order → Resend receives it → AI parses items → You review & confirm → Schedule delivery.",
     },
 ];

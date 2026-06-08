@@ -9,10 +9,16 @@ export const wholesaleDashboardSteps: Step[] = [
         skipBeacon: true,
     },
     {
+        target: '[data-tour="wholesale-active-summary"]',
+        title: "Orders at a Glance",
+        content:
+            "See active orders, total history, balance due, and your next scheduled delivery — without opening each order.",
+    },
+    {
         target: '[data-tour="wholesale-business-info"]',
         title: "Your Business Info",
         content:
-            "Your business name, contact details, and preferred delivery method are shown here.",
+            "Your contact details and preferred delivery method are always visible here.",
     },
     {
         target: '[data-tour="wholesale-order-history"]',

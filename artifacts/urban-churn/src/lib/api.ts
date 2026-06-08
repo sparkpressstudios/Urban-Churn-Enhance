@@ -560,7 +560,10 @@ export const api = {
         const qs = params ? "?" + new URLSearchParams(params).toString() : "";
         return apiFetch(`/admin/wholesale/delivery-schedule${qs}`);
     },
-    getWholesaleDashboard: () => apiFetch("/admin/wholesale/dashboard"),
+    getWholesaleDashboard: (params?: { scope?: string }) => {
+        const qs = params?.scope ? `?scope=${encodeURIComponent(params.scope)}` : "";
+        return apiFetch(`/admin/wholesale/dashboard${qs}`);
+    },
     getWholesaleDeliveryRuns: (params?: Record<string, string>) => {
         const qs = params ? "?" + new URLSearchParams(params).toString() : "";
         return apiFetch(`/admin/wholesale/delivery-runs${qs}`);
@@ -655,6 +658,7 @@ export const api = {
         customerFetch("/customer/register-wholesale", { method: "POST", body: JSON.stringify(data) }),
 
     // ── Wholesale Portal (Customer) ──
+    wholesalePortalDashboard: () => customerFetch("/customer/wholesale/dashboard"),
     wholesalePortalProfile: () => customerFetch("/customer/wholesale/profile"),
     wholesalePortalProducts: () => customerFetch("/customer/wholesale/products"),
     wholesalePortalOrders: () => customerFetch("/customer/wholesale/orders"),
