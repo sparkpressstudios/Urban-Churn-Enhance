@@ -12,7 +12,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, asc, gte, sql, inArray } from "drizzle-orm";
 import * as crypto from "node:crypto";
-import { createPayment, createSquareOrder, isSquareConfigured, getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId, linkCustomerToSquareOrder } from "../lib/square";
+import { createPayment, createSquareOrder, isSquareConfigured, getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId } from "../lib/square";
 import { sendTicketConfirmation } from "../lib/email";
 import { sendEventQuestionNotification } from "../lib/email";
 import { hashPassword, verifyPassword } from "../lib/password";
@@ -496,6 +496,48 @@ router.post("/events/:id/purchase", async (req, res) => {
             return { order, allTickets, totalCents, validatedItems };
         });
 
+        // Sync Square customer early so orders/payments can be linked before completion
+        const normalizedEmail = customerEmail.toLowerCase().trim();
+        const nameParts = customerName.trim().split(/\s+/);
+        const firstName = nameParts[0] || "";
+        const lastName = nameParts.slice(1).join(" ") || "";
+
+        let [customer] = await db
+            .select({ id: customersTable.id, squareCustomerId: customersTable.squareCustomerId, firstName: customersTable.firstName, lastName: customersTable.lastName, phone: customersTable.phone })
+            .from(customersTable)
+            .where(eq(customersTable.email, normalizedEmail))
+            .limit(1);
+
+        if (!customer) {
+            const [newCust] = await db
+                .insert(customersTable)
+                .values({
+                    email: normalizedEmail,
+                    firstName,
+                    lastName,
+                    phone: customerPhone || "",
+                })
+                .returning({ id: customersTable.id, squareCustomerId: customersTable.squareCustomerId, firstName: customersTable.firstName, lastName: customersTable.lastName, phone: customersTable.phone });
+            customer = newCust;
+        }
+
+        let sqCustId = customer.squareCustomerId ?? null;
+        const customerPhoneForSquare = customer.phone || customerPhone || undefined;
+
+        if (!sqCustId) {
+            sqCustId = await getOrCreateSquareCustomer(
+                normalizedEmail,
+                customer.firstName || firstName,
+                customer.lastName || lastName,
+                customerPhoneForSquare,
+            );
+            if (sqCustId) {
+                await db.update(customersTable)
+                    .set({ squareCustomerId: sqCustId, updatedAt: new Date() })
+                    .where(eq(customersTable.id, customer.id));
+            }
+        }
+
         // Process Square payment AFTER transaction commits (prevents charging customer if DB rolls back)
         let squareOrderId: string | null = null;
         let squarePaymentId: string | null = null;
@@ -515,6 +557,8 @@ router.post("/events/:id/purchase", async (req, res) => {
                             quantity: item.quantity,
                             priceCents: item.priceCents,
                         })),
+                        undefined,
+                        { customerId: sqCustId ?? undefined },
                     );
                     squareOrderId = sqOrder.id ?? null;
                 } catch (e) {
@@ -528,7 +572,7 @@ router.post("/events/:id/purchase", async (req, res) => {
                     sourceId,
                     customerEmail,
                     squareOrderId ?? undefined,
-                    undefined,
+                    sqCustId ?? undefined,
                     onlineSalesLocationId ?? undefined,
                 );
                 squarePaymentId = payment.id ?? null;
@@ -561,110 +605,63 @@ router.post("/events/:id/purchase", async (req, res) => {
             return;
         }
 
-        // ── Square Customer Sync + Loyalty Accrual (non-blocking) ──
-        if (squarePaymentId && result.totalCents > 0) {
+        // ── Square Loyalty Accrual (non-blocking) ──
+        if (squarePaymentId && result.totalCents > 0 && sqCustId) {
             try {
-                const normalizedEmail = customerEmail.toLowerCase().trim();
-                const nameParts = customerName.trim().split(/\s+/);
-                const firstName = nameParts[0] || "";
-                const lastName = nameParts.slice(1).join(" ") || "";
-
-                // Find or create local customer record by email
-                let [customer] = await db
-                    .select({ id: customersTable.id, squareCustomerId: customersTable.squareCustomerId, firstName: customersTable.firstName, lastName: customersTable.lastName, phone: customersTable.phone })
-                    .from(customersTable)
-                    .where(eq(customersTable.email, normalizedEmail))
-                    .limit(1);
-
-                if (!customer) {
-                    const [newCust] = await db
-                        .insert(customersTable)
-                        .values({
-                            email: normalizedEmail,
-                            firstName,
-                            lastName,
-                            phone: customerPhone || "",
-                        })
-                        .returning({ id: customersTable.id, squareCustomerId: customersTable.squareCustomerId, firstName: customersTable.firstName, lastName: customersTable.lastName, phone: customersTable.phone });
-                    customer = newCust;
-                }
-
-                let sqCustId = customer.squareCustomerId ?? null;
-
-                // Sync to Square
-                if (!sqCustId) {
-                    sqCustId = await getOrCreateSquareCustomer(
-                        normalizedEmail,
-                        customer.firstName || firstName,
-                        customer.lastName || lastName,
-                        customer.phone || customerPhone,
+                const onlineSalesLoc = await getOnlineSalesLocationId();
+                const program = await getSquareLoyaltyProgram();
+                if (program && program.status === "ACTIVE") {
+                    const loyaltyAccount = await getOrCreateLoyaltyAccount(
+                        sqCustId,
+                        program.id,
+                        customerPhoneForSquare,
                     );
-                    if (sqCustId) {
-                        await db.update(customersTable)
-                            .set({ squareCustomerId: sqCustId, updatedAt: new Date() })
-                            .where(eq(customersTable.id, customer.id));
-                    }
-                }
+                    if (loyaltyAccount) {
+                        // Determine the location ID for accrual
+                        let accrualLocationId: string | null = null;
+                        if (event.locationId) {
+                            const [loc] = await db
+                                .select({ squareLocationId: locationsTable.squareLocationId })
+                                .from(locationsTable)
+                                .where(eq(locationsTable.id, event.locationId))
+                                .limit(1);
+                            accrualLocationId = loc?.squareLocationId ?? null;
+                        }
+                        if (!accrualLocationId) {
+                            accrualLocationId = onlineSalesLoc;
+                        }
 
-                // Accumulate loyalty points
-                if (sqCustId) {
-                    // Link customer to Square order for proper loyalty resolution
-                    const onlineSalesLoc = await getOnlineSalesLocationId();
-                    if (squareOrderId && onlineSalesLoc) {
-                        await linkCustomerToSquareOrder(squareOrderId, onlineSalesLoc, sqCustId);
-                    }
+                        if (accrualLocationId) {
+                            let accrued = false;
 
-                    const program = await getSquareLoyaltyProgram();
-                    if (program && program.status === "ACTIVE") {
-                        const custPhone = customer.phone || customerPhone;
-                        const loyaltyAccount = await getOrCreateLoyaltyAccount(sqCustId, program.id, custPhone || undefined);
-                        if (loyaltyAccount) {
-                            // Determine the location ID for accrual
-                            let accrualLocationId: string | null = null;
-                            if (event.locationId) {
-                                const [loc] = await db
-                                    .select({ squareLocationId: locationsTable.squareLocationId })
-                                    .from(locationsTable)
-                                    .where(eq(locationsTable.id, event.locationId))
-                                    .limit(1);
-                                accrualLocationId = loc?.squareLocationId ?? null;
-                            }
-                            if (!accrualLocationId) {
-                                accrualLocationId = onlineSalesLoc;
+                            // Try order-based accrual first
+                            if (squareOrderId) {
+                                accrued = await accumulateLoyaltyPoints(
+                                    loyaltyAccount.accountId,
+                                    `event_order_${result.order.id}`,
+                                    accrualLocationId,
+                                    squareOrderId,
+                                );
                             }
 
-                            if (accrualLocationId) {
-                                let accrued = false;
-
-                                // Try order-based accrual first
-                                if (squareOrderId) {
-                                    accrued = await accumulateLoyaltyPoints(
+                            // Fall back to amount-based accrual
+                            if (!accrued && result.totalCents > 0) {
+                                const points = await calculateLoyaltyPoints(program.id, result.totalCents);
+                                if (points > 0) {
+                                    await accumulateLoyaltyPoints(
                                         loyaltyAccount.accountId,
-                                        `event_order_${result.order.id}`,
+                                        `event_order_${result.order.id}_amount`,
                                         accrualLocationId,
-                                        squareOrderId,
+                                        undefined,
+                                        points,
                                     );
-                                }
-
-                                // Fall back to amount-based accrual
-                                if (!accrued && result.totalCents > 0) {
-                                    const points = await calculateLoyaltyPoints(program.id, result.totalCents);
-                                    if (points > 0) {
-                                        await accumulateLoyaltyPoints(
-                                            loyaltyAccount.accountId,
-                                            `event_order_${result.order.id}_amount`,
-                                            accrualLocationId,
-                                            undefined,
-                                            points,
-                                        );
-                                    }
                                 }
                             }
                         }
                     }
                 }
             } catch (e) {
-                console.error("[SQUARE] Customer sync / loyalty accrual failed (non-blocking):", e);
+                console.error("[SQUARE] Loyalty accrual failed (non-blocking):", e);
             }
         }
 
