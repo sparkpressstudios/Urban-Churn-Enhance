@@ -19,7 +19,7 @@ import {
     eventsTable,
     preOrderLocationsTable,
 } from "@workspace/db/schema";
-import { eq, asc, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, asc, desc, and, sql, inArray, lte, gte } from "drizzle-orm";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { signToken } from "../lib/jwt";
 import * as crypto from "node:crypto";
@@ -541,6 +541,7 @@ router.post("/orders", async (req, res) => {
     let discountCents = 0;
 
     // Check pre-order restrictions for standard products and capture per-flavour pickup dates
+    const now = new Date();
     const openPreOrders = await db
         .select({
             id: productPreOrdersTable.id,
@@ -550,7 +551,13 @@ router.post("/orders", async (req, res) => {
         })
         .from(productPreOrdersTable)
         .innerJoin(flavoursTable, eq(productPreOrdersTable.flavourId, flavoursTable.id))
-        .where(eq(productPreOrdersTable.status, "open"));
+        .where(
+            and(
+                eq(productPreOrdersTable.status, "open"),
+                lte(productPreOrdersTable.preOrderStart, now),
+                gte(productPreOrdersTable.preOrderEnd, now),
+            ),
+        );
 
     const pickupOverrideByPreOrder = new Map<number, Date>();
     if (openPreOrders.length > 0) {
