@@ -23,6 +23,7 @@ import adminRotatingFlavoursRouter from "./admin/rotating-flavours";
 import adminWholesaleRouter from "./admin/wholesale";
 import adminInquiriesRouter from "./admin/inquiries";
 import adminSentEmailsRouter from "./admin/sent-emails";
+import adminEmailMarketingRouter from "./admin/email-marketing";
 import storeRouter from "./store/index";
 import webhooksRouter from "./webhooks";
 import publicEventsRouter from "./public-events";
@@ -72,6 +73,7 @@ router.use("/admin/rotating-flavours", requireAuth, requireAdminOrManager, admin
 router.use("/admin/wholesale", requireAuth, requireAdminOrManager, adminWholesaleRouter);
 router.use("/admin/inquiries", requireAuth, requireAdminOrManager, adminInquiriesRouter);
 router.use("/admin/sent-emails", requireAuth, requireAdminOrManager, adminSentEmailsRouter);
+router.use("/admin/email-marketing", requireAuth, requireAdminOrManager, adminEmailMarketingRouter);
 
 // Store portal routes (location-scoped auth)
 router.use("/store", requireStoreAccess, storeRouter);
