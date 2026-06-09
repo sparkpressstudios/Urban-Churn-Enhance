@@ -142,7 +142,7 @@ export default function Privacy() {
                             <li><strong>Access:</strong> Request a copy of the personal information we hold about you.</li>
                             <li><strong>Correction:</strong> Update or correct inaccurate information via your account profile or by contacting us.</li>
                             <li><strong>Deletion:</strong> Request deletion of your account and personal information. Note that certain data may be retained for legal and record-keeping purposes.</li>
-                            <li><strong>Opt-out of communications:</strong> While we do not send marketing emails, you may contact us if you wish to limit communications to essential order-related messages only.</li>
+                            <li><strong>Opt-out of marketing:</strong> You may unsubscribe from marketing emails at any time using the link in each message, or contact us to opt out. Transactional emails (order confirmations, pickup reminders, etc.) will still be sent as needed.</li>
                         </ul>
                         <p>
                             To exercise any of these rights, contact us at <a href="mailto:contact@urbanchurn.com">contact@urbanchurn.com</a>.

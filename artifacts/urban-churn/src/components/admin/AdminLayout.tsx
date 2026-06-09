@@ -22,6 +22,9 @@ import {
     Truck,
     MessageSquare,
     TicketCheck,
+    Megaphone,
+    FileText,
+    Send,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -74,6 +77,18 @@ const navGroups: NavGroup[] = [
         items: [
             { href: "/admin/customers", label: "Customers", icon: Users },
             { href: "/admin/email-log", label: "Email Log", icon: Mail },
+        ],
+    },
+    {
+        heading: "Email Marketing",
+        items: [
+            { href: "/admin/email", label: "Overview", icon: LayoutDashboard },
+            { href: "/admin/email/contacts", label: "Contacts", icon: Users },
+            { href: "/admin/email/segments", label: "Segments", icon: Megaphone },
+            { href: "/admin/email/templates", label: "Templates", icon: FileText },
+            { href: "/admin/email/campaigns", label: "Campaigns", icon: Send },
+            { href: "/admin/email/topics", label: "Topics", icon: Mail },
+            { href: "/admin/email/suppression", label: "Suppression", icon: Shield },
         ],
     },
     {

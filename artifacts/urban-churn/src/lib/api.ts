@@ -750,6 +750,146 @@ export const api = {
     approveWholesaleCustomer: (id: number) =>
         apiFetch(`/admin/wholesale/customers/${id}/approve`, { method: "PUT" }),
 
+    // ── Email Marketing ──
+    getEmailMarketingStatus: () => apiFetch("/admin/email-marketing/status"),
+    getEmailMarketingDashboard: () => apiFetch("/admin/email-marketing/dashboard"),
+    getEmailContactActivity: (id: number) => apiFetch(`/admin/email-marketing/contacts/${id}/activity`),
+    getEmailCampaignPrecheck: (id: number) => apiFetch(`/admin/email-marketing/campaigns/${id}/precheck`),
+    getEmailCampaignLinks: (id: number) => apiFetch(`/admin/email-marketing/campaigns/${id}/links`),
+
+    getEmailContacts: (params?: { search?: string; status?: string; page?: number; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (params?.search) qs.set("search", params.search);
+        if (params?.status) qs.set("status", params.status);
+        if (params?.page) qs.set("page", String(params.page));
+        if (params?.limit) qs.set("limit", String(params.limit));
+        const q = qs.toString();
+        return apiFetch(`/admin/email-marketing/contacts${q ? `?${q}` : ""}`);
+    },
+    getEmailContact: (id: number) => apiFetch(`/admin/email-marketing/contacts/${id}`),
+    createEmailContact: (data: Record<string, unknown>) =>
+        apiFetch("/admin/email-marketing/contacts", { method: "POST", body: JSON.stringify(data) }),
+    updateEmailContact: (id: number, data: Record<string, unknown>) =>
+        apiFetch(`/admin/email-marketing/contacts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    deleteEmailContact: (id: number) =>
+        apiFetch(`/admin/email-marketing/contacts/${id}`, { method: "DELETE" }),
+    previewEmailContactImport: async (file: File) => {
+        const token = localStorage.getItem("admin_token");
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch(`${API_BASE}/admin/email-marketing/contacts/import/preview`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            credentials: "include",
+            body: formData,
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `Preview failed: ${res.status}`);
+        }
+        return res.json();
+    },
+    executeEmailContactImport: async (file: File) => {
+        const token = localStorage.getItem("admin_token");
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch(`${API_BASE}/admin/email-marketing/contacts/import/execute`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            credentials: "include",
+            body: formData,
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `Import failed: ${res.status}`);
+        }
+        return res.json();
+    },
+    syncEmailContactsFromCustomers: () =>
+        apiFetch("/admin/email-marketing/contacts/sync/customers", { method: "POST" }),
+    syncEmailContactsFromInquiries: () =>
+        apiFetch("/admin/email-marketing/contacts/sync/inquiries", { method: "POST" }),
+    syncEmailContactsFromSquare: () =>
+        apiFetch("/admin/email-marketing/contacts/sync/square", { method: "POST" }),
+
+    getEmailSegments: () => apiFetch("/admin/email-marketing/segments"),
+    getEmailSegment: (id: number) => apiFetch(`/admin/email-marketing/segments/${id}`),
+    createEmailSegment: (data: { name: string; description?: string; type?: string; rules?: unknown }) =>
+        apiFetch("/admin/email-marketing/segments", { method: "POST", body: JSON.stringify(data) }),
+    updateEmailSegment: (id: number, data: Record<string, unknown>) =>
+        apiFetch(`/admin/email-marketing/segments/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    deleteEmailSegment: (id: number) =>
+        apiFetch(`/admin/email-marketing/segments/${id}`, { method: "DELETE" }),
+    addEmailSegmentMembers: (segmentId: number, contactIds: number[]) =>
+        apiFetch(`/admin/email-marketing/segments/${segmentId}/members`, {
+            method: "POST",
+            body: JSON.stringify({ contactIds }),
+        }),
+    removeEmailSegmentMember: (segmentId: number, contactId: number) =>
+        apiFetch(`/admin/email-marketing/segments/${segmentId}/members/${contactId}`, { method: "DELETE" }),
+
+    getEmailTemplates: () => apiFetch("/admin/email-marketing/templates"),
+    getEmailTemplate: (id: number) => apiFetch(`/admin/email-marketing/templates/${id}`),
+    createEmailTemplate: (data: { name: string; description?: string; document?: unknown }) =>
+        apiFetch("/admin/email-marketing/templates", { method: "POST", body: JSON.stringify(data) }),
+    updateEmailTemplate: (id: number, data: Record<string, unknown>) =>
+        apiFetch(`/admin/email-marketing/templates/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    duplicateEmailTemplate: (id: number) =>
+        apiFetch(`/admin/email-marketing/templates/${id}/duplicate`, { method: "POST" }),
+    deleteEmailTemplate: (id: number) =>
+        apiFetch(`/admin/email-marketing/templates/${id}`, { method: "DELETE" }),
+    previewEmailTemplate: (document: unknown) =>
+        apiFetch("/admin/email-marketing/templates/preview", {
+            method: "POST",
+            body: JSON.stringify({ document }),
+        }),
+
+    getEmailCampaigns: () => apiFetch("/admin/email-marketing/campaigns"),
+    getEmailCampaign: (id: number) => apiFetch(`/admin/email-marketing/campaigns/${id}`),
+    createEmailCampaign: (data: Record<string, unknown>) =>
+        apiFetch("/admin/email-marketing/campaigns", { method: "POST", body: JSON.stringify(data) }),
+    updateEmailCampaign: (id: number, data: Record<string, unknown>) =>
+        apiFetch(`/admin/email-marketing/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    deleteEmailCampaign: (id: number) =>
+        apiFetch(`/admin/email-marketing/campaigns/${id}`, { method: "DELETE" }),
+    sendEmailCampaignTest: (id: number, to: string) =>
+        apiFetch(`/admin/email-marketing/campaigns/${id}/test`, {
+            method: "POST",
+            body: JSON.stringify({ to }),
+        }),
+    sendEmailCampaign: (id: number) =>
+        apiFetch(`/admin/email-marketing/campaigns/${id}/send`, { method: "POST" }),
+    scheduleEmailCampaign: (id: number, scheduledAt: string) =>
+        apiFetch(`/admin/email-marketing/campaigns/${id}/schedule`, {
+            method: "POST",
+            body: JSON.stringify({ scheduledAt }),
+        }),
+    cancelEmailCampaignSchedule: (id: number) =>
+        apiFetch(`/admin/email-marketing/campaigns/${id}/cancel-schedule`, { method: "POST" }),
+    getEmailCampaignStats: (id: number) => apiFetch(`/admin/email-marketing/campaigns/${id}/stats`),
+    getEmailCampaignRecipients: (id: number) => apiFetch(`/admin/email-marketing/campaigns/${id}/recipients`),
+
+    getEmailSegmentRuleFields: () => apiFetch("/admin/email-marketing/segments/rule-fields"),
+    previewEmailSegmentRules: (rules: unknown) =>
+        apiFetch("/admin/email-marketing/segments/preview-rules", {
+            method: "POST",
+            body: JSON.stringify({ rules }),
+        }),
+    evaluateEmailSegment: (id: number) =>
+        apiFetch(`/admin/email-marketing/segments/${id}/evaluate`, { method: "POST" }),
+
+    getEmailTemplateRevisions: (id: number) => apiFetch(`/admin/email-marketing/templates/${id}/revisions`),
+    restoreEmailTemplateRevision: (templateId: number, revId: number) =>
+        apiFetch(`/admin/email-marketing/templates/${templateId}/revisions/${revId}/restore`, { method: "POST" }),
+
+    getEmailTopics: () => apiFetch("/admin/email-marketing/topics"),
+    createEmailTopic: (data: { name: string; description?: string }) =>
+        apiFetch("/admin/email-marketing/topics", { method: "POST", body: JSON.stringify(data) }),
+    syncEmailTopicsFromResend: () =>
+        apiFetch("/admin/email-marketing/topics/sync-resend", { method: "POST" }),
+    deleteEmailTopic: (id: number) =>
+        apiFetch(`/admin/email-marketing/topics/${id}`, { method: "DELETE" }),
+
     // ── Gift Cards ──
     purchaseGiftCard: (data: {
         sourceId: string;
