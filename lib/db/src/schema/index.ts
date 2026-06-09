@@ -20,3 +20,4 @@ export * from "./inquiries";
 export * from "./gift-cards";
 export * from "./woo-order-history";
 export * from "./sent-emails-log";
+export * from "./email-marketing";
