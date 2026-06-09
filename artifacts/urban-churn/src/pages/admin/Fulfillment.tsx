@@ -32,9 +32,16 @@ import {
     Package,
     CheckCircle,
     Clock,
-    CalendarDays,
     X,
+    Download,
+    ChevronDown,
 } from "lucide-react";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -59,6 +66,7 @@ export default function Fulfillment() {
     const [dateFrom, setDateFrom] = useState("");
     const [dateTo, setDateTo] = useState("");
     const [flavourFilter, setFlavourFilter] = useState<string>("all");
+    const [windowFilter, setWindowFilter] = useState<string>("all");
 
     const { data: locations = [] } = useQuery({
         queryKey: ["admin", "locations"],
@@ -70,31 +78,37 @@ export default function Fulfillment() {
         queryFn: () => api.getFlavours(),
     });
 
+    const { data: preOrders = [] } = useQuery({
+        queryKey: ["admin", "pre-orders", "fulfillment-export"],
+        queryFn: () => api.getPreOrders(),
+    });
+
     const locIdForSummary =
         locationFilter === "all" ? undefined : Number(locationFilter);
     const activeFlavour = flavourFilter === "all" ? undefined : flavourFilter;
+    const activeWindowId =
+        windowFilter === "all" ? undefined : Number(windowFilter);
+
+    const filterParams = {
+        locationId: locIdForSummary,
+        from: dateFrom || undefined,
+        to: dateTo || undefined,
+        flavourName: activeFlavour,
+        preOrderWindowId: activeWindowId,
+    };
 
     const { data: summary = [] } = useQuery({
-        queryKey: ["fulfillment", "summary", locIdForSummary, dateFrom, dateTo, activeFlavour],
-        queryFn: () =>
-            api.getFulfillmentSummary({
-                locationId: locIdForSummary,
-                from: dateFrom || undefined,
-                to: dateTo || undefined,
-                flavourName: activeFlavour,
-            }),
+        queryKey: ["fulfillment", "summary", filterParams],
+        queryFn: () => api.getFulfillmentSummary(filterParams),
         refetchInterval: 30000,
     });
 
     const { data: orders = [] } = useQuery({
-        queryKey: ["fulfillment", "orders", locIdForSummary, debouncedSearch, dateFrom, dateTo, activeFlavour],
+        queryKey: ["fulfillment", "orders", filterParams, debouncedSearch],
         queryFn: () =>
             api.getFulfillmentOrders({
+                ...filterParams,
                 search: debouncedSearch || undefined,
-                locationId: locIdForSummary,
-                from: dateFrom || undefined,
-                to: dateTo || undefined,
-                flavourName: activeFlavour,
             }),
         refetchInterval: 15000,
     });
@@ -115,6 +129,36 @@ export default function Fulfillment() {
         },
     });
 
+    const handleExport = async (format: "summary" | "detail") => {
+        const url = api.exportFulfillmentCsv({ format, ...filterParams });
+        const token = localStorage.getItem("admin_token");
+        const prefix =
+            format === "summary" ? "fulfillment-summary" : "fulfillment-orders";
+        try {
+            const res = await fetch(url, {
+                headers: { Authorization: `Bearer ${token}` },
+                credentials: "include",
+            });
+            if (!res.ok) throw new Error("Export failed");
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = blobUrl;
+            link.download = `${prefix}-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+            toast({ title: "Export downloaded" });
+        } catch {
+            toast({
+                title: "Export failed",
+                description: "Could not download the CSV file.",
+                variant: "destructive",
+            });
+        }
+    };
+
     useTour("admin-fulfillment", adminFulfillmentSteps);
 
     return (
@@ -130,25 +174,52 @@ export default function Fulfillment() {
                             needs
                         </p>
                     </div>
-                    <Select
-                        value={locationFilter}
-                        onValueChange={setLocationFilter}
-                    >
-                        <SelectTrigger className="w-full sm:w-[200px]">
-                            <SelectValue placeholder="All Locations" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Locations</SelectItem>
-                            {locations.map((loc: any) => (
-                                <SelectItem
-                                    key={loc.id}
-                                    value={String(loc.id)}
+                    <div className="flex items-center gap-2">
+                        <Select
+                            value={locationFilter}
+                            onValueChange={setLocationFilter}
+                        >
+                            <SelectTrigger className="w-full sm:w-[200px]">
+                                <SelectValue placeholder="All Locations" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Locations</SelectItem>
+                                {locations.map((loc: any) => (
+                                    <SelectItem
+                                        key={loc.id}
+                                        value={String(loc.id)}
+                                    >
+                                        {loc.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    data-tour="admin-fulfillment-export"
                                 >
-                                    {loc.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                                    <Download className="w-4 h-4 mr-1" />
+                                    Export
+                                    <ChevronDown className="w-3 h-3 ml-1" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                    onClick={() => handleExport("detail")}
+                                >
+                                    Order Detail
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onClick={() => handleExport("summary")}
+                                >
+                                    Production Summary
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
                 </div>
 
                 <Card className="bg-amber-500/5 border-amber-500/30">
@@ -194,7 +265,23 @@ export default function Fulfillment() {
                             ))}
                         </SelectContent>
                     </Select>
-                    {(dateFrom || dateTo || flavourFilter !== "all") && (
+                    <Select value={windowFilter} onValueChange={setWindowFilter}>
+                        <SelectTrigger className="w-full sm:w-[240px]">
+                            <SelectValue placeholder="All Pre-Order Windows" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Pre-Order Windows</SelectItem>
+                            {preOrders.map((w: any) => (
+                                <SelectItem key={w.id} value={String(w.id)}>
+                                    {w.flavourName ?? `Window #${w.id}`}
+                                    {w.pickupDate
+                                        ? ` — ${formatEastern(w.pickupDate, { month: "short", day: "numeric", year: "numeric" })}`
+                                        : ""}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    {(dateFrom || dateTo || flavourFilter !== "all" || windowFilter !== "all") && (
                         <Button
                             variant="ghost"
                             size="sm"
@@ -202,6 +289,7 @@ export default function Fulfillment() {
                                 setDateFrom("");
                                 setDateTo("");
                                 setFlavourFilter("all");
+                                setWindowFilter("all");
                             }}
                         >
                             <X className="w-3 h-3 mr-1" />
