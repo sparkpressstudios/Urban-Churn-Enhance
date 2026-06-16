@@ -1,18 +1,17 @@
 import { Link } from "wouter";
-
-const BASE = import.meta.env.BASE_URL;
+import OptimizedImage from "@/components/OptimizedImage";
 
 export default function Footer() {
   return (
     <footer className="text-white py-14 relative overflow-hidden">
-      <img src={`${BASE}images/uc-footer-bg.jpeg`} alt="" role="presentation" className="absolute inset-0 w-full h-full object-cover" />
+      <OptimizedImage src="uc-footer-bg.jpeg" alt="" role="presentation" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0 bg-[#0d0d12]/80" />
       <div className="relative max-w-7xl mx-auto px-6 sm:px-8">
 
         {/* Top section: logo/tagline + nav columns */}
         <div className="flex flex-col md:flex-row items-start justify-between mb-10 gap-10">
           <div className="max-w-xs">
-            <img src={`${BASE}images/uc-logo-black.png`} alt="Urban Churn" className="h-8 brightness-0 invert mb-4" />
+            <OptimizedImage src="uc-logo-black.png" alt="Urban Churn" width={160} height={35} className="h-8 w-auto brightness-0 invert mb-4" />
             <p className="text-white text-sm leading-relaxed mb-5">Unique flavours, natural ingredients, nothing fake. Crafting ice cream inspired by cultures around the world.</p>
             <div className="flex gap-3">
               <a href="https://instagram.com/urbanchurn" target="_blank" rel="noopener noreferrer" className="text-white hover:text-white/80 text-xs font-medium transition-colors">Instagram</a>
@@ -80,7 +79,7 @@ export default function Footer() {
             className="flex flex-col sm:flex-row items-center sm:items-center justify-center gap-2 sm:gap-3 opacity-50 hover:opacity-80 transition-opacity"
           >
             <span className="text-white text-xs">Website built by</span>
-            <img src={`${BASE}images/sparkpress-studios-logo.png`} alt="SparkPress Studios" className="h-12 sm:h-9 brightness-0 invert" />
+            <OptimizedImage src="sparkpress-studios-logo.png" alt="SparkPress Studios" width={136} height={36} className="h-12 sm:h-9 w-auto brightness-0 invert" />
             <span className="text-white text-xs">Custom Web and App Development</span>
           </a>
         </div>
