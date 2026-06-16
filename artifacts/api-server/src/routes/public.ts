@@ -26,8 +26,6 @@ import * as crypto from "node:crypto";
 import {
     sendOrderConfirmation,
     sendAdminNewOrderAlert,
-    sendOrderPaymentFailed,
-    sendAdminPaymentFailedAlert,
     sendAdminLowStockAlert,
     sendContactFormNotification,
     sendContactFormConfirmation,
@@ -41,8 +39,10 @@ import {
     sendFundraisingFormConfirmation,
     sendWelcomeEmail,
 } from "../lib/email";
-import { createSquareOrder, createPayment, isSquareConfigured, getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId } from "../lib/square";
-import { resolveOrderLineFromCatalog, revertUnpaidOrder } from "../lib/order-payment";
+import { getOrCreateSquareCustomer, getSquareLoyaltyProgram, getOrCreateLoyaltyAccount, calculateLoyaltyPoints, accumulateLoyaltyPoints, getOnlineSalesLocationId, refundPayment } from "../lib/square";
+import { resolveOrderLineFromCatalog, assertOrderStockAvailable, findPaidOrderByCheckoutId } from "../lib/order-payment";
+import { chargeBeforeOrderPersist, CheckoutPaymentError } from "../lib/checkout-payment";
+import { respondPaymentError } from "../lib/payment-errors";
 
 const router: IRouter = Router();
 
@@ -339,7 +339,7 @@ router.post("/coupons/validate", async (req, res) => {
 
 // Public: create order
 router.post("/orders", async (req, res) => {
-    const { locationId, customerName, customerEmail, customerPhone, notes, items, couponCode, sourceId, accountMode, password } =
+    const { locationId, customerName, customerEmail, customerPhone, notes, items, couponCode, sourceId, accountMode, password, checkoutId } =
         req.body;
 
     if (!locationId || !customerName || !customerEmail || !items?.length) {
@@ -663,28 +663,116 @@ router.post("/orders", async (req, res) => {
     }
 
     const chargeCents = totalCents - discountCents;
+    const isPreOrder = openPreOrders.length > 0;
 
     if (chargeCents > 0) {
         if (!sourceId) {
-            res.status(400).json({
-                error: "Payment is required to complete this order. Please enter your card details.",
+            respondPaymentError(res, "PAYMENT_REQUIRED", 400);
+            return;
+        }
+        if (!checkoutId || typeof checkoutId !== "string" || checkoutId.length < 8 || checkoutId.length > 64) {
+            res.status(400).json({ error: "checkoutId is required to complete payment" });
+            return;
+        }
+
+        const existingPaid = await findPaidOrderByCheckoutId(checkoutId);
+        if (existingPaid) {
+            res.status(201).json({
+                ...existingPaid.order,
+                items: existingPaid.items,
+                paymentStatus: "paid",
+                idempotent: true,
             });
             return;
         }
-        const configured = await isSquareConfigured();
-        if (!configured) {
-            res.status(503).json({ error: "Card payments are temporarily unavailable" });
+
+        try {
+            await assertOrderStockAvailable(orderItems);
+        } catch (e) {
+            const message = e instanceof Error ? e.message.replace(/^STOCK_ERROR:/, "") : "Insufficient stock";
+            res.status(400).json({ error: message });
             return;
         }
-        const onlineLoc = await getOnlineSalesLocationId();
-        if (!onlineLoc) {
-            res.status(503).json({ error: "Online payments are not configured. Please contact us." });
+    }
+
+    // Sync Square customer before charging so orders/payments can be linked
+    let sqCustId: string | null = null;
+    let customerPhoneForSquare: string | undefined;
+    if (customerId) {
+        const [customerRecord] = await db
+            .select({
+                squareCustomerId: customersTable.squareCustomerId,
+                firstName: customersTable.firstName,
+                lastName: customersTable.lastName,
+                phone: customersTable.phone,
+            })
+            .from(customersTable)
+            .where(eq(customersTable.id, customerId))
+            .limit(1);
+
+        customerPhoneForSquare = customerRecord?.phone || customerPhone || undefined;
+        sqCustId = customerRecord?.squareCustomerId ?? null;
+
+        if (!sqCustId) {
+            const nameParts = customerName.trim().split(/\s+/);
+            sqCustId = await getOrCreateSquareCustomer(
+                normalizedEmail,
+                customerRecord?.firstName || nameParts[0] || "",
+                customerRecord?.lastName || nameParts.slice(1).join(" ") || "",
+                customerPhoneForSquare,
+            );
+            if (sqCustId) {
+                await db.update(customersTable)
+                    .set({ squareCustomerId: sqCustId, updatedAt: new Date() })
+                    .where(eq(customersTable.id, customerId));
+            }
+        }
+    }
+
+    let squareOrderId: string | null = null;
+    let squarePaymentId: string | null = null;
+    let paymentStatus: string | null = chargeCents > 0 ? null : "paid";
+    let onlineSalesSquareLocationId: string | null = null;
+
+    if (chargeCents > 0 && sourceId) {
+        try {
+            const paymentResult = await chargeBeforeOrderPersist({
+                orderNumber,
+                chargeCents,
+                sourceId,
+                customerEmail: normalizedEmail,
+                squareCustomerId: sqCustId ?? undefined,
+                discountCents: discountCents > 0 ? discountCents : undefined,
+                isPreOrder,
+                idempotencyKey: checkoutId,
+                lineItems: orderItems.map((item) => ({
+                    name: `${item.flavourName} - ${item.sizeName}`,
+                    quantity: item.quantity,
+                    priceCents: item.priceCents,
+                })),
+            });
+            squareOrderId = paymentResult.squareOrderId;
+            squarePaymentId = paymentResult.squarePaymentId;
+            onlineSalesSquareLocationId = paymentResult.locationId;
+            paymentStatus = "paid";
+        } catch (e) {
+            if (e instanceof CheckoutPaymentError) {
+                console.error(`[CHECKOUT] Pre-order payment blocked: ${e.logDetail}`);
+                respondPaymentError(res, e.code, e.code === "PAYMENTS_UNAVAILABLE" ? 503 : 402);
+                return;
+            }
+            console.error("[CHECKOUT] Unexpected pre-order payment error:", e);
+            respondPaymentError(res, "PAYMENT_PROCESSING_ERROR", 402);
             return;
         }
     }
 
     // Wrap order creation in a transaction for atomicity (coupon, order, items, stock)
-    const { order, savedItems } = await db.transaction(async (tx) => {
+    let order: typeof ordersTable.$inferSelect;
+    let savedItems: (typeof orderItemsTable.$inferSelect)[];
+
+    try {
+        const result = await db.transaction(async (tx) => {
         // Increment coupon usage inside transaction so it rolls back if order fails
         if (couponId) {
             await tx
@@ -707,6 +795,11 @@ router.post("/orders", async (req, res) => {
                 couponId,
                 discountCents,
                 status: "pending",
+                squareOrderId,
+                squarePaymentId,
+                paymentStatus,
+                checkoutId: checkoutId ?? null,
+                lastSyncSource: "web",
             })
             .returning();
 
@@ -744,7 +837,32 @@ router.post("/orders", async (req, res) => {
             .where(eq(orderItemsTable.orderId, txOrder.id));
 
         return { order: txOrder, savedItems: txSavedItems };
-    });
+        });
+
+        order = result.order;
+        savedItems = result.savedItems;
+    } catch (e) {
+        if (squarePaymentId && chargeCents > 0) {
+            await refundPayment(squarePaymentId, chargeCents).catch((refundErr) =>
+                console.error("[SQUARE] Refund after failed order persist:", refundErr),
+            );
+        }
+
+        const duplicatePaid = checkoutId ? await findPaidOrderByCheckoutId(checkoutId) : null;
+        if (duplicatePaid) {
+            res.status(201).json({
+                ...duplicatePaid.order,
+                items: duplicatePaid.items,
+                paymentStatus: "paid",
+                idempotent: true,
+            });
+            return;
+        }
+
+        console.error("[CHECKOUT] Order persist failed after payment:", e);
+        respondPaymentError(res, "PAYMENT_PROCESSING_ERROR", 500);
+        return;
+    }
 
     // Get location info for emails
     const [location] = await db
@@ -784,161 +902,6 @@ router.post("/orders", async (req, res) => {
             timeZone: "America/New_York",
         });
         pickupDateRange = startStr === endStr ? `Starting ${startStr}` : `${startStr} through ${endStr}`;
-    }
-
-    // Process Square payment before sending confirmation emails
-
-    // Sync Square customer early so orders/payments can be linked before completion
-    let sqCustId: string | null = null;
-    let customerPhoneForSquare: string | undefined;
-    if (customerId) {
-        const [customerRecord] = await db
-            .select({
-                squareCustomerId: customersTable.squareCustomerId,
-                firstName: customersTable.firstName,
-                lastName: customersTable.lastName,
-                phone: customersTable.phone,
-            })
-            .from(customersTable)
-            .where(eq(customersTable.id, customerId))
-            .limit(1);
-
-        customerPhoneForSquare = customerRecord?.phone || customerPhone || undefined;
-        sqCustId = customerRecord?.squareCustomerId ?? null;
-
-        if (!sqCustId) {
-            const nameParts = customerName.trim().split(/\s+/);
-            sqCustId = await getOrCreateSquareCustomer(
-                normalizedEmail,
-                customerRecord?.firstName || nameParts[0] || "",
-                customerRecord?.lastName || nameParts.slice(1).join(" ") || "",
-                customerPhoneForSquare,
-            );
-            if (sqCustId) {
-                await db.update(customersTable)
-                    .set({ squareCustomerId: sqCustId, updatedAt: new Date() })
-                    .where(eq(customersTable.id, customerId));
-            }
-        }
-    }
-    // Route all online sales to the Online Sales location (not individual POS devices)
-    let squareOrderId: string | null = null;
-    let squarePaymentId: string | null = null;
-    let paymentStatus: string | null = null;
-    let paymentFailed = false;
-
-    const onlineSalesSquareLocationId = await getOnlineSalesLocationId();
-    const isPreOrder = openPreOrders.length > 0;
-    if (onlineSalesSquareLocationId) {
-        try {
-            const sqOrder = await createSquareOrder(
-                onlineSalesSquareLocationId,
-                orderNumber,
-                orderItems.map((item) => ({
-                    name: `${item.flavourName} - ${item.sizeName}`,
-                    quantity: item.quantity,
-                    priceCents: item.priceCents,
-                })),
-                discountCents > 0 ? discountCents : undefined,
-                { isPreOrder, customerId: sqCustId ?? undefined },
-            );
-            squareOrderId = sqOrder.id ?? null;
-        } catch (e) {
-            console.error("[SQUARE] Order creation failed:", e);
-        }
-    }
-
-    // Process payment if sourceId provided
-    let paymentErrorDetail = "";
-    if (chargeCents > 0 && sourceId && squareOrderId) {
-        try {
-            console.log(`[SQUARE] Processing payment: amount=${order.totalCents}c, orderId=${squareOrderId}, sourceId=${sourceId.substring(0, 12)}...`);
-            const payment = await createPayment(
-                order.totalCents,
-                sourceId,
-                normalizedEmail,
-                squareOrderId,
-                sqCustId ?? undefined,
-                onlineSalesSquareLocationId ?? undefined,
-            );
-            squarePaymentId = payment.id ?? null;
-            paymentStatus = "paid";
-        } catch (e: any) {
-            console.error("[SQUARE] Payment failed:", e);
-            paymentErrorDetail = e.message || "Unknown payment error";
-            // Order was created but payment failed — mark pending_payment
-            paymentStatus = "payment_failed";
-            paymentFailed = true;
-        }
-    } else if (chargeCents > 0 && sourceId) {
-        // Square order creation failed — attempt payment without order link
-        try {
-            const payment = await createPayment(
-                order.totalCents,
-                sourceId,
-                normalizedEmail,
-                undefined,
-                sqCustId ?? undefined,
-                onlineSalesSquareLocationId ?? undefined,
-            );
-            squarePaymentId = payment.id ?? null;
-            paymentStatus = "paid";
-        } catch (e: any) {
-            console.error("[SQUARE] Payment failed:", e);
-            paymentErrorDetail = e.message || "Unknown payment error";
-            paymentStatus = "payment_failed";
-            paymentFailed = true;
-        }
-    }
-
-    // Update order with Square references
-    if (squareOrderId || squarePaymentId || paymentStatus) {
-        await db
-            .update(ordersTable)
-            .set({
-                ...(squareOrderId ? { squareOrderId } : {}),
-                ...(squarePaymentId ? { squarePaymentId } : {}),
-                ...(paymentStatus ? { paymentStatus } : {}),
-                lastSyncSource: "web",
-            })
-            .where(eq(ordersTable.id, order.id));
-    }
-
-    if (chargeCents > 0 && !paymentFailed && paymentStatus !== "paid") {
-        paymentFailed = true;
-        paymentErrorDetail = paymentErrorDetail || "Payment was not completed.";
-    }
-
-    if (paymentFailed) {
-        await revertUnpaidOrder(
-            order.id,
-            couponId,
-            orderItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-        );
-
-        sendOrderPaymentFailed({
-            orderNumber: order.orderNumber,
-            customerName,
-            customerEmail: normalizedEmail,
-            totalCents: order.totalCents,
-            detail: paymentErrorDetail,
-        }).catch((e) => console.error("[EMAIL] Payment failed notice failed:", e));
-
-        sendAdminPaymentFailedAlert({
-            orderNumber: order.orderNumber,
-            customerName,
-            customerEmail: normalizedEmail,
-            totalCents: order.totalCents,
-            detail: paymentErrorDetail,
-        }).catch((e) => console.error("[EMAIL] Admin payment failed alert failed:", e));
-
-        res.status(402).json({
-            error: "Payment failed. Your order was not placed. Please check your card details and try again.",
-            detail: paymentErrorDetail,
-            orderNumber: order.orderNumber,
-            paymentStatus: "payment_failed",
-        });
-        return;
     }
 
     sendOrderConfirmation({

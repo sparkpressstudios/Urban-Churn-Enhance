@@ -25,6 +25,7 @@ import SEO from "@/components/SEO";
 import { api } from "@/lib/api";
 import { TAG_LABELS, TAG_CLASSES, formatHoursCompact } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useSquareCard, getCheckoutId, clearCheckoutId } from "@/hooks/useSquareCard";
 import GiftCardSection from "@/components/GiftCardSection";
 import { useCustomerAuth } from "@/components/CustomerAuthContext";
 import {
@@ -416,6 +417,8 @@ export default function PreOrder() {
     }
   }, [selectedLocation]);
 
+  const [submitPaymentError, setSubmitPaymentError] = useState("");
+
   const orderMutation = useMutation({
     mutationFn: (data: any) => api.createOrder(data),
   });
@@ -432,70 +435,6 @@ export default function PreOrder() {
       setAppliedCoupon(null);
     },
   });
-
-  // Square Web Payments SDK
-  const cardRef = useRef<any>(null);
-  const cardContainerRef = useRef<HTMLDivElement>(null);
-  const [squareReady, setSquareReady] = useState(false);
-  const [paymentError, setPaymentError] = useState("");
-  const [squareAppId, setSquareAppId] = useState<string | null>(null);
-
-  // Load Square SDK and initialize card form when entering checkout
-  useEffect(() => {
-    if (step !== "checkout") return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        // Fetch app ID
-        const data = await api.getSquareAppId(selectedLocation?.id);
-        if (cancelled || !data?.appId) return;
-        setSquareAppId(data.appId);
-
-        // Determine SDK URL from environment
-        const env = data.environment || "sandbox";
-        const sdkUrl = env === "production"
-          ? "https://web.squarecdn.com/v1/square.js"
-          : "https://sandbox.web.squarecdn.com/v1/square.js";
-
-        // Load SDK script if not already loaded
-        if (!(window as any).Square) {
-          await new Promise<void>((resolve, reject) => {
-            const script = document.createElement("script");
-            script.src = sdkUrl;
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error("Failed to load Square SDK"));
-            document.head.appendChild(script);
-          });
-        }
-        if (cancelled) return;
-
-        // Initialize payments
-        const payments = (window as any).Square.payments(data.appId, data.locationId);
-        const card = await payments.card();
-        if (cancelled) return;
-
-        if (cardContainerRef.current) {
-          await card.attach(cardContainerRef.current);
-          cardRef.current = card;
-          setSquareReady(true);
-        }
-      } catch (e) {
-        console.error("[SQUARE] Failed to initialize payment form:", e);
-        setPaymentError("Payment system unavailable. Please refresh or try again later.");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (cardRef.current) {
-        cardRef.current.destroy?.();
-        cardRef.current = null;
-        setSquareReady(false);
-      }
-    };
-  }, [step, selectedLocation?.id]);
 
   const steps: { key: Step; label: string }[] = [
     { key: "shopping", label: "Shop" },
@@ -579,6 +518,16 @@ export default function PreOrder() {
   const finalTotal = Math.max(0, cartTotal - discountAmount);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
+  const {
+    cardRef,
+    cardContainerRef,
+    squareReady,
+    paymentsRequired,
+    paymentsLoading,
+    paymentError: squareInitError,
+    retry: retrySquareCard,
+  } = useSquareCard(step === "checkout" && finalTotal > 0);
+
   const handleApplyCoupon = () => {
     if (!couponCode.trim()) return;
     couponMutation.mutate({
@@ -655,24 +604,35 @@ export default function PreOrder() {
     if (cart.length === 0) return;
     if (!selectedLocation) return;
 
-    setPaymentError("");
+    setSubmitPaymentError("");
 
-    // Tokenize card if Square payment is available
+    if (paymentsRequired && !squareReady) {
+      toast({
+        title: "Payment form loading",
+        description: "Please wait for the card form to load before placing your order.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Tokenize card if Square payment is required
     let sourceId: string | undefined;
-    if (squareReady && cardRef.current) {
+    if (paymentsRequired && squareReady && cardRef.current) {
       try {
         const result = await cardRef.current.tokenize();
         if (result.status === "OK") {
           sourceId = result.token;
         } else {
-          setPaymentError("Payment failed. Please check your card details and try again.");
+          setSubmitPaymentError("Payment failed. Please check your card details and try again.");
           return;
         }
-      } catch (err) {
-        setPaymentError("Payment processing error. Please try again.");
+      } catch {
+        setSubmitPaymentError("Payment processing error. Please try again.");
         return;
       }
     }
+
+    const checkoutId = paymentsRequired && finalTotal > 0 ? getCheckoutId() : undefined;
 
     orderMutation.mutate(
       {
@@ -683,6 +643,7 @@ export default function PreOrder() {
         notes: form.notes,
         couponCode: appliedCoupon?.code || undefined,
         sourceId,
+        checkoutId,
         accountMode: customer ? "guest" : accountMode,
         password: !customer && accountMode !== "guest" ? form.password : undefined,
         items: cart.map((item) => ({
@@ -694,6 +655,7 @@ export default function PreOrder() {
       },
       {
         onSuccess: (data: any) => {
+          clearCheckoutId();
           setConfirmedOrder({
             orderNumber: data.orderNumber,
             totalCents: data.totalCents,
@@ -720,10 +682,10 @@ export default function PreOrder() {
             toast({ title: "Incorrect password", description: "The password you entered is incorrect. Try again or reset your password.", variant: "destructive" });
           } else if (typeof code === "string" && code.startsWith("PAYMENT_")) {
             const msg = err.message || "Payment was not completed. Your order was not placed.";
-            setPaymentError(msg);
+            setSubmitPaymentError(msg);
             toast({ title: "Payment not completed", description: msg, variant: "destructive" });
           } else {
-            setPaymentError(err.message || "Please try again.");
+            setSubmitPaymentError(err.message || "Please try again.");
             toast({ title: "Order failed", description: err.message || "Please try again.", variant: "destructive" });
           }
         },
@@ -1664,24 +1626,52 @@ export default function PreOrder() {
                   )}
                 </div>
 
-                {/* Square Card Payment */}
-                {squareAppId && (
+                {/* Square Card Payment — container always mounted when checkout is active */}
+                {step === "checkout" && paymentsRequired && (
                   <div className="mb-6">
                     <h3 className="font-bold text-gray-900 mb-3 text-sm">Payment</h3>
                     <div
                       ref={cardContainerRef}
                       className="rounded-xl border border-gray-200 p-3 min-h-[50px]"
                     />
-                    {!squareReady && (
+                    {paymentsLoading && (
                       <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
                         <Loader2 className="w-3 h-3 animate-spin" /> Loading payment form...
                       </p>
                     )}
-                    {paymentError && (
+                    {(squareInitError || submitPaymentError) && (
                       <p className="text-red-500 text-xs mt-2 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> {paymentError}
+                        <AlertTriangle className="w-3 h-3" /> {submitPaymentError || squareInitError}
                       </p>
                     )}
+                    {(squareInitError || submitPaymentError) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubmitPaymentError("");
+                          retrySquareCard();
+                        }}
+                        className="text-xs text-[#A1AB74] font-semibold mt-2 hover:underline"
+                      >
+                        Retry loading payment form
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {step === "checkout" && !paymentsRequired && !paymentsLoading && (
+                  <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl">
+                    <p className="text-sm text-red-700 flex items-center gap-1">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      {squareInitError || "Card payments are temporarily unavailable."}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={retrySquareCard}
+                      className="text-xs text-[#A1AB74] font-semibold mt-2 hover:underline"
+                    >
+                      Try again
+                    </button>
                   </div>
                 )}
 
@@ -1689,7 +1679,7 @@ export default function PreOrder() {
                   <p className="text-sm text-amber-700">
                     <strong>Pre-order terms:</strong> We hold orders up to 2 weeks. If not picked
                     up by week 3, a credit may be requested. After week 4, the order is
-                    nonrefundable. Payment is collected at pickup.
+                    nonrefundable. Your card is charged when you place your order online.
                   </p>
                 </div>
 
@@ -1708,7 +1698,11 @@ export default function PreOrder() {
 
                 <button
                   type="submit"
-                  disabled={cart.length === 0 || orderMutation.isPending || (squareAppId !== null && !squareReady)}
+                  disabled={
+                    cart.length === 0 ||
+                    orderMutation.isPending ||
+                    (paymentsRequired && !squareReady)
+                  }
                   className="w-full flex items-center justify-center gap-2 sm:gap-3 bg-[#A1AB74] disabled:bg-gray-300 text-white px-4 sm:px-8 py-3.5 sm:py-4 rounded-full text-sm sm:text-lg font-bold transition-all hover:bg-[#8a9360] hover:shadow-lg disabled:cursor-not-allowed mt-4"
                 >
                   {orderMutation.isPending ? (
@@ -1718,9 +1712,9 @@ export default function PreOrder() {
                   )}
                 </button>
 
-                {!squareAppId && (
-                  <p className="text-center text-xs text-gray-400 mt-4">
-                    Payment will be collected at pickup.
+                {step === "checkout" && orderMutation.isPending && (
+                  <p className="text-center text-xs text-gray-500 mt-2">
+                    Processing your payment — please do not refresh or click again.
                   </p>
                 )}
               </form>
