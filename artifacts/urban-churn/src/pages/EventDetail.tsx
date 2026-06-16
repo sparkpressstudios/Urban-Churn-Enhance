@@ -18,6 +18,7 @@ import {
 import { MapPin, Clock, Calendar, Ticket, Minus, Plus, ArrowLeft, CheckCircle2, Copy, CalendarPlus, MessageCircleQuestion, Loader2, AlertTriangle, Check } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { useSquareCard } from "@/hooks/useSquareCard";
 
 const CATEGORY_LABELS: Record<string, string> = {
     tasting: "Tasting",
@@ -79,13 +80,7 @@ export default function EventDetail() {
     const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
     const [agreedToTerms, setAgreedToTerms] = useState(false);
     const emailCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    // Square Web Payments SDK
-    const cardRef = useRef<any>(null);
-    const cardContainerRef = useRef<HTMLDivElement>(null);
-    const [squareReady, setSquareReady] = useState(false);
-    const [paymentError, setPaymentError] = useState("");
-    const [squareAppId, setSquareAppId] = useState<string | null>(null);
+    const [submitPaymentError, setSubmitPaymentError] = useState("");
 
     // Question modal state
     const [questionOpen, setQuestionOpen] = useState(false);
@@ -130,59 +125,6 @@ export default function EventDetail() {
         },
     });
 
-    // Load Square SDK and initialize card form when entering checkout
-    useEffect(() => {
-        if (step !== "checkout") return;
-
-        let cancelled = false;
-
-        (async () => {
-            try {
-                const data = await api.getSquareAppId(event?.locationId);
-                if (cancelled || !data?.appId) return;
-                setSquareAppId(data.appId);
-
-                const env = data.environment || "sandbox";
-                const sdkUrl = env === "production"
-                    ? "https://web.squarecdn.com/v1/square.js"
-                    : "https://sandbox.web.squarecdn.com/v1/square.js";
-
-                if (!(window as any).Square) {
-                    await new Promise<void>((resolve, reject) => {
-                        const script = document.createElement("script");
-                        script.src = sdkUrl;
-                        script.onload = () => resolve();
-                        script.onerror = () => reject(new Error("Failed to load Square SDK"));
-                        document.head.appendChild(script);
-                    });
-                }
-                if (cancelled) return;
-
-                const payments = (window as any).Square.payments(data.appId, data.locationId);
-                const card = await payments.card();
-                if (cancelled) return;
-
-                if (cardContainerRef.current) {
-                    await card.attach(cardContainerRef.current);
-                    cardRef.current = card;
-                    setSquareReady(true);
-                }
-            } catch (e) {
-                console.error("[SQUARE] Failed to initialize payment form:", e);
-                setPaymentError("Payment system unavailable. Please refresh or try again later.");
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-            if (cardRef.current) {
-                cardRef.current.destroy?.();
-                cardRef.current = null;
-                setSquareReady(false);
-            }
-        };
-    }, [step, event?.locationId]);
-
     const questionMutation = useMutation({
         mutationFn: (data: { name: string; email: string; message: string }) =>
             api.submitEventQuestion(event.id, data),
@@ -221,6 +163,16 @@ export default function EventDetail() {
             return sum + tt.priceCents * qty;
         }, 0);
     }, [event, selections]);
+
+    const {
+        cardRef,
+        cardContainerRef,
+        squareReady,
+        paymentsRequired,
+        paymentsLoading,
+        paymentError: squareInitError,
+        retry: retrySquareCard,
+    } = useSquareCard(step === "checkout" && totalCents > 0);
 
     const totalTickets = useMemo(
         () => Object.values(selections).reduce((sum, q) => sum + q, 0),
@@ -306,21 +258,29 @@ export default function EventDetail() {
             return;
         }
 
-        setPaymentError("");
+        setSubmitPaymentError("");
 
-        // Tokenize card if Square payment is available
+        if (totalCents > 0 && paymentsRequired && !squareReady) {
+            toast({
+                title: "Payment form loading",
+                description: "Please wait for the card form to load before purchasing.",
+                variant: "destructive",
+            });
+            return;
+        }
+
         let sourceId: string | undefined;
-        if (squareReady && cardRef.current) {
+        if (totalCents > 0 && paymentsRequired && squareReady && cardRef.current) {
             try {
                 const result = await cardRef.current.tokenize();
                 if (result.status === "OK") {
                     sourceId = result.token;
                 } else {
-                    setPaymentError("Payment failed. Please check your card details and try again.");
+                    setSubmitPaymentError("Payment failed. Please check your card details and try again.");
                     return;
                 }
             } catch {
-                setPaymentError("Payment processing error. Please try again.");
+                setSubmitPaymentError("Payment processing error. Please try again.");
                 return;
             }
         }
@@ -825,7 +785,7 @@ export default function EventDetail() {
                                             )}
 
                                             {/* Square Card Payment */}
-                                            {squareAppId && (
+                                            {totalCents > 0 && paymentsRequired && (
                                                 <div>
                                                     <label className="text-xs font-black text-gray-400 tracking-wider uppercase block mb-1.5">
                                                         Payment
@@ -834,16 +794,44 @@ export default function EventDetail() {
                                                         ref={cardContainerRef}
                                                         className="rounded-xl border border-gray-200 p-3 min-h-[50px]"
                                                     />
-                                                    {!squareReady && (
+                                                    {paymentsLoading && (
                                                         <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
                                                             <Loader2 className="w-3 h-3 animate-spin" /> Loading payment form...
                                                         </p>
                                                     )}
-                                                    {paymentError && (
+                                                    {(squareInitError || submitPaymentError) && (
                                                         <p className="text-red-500 text-xs mt-2 flex items-center gap-1">
-                                                            <AlertTriangle className="w-3 h-3" /> {paymentError}
+                                                            <AlertTriangle className="w-3 h-3" /> {submitPaymentError || squareInitError}
                                                         </p>
                                                     )}
+                                                    {(squareInitError || submitPaymentError) && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSubmitPaymentError("");
+                                                                retrySquareCard();
+                                                            }}
+                                                            className="text-xs text-[#A1AB74] font-semibold mt-2 hover:underline"
+                                                        >
+                                                            Retry loading payment form
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {totalCents > 0 && !paymentsRequired && !paymentsLoading && (
+                                                <div className="p-3 bg-red-50 border border-red-100 rounded-xl">
+                                                    <p className="text-sm text-red-700 flex items-center gap-1">
+                                                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                                                        {squareInitError || "Card payments are temporarily unavailable."}
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={retrySquareCard}
+                                                        className="text-xs text-[#A1AB74] font-semibold mt-2 hover:underline"
+                                                    >
+                                                        Try again
+                                                    </button>
                                                 </div>
                                             )}
 
@@ -861,13 +849,21 @@ export default function EventDetail() {
 
                                             <Button
                                                 onClick={handlePurchase}
-                                                disabled={purchaseMutation.isPending || (squareAppId !== null && !squareReady)}
+                                                disabled={
+                                                    purchaseMutation.isPending ||
+                                                    (totalCents > 0 && paymentsRequired && !squareReady)
+                                                }
                                                 className="w-full bg-[#A1AB74] hover:bg-[#8a9360] text-white font-black py-6 rounded-xl text-base"
                                             >
                                                 {purchaseMutation.isPending
-                                                    ? "Processing..."
+                                                    ? "Processing payment..."
                                                     : `Complete Purchase — $${(totalCents / 100).toFixed(2)}`}
                                             </Button>
+                                            {purchaseMutation.isPending && (
+                                                <p className="text-center text-xs text-gray-500 mt-2">
+                                                    Please do not refresh or click again.
+                                                </p>
+                                            )}
                                         </div>
                                     </>
                                 )}

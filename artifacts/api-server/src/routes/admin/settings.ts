@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { settingsTable, locationsTable } from "@workspace/db/schema";
 import { eq, asc, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../../middlewares/auth";
-import { listSquareLocations, invalidateSquareClientCache } from "../../lib/square";
+import { listSquareLocations, invalidateSquareClientCache, getOnlineSalesLocationId, isSquareConfigured } from "../../lib/square";
 import { SquareClient, SquareEnvironment } from "square";
 
 const router: IRouter = Router();
@@ -152,7 +152,7 @@ router.put("/square/mappings/:id", async (req, res) => {
 });
 
 // Get public Square app ID (needed by frontend payment form, no auth needed)
-// This is registered separately in routes/index.ts without requireAuth
+// Uses Online Sales location — same as checkout charges.
 export async function getSquareAppId(_req: any, res: any) {
     const [row] = await db
         .select({ value: settingsTable.value })
@@ -168,33 +168,21 @@ export async function getSquareAppId(_req: any, res: any) {
         .limit(1);
 
     const env = envRow?.value || process.env.SQUARE_ENVIRONMENT || "sandbox";
+    const locationId = (await getOnlineSalesLocationId()) ?? "";
+    const configured = !!(await isSquareConfigured()) && !!appId && !!locationId;
 
-    const requestedLocationId = Number(_req?.query?.locationId);
-    const hasRequestedLocation = Number.isFinite(requestedLocationId) && requestedLocationId > 0;
-
-    let locationId = "";
-
-    if (hasRequestedLocation) {
-        const [mapped] = await db
-            .select({ squareLocationId: locationsTable.squareLocationId })
-            .from(locationsTable)
-            .where(eq(locationsTable.id, requestedLocationId))
-            .limit(1);
-
-        locationId = mapped?.squareLocationId || "";
+    if (!configured) {
+        res.status(503).json({
+            configured: false,
+            appId: "",
+            environment: env,
+            locationId: "",
+            error: "Card payments are temporarily unavailable. Please try again later or contact us.",
+        });
+        return;
     }
 
-    // Fallback to first mapped location if a specific one was not supplied or not mapped.
-    if (!locationId) {
-        const [loc] = await db
-            .select({ squareLocationId: locationsTable.squareLocationId })
-            .from(locationsTable)
-            .where(sql`${locationsTable.squareLocationId} IS NOT NULL AND ${locationsTable.squareLocationId} != ''`)
-            .limit(1);
-        locationId = loc?.squareLocationId || "";
-    }
-
-    res.json({ appId, environment: env, locationId });
+    res.json({ configured: true, appId, environment: env, locationId });
 }
 
 // ─── Announcement Bar ───

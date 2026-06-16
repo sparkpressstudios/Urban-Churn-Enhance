@@ -53,6 +53,7 @@ export async function createPayment(
     orderId?: string,
     squareCustomerId?: string,
     locationId?: string,
+    idempotencyKey?: string,
 ) {
     const client = await getSquareClient();
     if (!client) {
@@ -65,11 +66,11 @@ export async function createPayment(
         return { id: `mock_${crypto.randomBytes(8).toString("hex")}` };
     }
 
-    const idempotencyKey = crypto.randomUUID();
+    const paymentIdempotencyKey = idempotencyKey ?? crypto.randomUUID();
     try {
         const response = await client.payments.create({
             sourceId,
-            idempotencyKey,
+            idempotencyKey: paymentIdempotencyKey,
             amountMoney: {
                 amount: BigInt(amountCents),
                 currency: "USD",

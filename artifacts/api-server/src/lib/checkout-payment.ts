@@ -38,6 +38,7 @@ export async function chargeBeforeOrderPersist(opts: {
     discountCents?: number;
     isPreOrder?: boolean;
     squareCustomerId?: string;
+    idempotencyKey?: string;
 }): Promise<{ squareOrderId: string | null; squarePaymentId: string; locationId: string }> {
     const locationId = await assertPaymentsReady();
 
@@ -66,6 +67,7 @@ export async function chargeBeforeOrderPersist(opts: {
             squareOrderId ?? undefined,
             opts.squareCustomerId,
             locationId,
+            opts.idempotencyKey,
         );
         const squarePaymentId = payment.id;
         if (!squarePaymentId) {

@@ -399,10 +399,7 @@ export const api = {
             method: "PUT",
             body: JSON.stringify({ squareLocationId }),
         }),
-    getSquareAppId: (locationId?: number) => {
-        const qs = locationId ? `?locationId=${locationId}` : "";
-        return apiFetch(`/square/app-id${qs}`);
-    },
+    getSquareAppId: () => apiFetch("/square/app-id"),
 
     // Announcement Bar
     getPublicAnnouncement: () => apiFetch("/announcement"),

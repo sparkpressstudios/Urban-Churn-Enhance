@@ -3,6 +3,7 @@ import {
     couponsTable,
     flavoursTable,
     ordersTable,
+    orderItemsTable,
     productsTable,
     sizesTable,
 } from "@workspace/db/schema";
@@ -62,6 +63,23 @@ export async function resolveOrderLineFromCatalog(
         quantity: 1,
         productId: row.productId,
     };
+}
+
+/** Look up a successfully paid order for idempotent checkout retries. */
+export async function findPaidOrderByCheckoutId(checkoutId: string) {
+    const [order] = await db
+        .select()
+        .from(ordersTable)
+        .where(and(eq(ordersTable.checkoutId, checkoutId), eq(ordersTable.paymentStatus, "paid")))
+        .limit(1);
+    if (!order) return null;
+
+    const items = await db
+        .select()
+        .from(orderItemsTable)
+        .where(eq(orderItemsTable.orderId, order.id));
+
+    return { order, items };
 }
 
 /** Cancel an unpaid order and restore inventory / coupon usage after a failed charge. */
