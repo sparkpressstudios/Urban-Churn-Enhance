@@ -243,16 +243,34 @@ function isPhoneAlreadyAssociatedError(e: unknown): boolean {
     ) ?? false;
 }
 
+/** Recursively convert BigInt values from Square SDK responses for JSON serialization. */
+function squareJsonSafe<T>(value: T): T {
+    if (typeof value === "bigint") {
+        return Number(value) as T;
+    }
+    if (Array.isArray(value)) {
+        return value.map(squareJsonSafe) as T;
+    }
+    if (value !== null && typeof value === "object") {
+        const result: Record<string, unknown> = {};
+        for (const [key, entry] of Object.entries(value)) {
+            result[key] = squareJsonSafe(entry);
+        }
+        return result as T;
+    }
+    return value;
+}
+
 function loyaltyAccountFrom(account: {
     id?: string;
-    balance?: number;
-    lifetimePoints?: number;
+    balance?: number | bigint;
+    lifetimePoints?: number | bigint;
 }) {
     if (!account.id) return null;
     return {
         accountId: account.id,
-        balance: account.balance ?? 0,
-        lifetimePoints: account.lifetimePoints ?? 0,
+        balance: Number(account.balance ?? 0),
+        lifetimePoints: Number(account.lifetimePoints ?? 0),
     };
 }
 
@@ -413,13 +431,13 @@ export async function getSquareLoyaltyProgram(): Promise<{
         const program = response.program;
         if (!program) return null;
 
-        cachedLoyaltyProgram = {
+        cachedLoyaltyProgram = squareJsonSafe({
             id: program.id,
             accrualRules: program.accrualRules ?? [],
             rewardTiers: program.rewardTiers ?? [],
             terminology: program.terminology ?? { one: "point", other: "points" },
             status: program.status ?? "INACTIVE",
-        };
+        });
         loyaltyProgramCacheExpiry = Date.now() + LOYALTY_CACHE_TTL_MS;
         return cachedLoyaltyProgram;
     } catch (e: any) {
