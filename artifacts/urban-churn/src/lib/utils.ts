@@ -26,6 +26,23 @@ export function formatEasternDate(date: string | Date, options?: Intl.DateTimeFo
   return d.toLocaleDateString("en-US", { timeZone: BUSINESS_TZ, ...options });
 }
 
+/** Format date and time in Eastern timezone (e.g. order placed at) */
+export function formatEasternDateTime(date: string | Date, options?: Intl.DateTimeFormatOptions): string {
+  return formatEastern(date, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    ...options,
+  });
+}
+
+/** Format time only in Eastern timezone */
+export function formatEasternTime(date: string | Date): string {
+  return formatEastern(date, { hour: "numeric", minute: "2-digit" });
+}
+
 // Tag display labels
 export const TAG_LABELS: Record<string, string> = {
   classic: "Classic",

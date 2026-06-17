@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
-import { formatEastern, formatEasternDate } from "@/lib/utils";
+import { formatEastern, formatEasternDate, formatEasternTime } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useTour } from "@/lib/tour";
 import { adminOrdersSteps } from "@/lib/tour/tour-steps";
@@ -239,7 +239,7 @@ export default function AdminOrders() {
                                         <th className="p-3 font-medium">Location</th>
                                         <th className="p-3 font-medium">Status</th>
                                         <th className="p-3 font-medium text-right">Total</th>
-                                        <th className="p-3 font-medium">Date</th>
+                                        <th className="p-3 font-medium">Placed</th>
                                         <th className="p-3 font-medium">Actions</th>
                                     </tr>
                                 </thead>
@@ -294,8 +294,11 @@ export default function AdminOrders() {
                                             <td className="p-3 text-right font-medium">
                                                 ${(order.totalCents / 100).toFixed(2)}
                                             </td>
-                                            <td className="p-3 text-gray-500 text-xs">
-                                                {formatEasternDate(order.createdAt)}
+                                            <td className="p-3 text-gray-500 text-xs whitespace-nowrap">
+                                                <div>{formatEasternDate(order.createdAt)}</div>
+                                                <div className="text-[10px] text-gray-400">
+                                                    {formatEasternTime(order.createdAt)} ET
+                                                </div>
                                             </td>
                                             <td className="p-3">
                                                 <Button
@@ -360,6 +363,14 @@ export default function AdminOrders() {
                                 <div>
                                     <span className="text-gray-500">Location:</span>
                                     <p className="font-medium">{orderDetail.locationName}</p>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500">Placed:</span>
+                                    <p className="font-medium">
+                                        {formatEasternDate(orderDetail.createdAt)}
+                                        {" at "}
+                                        {formatEasternTime(orderDetail.createdAt)} ET
+                                    </p>
                                 </div>
                             </div>
                             {/* Payment / Square Info */}

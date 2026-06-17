@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
-import { formatEasternDate } from "@/lib/utils";
+import { formatEasternDate, formatEasternTime } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useTour } from "@/lib/tour";
 import { adminEventOrdersSteps } from "@/lib/tour/tour-steps";
@@ -158,7 +158,7 @@ export default function AdminEventOrders() {
                                             <th className="p-3 font-medium">Status</th>
                                             <th className="p-3 font-medium text-right">Total</th>
                                             <th className="p-3 font-medium">Payment</th>
-                                            <th className="p-3 font-medium">Date</th>
+                                            <th className="p-3 font-medium">Placed</th>
                                             <th className="p-3 font-medium">Actions</th>
                                         </tr>
                                     </thead>
@@ -193,8 +193,11 @@ export default function AdminEventOrders() {
                                                         <span className="text-xs text-gray-400">—</span>
                                                     )}
                                                 </td>
-                                                <td className="p-3 text-gray-500 text-xs">
-                                                    {formatEasternDate(order.createdAt)}
+                                                <td className="p-3 text-gray-500 text-xs whitespace-nowrap">
+                                                    <div>{formatEasternDate(order.createdAt)}</div>
+                                                    <div className="text-[10px] text-gray-400">
+                                                        {formatEasternTime(order.createdAt)} ET
+                                                    </div>
                                                 </td>
                                                 <td className="p-3 flex gap-1">
                                                     <Button
@@ -271,6 +274,14 @@ export default function AdminEventOrders() {
                                 <div>
                                     <span className="text-gray-500">Email:</span>
                                     <p className="font-medium">{orderDetail.customerEmail}</p>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500">Placed:</span>
+                                    <p className="font-medium">
+                                        {formatEasternDate(orderDetail.createdAt)}
+                                        {" at "}
+                                        {formatEasternTime(orderDetail.createdAt)} ET
+                                    </p>
                                 </div>
                             </div>
 
