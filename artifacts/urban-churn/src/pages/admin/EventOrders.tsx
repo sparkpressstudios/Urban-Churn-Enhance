@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useDebounce } from "@/hooks/use-debounce";
 import { formatEasternDate } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useTour } from "@/lib/tour";
@@ -8,6 +9,7 @@ import { adminEventOrdersSteps } from "@/lib/tour/tour-steps";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
     Select,
     SelectContent,
@@ -32,7 +34,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, CreditCard, RotateCcw, AlertTriangle } from "lucide-react";
+import { Eye, CreditCard, RotateCcw, AlertTriangle, Search } from "lucide-react";
 
 const statusColors: Record<string, string> = {
     confirmed: "bg-blue-100 text-blue-800",
@@ -46,15 +48,19 @@ export default function AdminEventOrders() {
     const queryClient = useQueryClient();
     const { toast } = useToast();
     const [filterStatus, setFilterStatus] = useState("all");
+    const [search, setSearch] = useState("");
+    const debouncedSearch = useDebounce(search);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [refundOrderId, setRefundOrderId] = useState<number | null>(null);
 
     const { data: orders = [] } = useQuery({
-        queryKey: ["admin", "event-orders", filterStatus],
-        queryFn: () =>
-            api.getEventOrdersAll(
-                filterStatus !== "all" ? { status: filterStatus } : undefined,
-            ),
+        queryKey: ["admin", "event-orders", filterStatus, debouncedSearch],
+        queryFn: () => {
+            const params: Record<string, string> = {};
+            if (filterStatus !== "all") params.status = filterStatus;
+            if (debouncedSearch) params.search = debouncedSearch;
+            return api.getEventOrdersAll(Object.keys(params).length > 0 ? params : undefined);
+        },
     });
 
     const { data: orderDetail } = useQuery({
@@ -94,9 +100,19 @@ export default function AdminEventOrders() {
     return (
         <AdminLayout>
             <div className="space-y-4">
-                <div className="flex items-center justify-between" data-tour="admin-event-orders-header">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3" data-tour="admin-event-orders-header">
                     <h1 className="text-2xl font-bold text-white">Event Orders</h1>
-                    <Select value={filterStatus} onValueChange={setFilterStatus} data-tour="admin-event-orders-filter">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <Input
+                                placeholder="Search by name, email, or order #..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="pl-10 w-full sm:w-[280px]"
+                            />
+                        </div>
+                        <Select value={filterStatus} onValueChange={setFilterStatus} data-tour="admin-event-orders-filter">
                         <SelectTrigger className="w-[150px]">
                             <SelectValue />
                         </SelectTrigger>
@@ -108,13 +124,16 @@ export default function AdminEventOrders() {
                             ))}
                         </SelectContent>
                     </Select>
+                    </div>
                 </div>
 
                 <Card>
                     <CardContent className="p-0">
                         {!orders.length ? (
                             <p className="text-gray-500 text-sm py-8 text-center">
-                                No event orders found.
+                                {debouncedSearch
+                                    ? "No event orders match your search."
+                                    : "No event orders found."}
                             </p>
                         ) : (
                             <div className="overflow-x-auto">

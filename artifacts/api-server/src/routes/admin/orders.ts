@@ -6,7 +6,7 @@ import {
     locationsTable,
     orderNotesTable,
 } from "@workspace/db/schema";
-import { eq, desc, asc, and, gte, lte, sql, count, ne, or, isNull } from "drizzle-orm";
+import { eq, desc, asc, and, gte, lte, sql, count, ne, or, isNull, ilike } from "drizzle-orm";
 import { sendOrderStatusUpdate } from "../../lib/email";
 import { updateSquareOrderState, refundPayment, createSquareOrder, getOnlineSalesLocationId } from "../../lib/square";
 
@@ -54,12 +54,22 @@ router.get("/", async (req, res) => {
     const locationId = req.query.locationId
         ? Number(req.query.locationId)
         : undefined;
+    const search = (req.query.search as string | undefined)?.trim();
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
     const conditions = [];
     if (status) conditions.push(eq(ordersTable.status, status as any));
     if (locationId) conditions.push(eq(ordersTable.locationId, locationId));
+    if (search) {
+        conditions.push(
+            or(
+                ilike(ordersTable.orderNumber, `%${search}%`),
+                ilike(ordersTable.customerName, `%${search}%`),
+                ilike(ordersTable.customerEmail, `%${search}%`),
+            )!,
+        );
+    }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
