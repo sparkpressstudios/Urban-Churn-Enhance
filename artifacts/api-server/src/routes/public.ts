@@ -741,6 +741,7 @@ router.post("/orders", async (req, res) => {
 
     let squareOrderId: string | null = null;
     let squarePaymentId: string | null = null;
+    let squareReceiptNumber: string | null = null;
     let paymentStatus: string | null = chargeCents > 0 ? null : "paid";
     let onlineSalesSquareLocationId: string | null = null;
 
@@ -763,6 +764,7 @@ router.post("/orders", async (req, res) => {
             });
             squareOrderId = paymentResult.squareOrderId;
             squarePaymentId = paymentResult.squarePaymentId;
+            squareReceiptNumber = paymentResult.squareReceiptNumber;
             onlineSalesSquareLocationId = paymentResult.locationId;
             paymentStatus = "paid";
         } catch (e) {
@@ -807,6 +809,8 @@ router.post("/orders", async (req, res) => {
                 status: "pending",
                 squareOrderId,
                 squarePaymentId,
+                squareReceiptNumber,
+                squareLocationId: onlineSalesSquareLocationId,
                 paymentStatus,
                 checkoutId: checkoutId ?? null,
                 lastSyncSource: "web",

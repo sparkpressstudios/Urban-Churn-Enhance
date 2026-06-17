@@ -63,7 +63,7 @@ export async function createPayment(
         console.log(
             `[SQUARE SKIPPED] No token configured. Amount: ${amountCents}, Source: ${sourceId}`,
         );
-        return { id: `mock_${crypto.randomBytes(8).toString("hex")}` };
+        return { id: `mock_${crypto.randomBytes(8).toString("hex")}`, receiptNumber: null };
     }
 
     const paymentIdempotencyKey = idempotencyKey ?? crypto.randomUUID();
@@ -81,7 +81,10 @@ export async function createPayment(
             ...(locationId ? { locationId } : {}),
         });
 
-        return { id: response.payment?.id ?? null };
+        return {
+            id: response.payment?.id ?? null,
+            receiptNumber: response.payment?.receiptNumber ?? null,
+        };
     } catch (e) {
         // Extract structured error details from Square for better diagnostics
         if (e instanceof SquareError) {
@@ -127,6 +130,48 @@ export async function refundPayment(
 export async function isSquareConfigured(): Promise<boolean> {
     const client = await getSquareClient();
     return !!client;
+}
+
+export async function getSquareEnvironmentName(): Promise<"sandbox" | "production"> {
+    const env = (await getSettingValue("square_environment")) || process.env.SQUARE_ENVIRONMENT || "sandbox";
+    return env === "production" ? "production" : "sandbox";
+}
+
+export function getSquareTransactionDashboardUrl(
+    paymentId: string,
+    environment: "sandbox" | "production" = "sandbox",
+): string {
+    const host = environment === "production" ? "squareup.com" : "squareupsandbox.com";
+    return `https://${host}/dashboard/sales/transactions/${paymentId}`;
+}
+
+export type SquarePaymentDetails = {
+    id: string;
+    receiptNumber: string | null;
+    orderId: string | null;
+    status: string | null;
+    locationId: string | null;
+};
+
+export async function getPaymentDetails(paymentId: string): Promise<SquarePaymentDetails | null> {
+    const client = await getSquareClient();
+    if (!client) return null;
+
+    try {
+        const response = await client.payments.get({ paymentId });
+        const payment = response.payment;
+        if (!payment?.id) return null;
+        return {
+            id: payment.id,
+            receiptNumber: payment.receiptNumber ?? null,
+            orderId: payment.orderId ?? null,
+            status: payment.status ?? null,
+            locationId: payment.locationId ?? null,
+        };
+    } catch (e) {
+        console.error(`[SQUARE] Failed to fetch payment ${paymentId}:`, e);
+        return null;
+    }
 }
 
 export async function getOnlineSalesLocationId(): Promise<string | null> {

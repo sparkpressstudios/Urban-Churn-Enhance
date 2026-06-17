@@ -7,6 +7,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, sql, desc, asc } from "drizzle-orm";
 import { updateSquareOrderState } from "../../lib/square";
+import { classifyOrderPayment } from "../../lib/order-payment";
 import {
     buildFulfillmentItemConditions,
     buildFulfillmentOrderConditions,
@@ -103,6 +104,8 @@ router.get("/orders", async (req, res) => {
             customerPhone: ordersTable.customerPhone,
             status: ordersTable.status,
             totalCents: ordersTable.totalCents,
+            paymentStatus: ordersTable.paymentStatus,
+            squarePaymentId: ordersTable.squarePaymentId,
             squareOrderId: ordersTable.squareOrderId,
             createdAt: ordersTable.createdAt,
         })
@@ -138,6 +141,12 @@ router.get("/orders", async (req, res) => {
     res.json(
         orders.map((o) => ({
             ...o,
+            paymentValidity: classifyOrderPayment({
+                status: o.status,
+                paymentStatus: o.paymentStatus,
+                totalCents: o.totalCents,
+                squarePaymentId: o.squarePaymentId,
+            }),
             items: itemsByOrder[o.id] || [],
         })),
     );
@@ -165,6 +174,28 @@ router.get("/export/csv", async (req, res) => {
 // Mark order as picked up
 router.put("/orders/:id/pickup", async (req, res) => {
     const id = Number(req.params.id);
+
+    const [existing] = await db
+        .select()
+        .from(ordersTable)
+        .where(eq(ordersTable.id, id))
+        .limit(1);
+
+    if (!existing) {
+        res.status(404).json({ error: "Order not found" });
+        return;
+    }
+
+    const paymentValidity = classifyOrderPayment({
+        status: existing.status,
+        paymentStatus: existing.paymentStatus,
+        totalCents: existing.totalCents,
+        squarePaymentId: existing.squarePaymentId,
+    });
+    if (!paymentValidity.validForFulfillment) {
+        res.status(400).json({ error: paymentValidity.reason, paymentValidity });
+        return;
+    }
 
     const [order] = await db
         .update(ordersTable)
@@ -208,6 +239,28 @@ router.put("/orders/:id/pickup", async (req, res) => {
 // Mark order as ready for pickup
 router.put("/orders/:id/ready", async (req, res) => {
     const id = Number(req.params.id);
+
+    const [existing] = await db
+        .select()
+        .from(ordersTable)
+        .where(eq(ordersTable.id, id))
+        .limit(1);
+
+    if (!existing) {
+        res.status(404).json({ error: "Order not found" });
+        return;
+    }
+
+    const paymentValidity = classifyOrderPayment({
+        status: existing.status,
+        paymentStatus: existing.paymentStatus,
+        totalCents: existing.totalCents,
+        squarePaymentId: existing.squarePaymentId,
+    });
+    if (!paymentValidity.validForFulfillment) {
+        res.status(400).json({ error: paymentValidity.reason, paymentValidity });
+        return;
+    }
 
     const [order] = await db
         .update(ordersTable)

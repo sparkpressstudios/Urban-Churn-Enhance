@@ -454,6 +454,7 @@ router.post("/events/:id/purchase", async (req, res) => {
 
         let squareOrderId: string | null = null;
         let squarePaymentId: string | null = null;
+        let squareReceiptNumber: string | null = null;
         let onlineSalesLocationId: string | null = null;
 
         if (totalCents > 0) {
@@ -472,6 +473,7 @@ router.post("/events/:id/purchase", async (req, res) => {
                 });
                 squareOrderId = paymentResult.squareOrderId;
                 squarePaymentId = paymentResult.squarePaymentId;
+                squareReceiptNumber = paymentResult.squareReceiptNumber;
                 onlineSalesLocationId = paymentResult.locationId;
             } catch (e) {
                 if (e instanceof CheckoutPaymentError) {
@@ -506,6 +508,7 @@ router.post("/events/:id/purchase", async (req, res) => {
                         totalCents,
                         squareOrderId,
                         squarePaymentId,
+                        squareReceiptNumber,
                     })
                     .returning();
 

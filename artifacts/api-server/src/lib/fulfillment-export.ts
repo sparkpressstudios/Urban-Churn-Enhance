@@ -7,6 +7,7 @@ import {
     flavoursTable,
 } from "@workspace/db/schema";
 import { eq, and, sql, asc, or, ilike, gte, lte, type SQL } from "drizzle-orm";
+import { validForFulfillmentSql } from "./order-payment";
 
 const BUSINESS_TZ = "America/New_York";
 
@@ -19,6 +20,7 @@ export interface FulfillmentFilters {
     flavourName?: string;
     preOrderWindowId?: number;
     search?: string;
+    includeInvalid?: boolean;
 }
 
 export function parseFulfillmentFilters(query: Record<string, unknown>): FulfillmentFilters {
@@ -31,6 +33,10 @@ export function parseFulfillmentFilters(query: Record<string, unknown>): Fulfill
             ? Number(query.preOrderWindowId)
             : undefined,
         search: query.search ? String(query.search) : undefined,
+        includeInvalid:
+            query.includeInvalid === "true" ||
+            query.includeInvalid === "1" ||
+            query.includeInvalid === true,
     };
 }
 
@@ -57,6 +63,10 @@ function applyDateAndLocationFilters(
 export function buildFulfillmentOrderConditions(filters: FulfillmentFilters): SQL[] {
     const conditions: SQL[] = [UNFULFILLED_STATUSES];
     applyDateAndLocationFilters(conditions, filters);
+
+    if (!filters.includeInvalid) {
+        conditions.push(validForFulfillmentSql());
+    }
 
     if (filters.search) {
         conditions.push(
@@ -93,6 +103,10 @@ export function buildFulfillmentOrderConditions(filters: FulfillmentFilters): SQ
 export function buildFulfillmentItemConditions(filters: FulfillmentFilters): SQL[] {
     const conditions: SQL[] = [UNFULFILLED_STATUSES];
     applyDateAndLocationFilters(conditions, filters);
+
+    if (!filters.includeInvalid) {
+        conditions.push(validForFulfillmentSql());
+    }
 
     if (filters.flavourName) {
         conditions.push(ilike(orderItemsTable.flavourName, filters.flavourName));

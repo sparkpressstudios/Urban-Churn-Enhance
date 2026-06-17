@@ -12,7 +12,7 @@ import {
 import { eq, desc, asc, and, gte, lte, sql, count, inArray, or, ilike } from "drizzle-orm";
 import * as crypto from "node:crypto";
 import { sendTicketConfirmation, sendEventUpdate } from "../../lib/email";
-import { refundPayment } from "../../lib/square";
+import { refundPayment, getPaymentDetails, getSquareEnvironmentName } from "../../lib/square";
 
 const router: IRouter = Router();
 
@@ -892,6 +892,9 @@ router.get("/orders/all", async (req, res) => {
                 ilike(eventOrdersTable.orderNumber, `%${search}%`),
                 ilike(eventOrdersTable.customerName, `%${search}%`),
                 ilike(eventOrdersTable.customerEmail, `%${search}%`),
+                ilike(eventOrdersTable.squarePaymentId, `%${search}%`),
+                ilike(eventOrdersTable.squareOrderId, `%${search}%`),
+                ilike(eventOrdersTable.squareReceiptNumber, `%${search}%`),
             )!,
         );
     }
@@ -909,7 +912,9 @@ router.get("/orders/all", async (req, res) => {
             customerEmail: eventOrdersTable.customerEmail,
             status: eventOrdersTable.status,
             totalCents: eventOrdersTable.totalCents,
+            squareOrderId: eventOrdersTable.squareOrderId,
             squarePaymentId: eventOrdersTable.squarePaymentId,
+            squareReceiptNumber: eventOrdersTable.squareReceiptNumber,
             ticketCount: sql<number>`(select count(*) from event_tickets where event_order_id = ${eventOrdersTable.id})::int`,
             createdAt: eventOrdersTable.createdAt,
         })
@@ -940,6 +945,7 @@ router.get("/orders/:orderId", async (req, res) => {
             totalCents: eventOrdersTable.totalCents,
             squareOrderId: eventOrdersTable.squareOrderId,
             squarePaymentId: eventOrdersTable.squarePaymentId,
+            squareReceiptNumber: eventOrdersTable.squareReceiptNumber,
             notes: eventOrdersTable.notes,
             createdAt: eventOrdersTable.createdAt,
         })
@@ -963,7 +969,54 @@ router.get("/orders/:orderId", async (req, res) => {
         .from(eventTicketsTable)
         .where(eq(eventTicketsTable.eventOrderId, orderId));
 
-    res.json({ ...order, items, tickets });
+    res.json({ ...order, items, tickets, squareEnvironment: await getSquareEnvironmentName() });
+});
+
+// Pull latest payment details from Square
+router.post("/orders/:orderId/sync-square-payment", async (req, res) => {
+    const orderId = Number(req.params.orderId);
+
+    const [order] = await db
+        .select()
+        .from(eventOrdersTable)
+        .where(eq(eventOrdersTable.id, orderId))
+        .limit(1);
+
+    if (!order) {
+        res.status(404).json({ error: "Event order not found" });
+        return;
+    }
+
+    if (!order.squarePaymentId) {
+        res.status(400).json({ error: "Order has no Square payment ID to sync" });
+        return;
+    }
+
+    const payment = await getPaymentDetails(order.squarePaymentId);
+    if (!payment) {
+        res.status(502).json({ error: "Failed to fetch payment from Square" });
+        return;
+    }
+
+    const updates: Partial<typeof eventOrdersTable.$inferInsert> = {
+        squareReceiptNumber: payment.receiptNumber,
+        updatedAt: new Date(),
+    };
+    if (!order.squareOrderId && payment.orderId) {
+        updates.squareOrderId = payment.orderId;
+    }
+
+    await db.update(eventOrdersTable).set(updates).where(eq(eventOrdersTable.id, orderId));
+
+    res.json({
+        success: true,
+        squareReceiptNumber: payment.receiptNumber,
+        squareOrderId: order.squareOrderId ?? payment.orderId,
+        orderIdMismatch: Boolean(
+            order.squareOrderId && payment.orderId && order.squareOrderId !== payment.orderId,
+        ),
+        squareEnvironment: await getSquareEnvironmentName(),
+    });
 });
 
 // Update event order status

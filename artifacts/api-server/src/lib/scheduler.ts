@@ -12,6 +12,7 @@ import {
     bakeryOrdersTable,
 } from "@workspace/db/schema";
 import { eq, and, or, lte, sql, inArray, ne, isNotNull, notInArray } from "drizzle-orm";
+import { validForFulfillmentSql } from "./order-payment";
 import {
     sendAdminOrdersClosedReminder,
     sendCustomerPickupReminder,
@@ -24,10 +25,7 @@ import type { LocationInfo } from "./email";
 /** All scheduled jobs and date math use the business timezone */
 const BUSINESS_TZ = "America/New_York";
 
-const orderPaidForFulfillment = or(
-    eq(ordersTable.paymentStatus, "paid"),
-    eq(ordersTable.totalCents, 0),
-);
+const orderPaidForFulfillment = validForFulfillmentSql();
 
 /**
  * Get start-of-day boundaries in Eastern timezone as UTC Date objects.

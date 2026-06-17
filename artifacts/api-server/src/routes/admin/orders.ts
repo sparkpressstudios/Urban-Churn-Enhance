@@ -8,7 +8,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, desc, asc, and, gte, lte, sql, count, ne, or, isNull, ilike } from "drizzle-orm";
 import { sendOrderStatusUpdate } from "../../lib/email";
-import { updateSquareOrderState, refundPayment, createSquareOrder, getOnlineSalesLocationId } from "../../lib/square";
+import { updateSquareOrderState, refundPayment, createSquareOrder, getOnlineSalesLocationId, getPaymentDetails, getSquareEnvironmentName } from "../../lib/square";
 
 const router: IRouter = Router();
 
@@ -67,6 +67,9 @@ router.get("/", async (req, res) => {
                 ilike(ordersTable.orderNumber, `%${search}%`),
                 ilike(ordersTable.customerName, `%${search}%`),
                 ilike(ordersTable.customerEmail, `%${search}%`),
+                ilike(ordersTable.squarePaymentId, `%${search}%`),
+                ilike(ordersTable.squareOrderId, `%${search}%`),
+                ilike(ordersTable.squareReceiptNumber, `%${search}%`),
             )!,
         );
     }
@@ -90,7 +93,9 @@ router.get("/", async (req, res) => {
             notes: ordersTable.notes,
             status: ordersTable.status,
             totalCents: ordersTable.totalCents,
+            squareOrderId: ordersTable.squareOrderId,
             squarePaymentId: ordersTable.squarePaymentId,
+            squareReceiptNumber: ordersTable.squareReceiptNumber,
             paymentStatus: ordersTable.paymentStatus,
             lastSyncSource: ordersTable.lastSyncSource,
             createdAt: ordersTable.createdAt,
@@ -124,6 +129,8 @@ router.get("/:id", async (req, res) => {
             totalCents: ordersTable.totalCents,
             squareOrderId: ordersTable.squareOrderId,
             squarePaymentId: ordersTable.squarePaymentId,
+            squareReceiptNumber: ordersTable.squareReceiptNumber,
+            squareLocationId: ordersTable.squareLocationId,
             paymentStatus: ordersTable.paymentStatus,
             lastSyncSource: ordersTable.lastSyncSource,
             createdAt: ordersTable.createdAt,
@@ -139,6 +146,8 @@ router.get("/:id", async (req, res) => {
         return;
     }
 
+    const squareEnvironment = await getSquareEnvironmentName();
+
     const items = await db
         .select()
         .from(orderItemsTable)
@@ -150,7 +159,7 @@ router.get("/:id", async (req, res) => {
         .where(eq(orderNotesTable.orderId, id))
         .orderBy(desc(orderNotesTable.createdAt));
 
-    res.json({ ...order, items, notes });
+    res.json({ ...order, items, notes, squareEnvironment });
 });
 
 // Bulk update order statuses
@@ -318,6 +327,64 @@ router.post("/:id/notes", async (req, res) => {
     res.status(201).json(note);
 });
 
+// Pull latest payment details from Square (receipt #, order link, status)
+router.post("/:id/sync-square-payment", async (req, res) => {
+    const id = Number(req.params.id);
+
+    const [order] = await db
+        .select()
+        .from(ordersTable)
+        .where(eq(ordersTable.id, id))
+        .limit(1);
+
+    if (!order) {
+        res.status(404).json({ error: "Order not found" });
+        return;
+    }
+
+    if (!order.squarePaymentId) {
+        res.status(400).json({ error: "Order has no Square payment ID to sync" });
+        return;
+    }
+
+    const payment = await getPaymentDetails(order.squarePaymentId);
+    if (!payment) {
+        res.status(502).json({ error: "Failed to fetch payment from Square" });
+        return;
+    }
+
+    const updates: Partial<typeof ordersTable.$inferInsert> = {
+        squareReceiptNumber: payment.receiptNumber,
+        lastSyncSource: "web",
+        updatedAt: new Date(),
+    };
+
+    if (!order.squareOrderId && payment.orderId) {
+        updates.squareOrderId = payment.orderId;
+    }
+    if (!order.squareLocationId && payment.locationId) {
+        updates.squareLocationId = payment.locationId;
+    }
+    if (payment.status) {
+        updates.paymentStatus = payment.status.toLowerCase();
+    }
+
+    await db.update(ordersTable).set(updates).where(eq(ordersTable.id, id));
+
+    const orderIdMismatch = Boolean(
+        order.squareOrderId && payment.orderId && order.squareOrderId !== payment.orderId,
+    );
+
+    res.json({
+        success: true,
+        squareReceiptNumber: payment.receiptNumber,
+        squareOrderId: order.squareOrderId ?? payment.orderId,
+        paymentStatus: updates.paymentStatus ?? order.paymentStatus,
+        orderIdMismatch,
+        squareEnvironment: await getSquareEnvironmentName(),
+    });
+});
+
 // Retry Square sync for an order
 router.post("/:id/retry-square-sync", async (req, res) => {
     const id = Number(req.params.id);
@@ -390,14 +457,30 @@ router.post("/:id/retry-square-sync", async (req, res) => {
                     : null;
 
         if (squareState) {
-            const [loc] = await db
-                .select({ squareLocationId: locationsTable.squareLocationId })
-                .from(locationsTable)
-                .where(eq(locationsTable.id, order.locationId))
-                .limit(1);
+            const squareLocationId =
+                order.squareLocationId ?? (await getOnlineSalesLocationId());
+            if (squareLocationId) {
+                await updateSquareOrderState(squareOrderId, squareLocationId, squareState as "COMPLETED" | "CANCELED");
+            }
+        }
 
-            if (loc?.squareLocationId) {
-                await updateSquareOrderState(squareOrderId, loc.squareLocationId, squareState as "COMPLETED" | "CANCELED");
+        if (order.squarePaymentId) {
+            const payment = await getPaymentDetails(order.squarePaymentId);
+            if (payment) {
+                await db
+                    .update(ordersTable)
+                    .set({
+                        squareReceiptNumber: payment.receiptNumber,
+                        ...(payment.orderId && !order.squareOrderId
+                            ? { squareOrderId: payment.orderId }
+                            : {}),
+                        ...(payment.locationId && !order.squareLocationId
+                            ? { squareLocationId: payment.locationId }
+                            : {}),
+                        ...(payment.status ? { paymentStatus: payment.status.toLowerCase() } : {}),
+                        lastSyncSource: "web",
+                    })
+                    .where(eq(ordersTable.id, order.id));
             }
         }
 

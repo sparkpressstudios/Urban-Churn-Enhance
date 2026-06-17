@@ -43,6 +43,9 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { PaymentValidityBadge, PaymentValidityBanner } from "@/components/PaymentValidityBanner";
 
 const STATUS_LABELS: Record<string, string> = {
     pending: "Pending",
@@ -67,6 +70,7 @@ export default function Fulfillment() {
     const [dateTo, setDateTo] = useState("");
     const [flavourFilter, setFlavourFilter] = useState<string>("all");
     const [windowFilter, setWindowFilter] = useState<string>("all");
+    const [showInvalidOrders, setShowInvalidOrders] = useState(false);
 
     const { data: locations = [] } = useQuery({
         queryKey: ["admin", "locations"],
@@ -95,6 +99,7 @@ export default function Fulfillment() {
         to: dateTo || undefined,
         flavourName: activeFlavour,
         preOrderWindowId: activeWindowId,
+        includeInvalid: showInvalidOrders || undefined,
     };
 
     const { data: summary = [] } = useQuery({
@@ -296,6 +301,16 @@ export default function Fulfillment() {
                             Clear filters
                         </Button>
                     )}
+                    <div className="flex items-center gap-2 rounded-md border px-3 py-2 bg-white/5">
+                        <Checkbox
+                            id="show-invalid-fulfillment"
+                            checked={showInvalidOrders}
+                            onCheckedChange={(v) => setShowInvalidOrders(v === true)}
+                        />
+                        <Label htmlFor="show-invalid-fulfillment" className="text-sm text-white/80 cursor-pointer">
+                            Show unpaid / invalid orders
+                        </Label>
+                    </div>
                 </div>
 
                 <Tabs defaultValue="summary" data-tour="admin-fulfillment-churn-tab">
@@ -440,7 +455,15 @@ export default function Fulfillment() {
                                                                 Square
                                                             </Badge>
                                                         )}
+                                                        {order.paymentValidity && (
+                                                            <PaymentValidityBadge validity={order.paymentValidity} />
+                                                        )}
                                                     </div>
+                                                    {order.paymentValidity && (
+                                                        <div className="mb-2">
+                                                            <PaymentValidityBanner validity={order.paymentValidity} />
+                                                        </div>
+                                                    )}
                                                     <p className="text-sm font-medium">
                                                         {order.customerName}
                                                     </p>
@@ -498,7 +521,8 @@ export default function Fulfillment() {
                                                                     )
                                                                 }
                                                                 disabled={
-                                                                    readyMutation.isPending
+                                                                    readyMutation.isPending ||
+                                                                    !order.paymentValidity?.validForFulfillment
                                                                 }
                                                             >
                                                                 <Clock className="w-3 h-3 mr-1" />
@@ -515,7 +539,8 @@ export default function Fulfillment() {
                                                                     )
                                                                 }
                                                                 disabled={
-                                                                    pickupMutation.isPending
+                                                                    pickupMutation.isPending ||
+                                                                    !order.paymentValidity?.validForFulfillment
                                                                 }
                                                             >
                                                                 <CheckCircle className="w-3 h-3 mr-1" />
