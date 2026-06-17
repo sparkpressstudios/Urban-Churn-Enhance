@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
 import { formatEasternDate } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { SquarePaymentPanel } from "@/components/admin/SquarePaymentPanel";
 import { useTour } from "@/lib/tour";
 import { adminEventOrdersSteps } from "@/lib/tour/tour-steps";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,7 +35,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, CreditCard, RotateCcw, AlertTriangle, Search } from "lucide-react";
+import { Eye, RotateCcw, AlertTriangle, Search } from "lucide-react";
 
 const statusColors: Record<string, string> = {
     confirmed: "bg-blue-100 text-blue-800",
@@ -79,6 +80,26 @@ export default function AdminEventOrders() {
         },
     });
 
+    const syncPayment = useMutation({
+        mutationFn: (id: number) => api.syncEventSquarePayment(id),
+        onSuccess: (data: any) => {
+            queryClient.invalidateQueries({ queryKey: ["admin", "event-orders"] });
+            queryClient.invalidateQueries({ queryKey: ["admin", "event-order"] });
+            if (data?.orderIdMismatch) {
+                toast({
+                    title: "Payment synced with warning",
+                    description: "Square order ID does not match this record.",
+                    variant: "destructive",
+                });
+            } else {
+                toast({ title: "Square payment details updated" });
+            }
+        },
+        onError: () => {
+            toast({ title: "Failed to sync from Square", variant: "destructive" });
+        },
+    });
+
     const refundMutation = useMutation({
         mutationFn: (id: number) => api.refundEventOrder(id),
         onSuccess: (data: any) => {
@@ -106,7 +127,7 @@ export default function AdminEventOrders() {
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <Input
-                                placeholder="Search by name, email, or order #..."
+                                placeholder="Search name, email, order #, receipt #, Square ID..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 className="pl-10 w-full sm:w-[280px]"
@@ -154,7 +175,14 @@ export default function AdminEventOrders() {
                                     <tbody>
                                         {orders.map((order: any) => (
                                             <tr key={order.id} className="border-b last:border-0 hover:bg-gray-50">
-                                                <td className="p-3 font-mono text-xs">{order.orderNumber}</td>
+                                                <td className="p-3 font-mono text-xs">
+                                                    <div>{order.orderNumber}</div>
+                                                    {order.squareReceiptNumber && (
+                                                        <div className="text-[10px] text-green-700 mt-0.5">
+                                                            Receipt #{order.squareReceiptNumber}
+                                                        </div>
+                                                    )}
+                                                </td>
                                                 <td className="p-3">
                                                     <div className="text-sm">{order.eventTitle}</div>
                                                     <div className="text-xs text-gray-500">{order.eventDate}</div>
@@ -175,11 +203,13 @@ export default function AdminEventOrders() {
                                                 <td className="p-3 text-right font-medium">
                                                     ${(order.totalCents / 100).toFixed(2)}
                                                 </td>
-                                                <td className="p-3">
-                                                    {order.squarePaymentId ? (
-                                                        <CreditCard className="w-4 h-4 text-green-500" />
+                                                <td className="p-3 text-xs">
+                                                    {order.squareReceiptNumber ? (
+                                                        <span className="font-mono text-green-700">#{order.squareReceiptNumber}</span>
+                                                    ) : order.squarePaymentId ? (
+                                                        <span className="text-green-600">Paid</span>
                                                     ) : (
-                                                        <span className="text-xs text-gray-400">—</span>
+                                                        <span className="text-gray-400">—</span>
                                                     )}
                                                 </td>
                                                 <td className="p-3 text-gray-500 text-xs">
@@ -247,23 +277,16 @@ export default function AdminEventOrders() {
                                 </div>
                             </div>
 
-                            {/* Payment Info */}
-                            {orderDetail.squarePaymentId && (
-                                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg text-xs">
-                                    <CreditCard className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-                                    <div className="space-y-1 min-w-0">
-                                        <div>
-                                            <span className="text-gray-500">Payment ID: </span>
-                                            <span className="font-mono text-gray-700">{orderDetail.squarePaymentId}</span>
-                                        </div>
-                                        {orderDetail.squareOrderId && (
-                                            <div>
-                                                <span className="text-gray-500">Square Order: </span>
-                                                <span className="font-mono text-gray-700">{orderDetail.squareOrderId}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                            {(orderDetail.squarePaymentId || orderDetail.squareOrderId) && (
+                                <SquarePaymentPanel
+                                    orderNumber={orderDetail.orderNumber}
+                                    squareOrderId={orderDetail.squareOrderId}
+                                    squarePaymentId={orderDetail.squarePaymentId}
+                                    squareReceiptNumber={orderDetail.squareReceiptNumber}
+                                    squareEnvironment={orderDetail.squareEnvironment}
+                                    onSync={() => syncPayment.mutate(orderDetail.id)}
+                                    isSyncing={syncPayment.isPending}
+                                />
                             )}
 
                             {/* Items */}

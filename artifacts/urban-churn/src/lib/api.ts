@@ -144,6 +144,8 @@ export const api = {
         }),
     retrySquareSync: (id: number) =>
         apiFetch(`/admin/orders/${id}/retry-square-sync`, { method: "POST" }),
+    syncSquarePayment: (id: number) =>
+        apiFetch(`/admin/orders/${id}/sync-square-payment`, { method: "POST" }),
     refundOrder: (id: number) =>
         apiFetch(`/admin/orders/${id}/refund`, { method: "POST" }),
     bulkUpdateProducts: (productIds: number[], updates: any) =>
@@ -298,6 +300,8 @@ export const api = {
         apiFetch(`/admin/events/orders/${orderId}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
     refundEventOrder: (orderId: number) =>
         apiFetch(`/admin/events/orders/${orderId}/refund`, { method: "POST" }),
+    syncEventSquarePayment: (orderId: number) =>
+        apiFetch(`/admin/events/orders/${orderId}/sync-square-payment`, { method: "POST" }),
 
     // Analytics
     getAnalyticsSummary: (days?: number) =>

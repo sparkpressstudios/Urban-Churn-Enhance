@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
 import { formatEastern, formatEasternDate } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { SquarePaymentPanel } from "@/components/admin/SquarePaymentPanel";
 import { useTour } from "@/lib/tour";
 import { adminOrdersSteps } from "@/lib/tour/tour-steps";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,7 +36,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, Filter, MessageSquare, Send, RefreshCw, CreditCard, AlertTriangle, RotateCcw, Search } from "lucide-react";
+import { Eye, Filter, MessageSquare, Send, RefreshCw, AlertTriangle, RotateCcw, Search } from "lucide-react";
 
 const statusColors: Record<string, string> = {
     pending: "bg-yellow-100 text-yellow-800",
@@ -98,6 +99,26 @@ export default function AdminOrders() {
         },
         onError: () => {
             toast({ title: "Square sync failed", description: "Check Square configuration.", variant: "destructive" });
+        },
+    });
+
+    const syncPayment = useMutation({
+        mutationFn: (id: number) => api.syncSquarePayment(id),
+        onSuccess: (data: any) => {
+            queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+            queryClient.invalidateQueries({ queryKey: ["admin", "order"] });
+            if (data?.orderIdMismatch) {
+                toast({
+                    title: "Payment synced with warning",
+                    description: "Square order ID does not match this record.",
+                    variant: "destructive",
+                });
+            } else {
+                toast({ title: "Square payment details updated" });
+            }
+        },
+        onError: () => {
+            toast({ title: "Failed to sync from Square", variant: "destructive" });
         },
     });
 
@@ -166,7 +187,7 @@ export default function AdminOrders() {
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <Input
-                                placeholder="Search by name, email, or order #..."
+                                placeholder="Search name, email, order #, receipt #, Square ID..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 className="pl-10 w-full sm:w-[280px]"
@@ -251,7 +272,14 @@ export default function AdminOrders() {
                                                     onCheckedChange={() => toggleSelect(order.id)}
                                                 />
                                             </td>
-                                            <td className="p-3 font-mono text-xs">{order.orderNumber}</td>
+                                            <td className="p-3 font-mono text-xs">
+                                                <div>{order.orderNumber}</div>
+                                                {order.squareReceiptNumber && (
+                                                    <div className="text-[10px] text-green-700 mt-0.5">
+                                                        Receipt #{order.squareReceiptNumber}
+                                                    </div>
+                                                )}
+                                            </td>
                                             <td className="p-3">
                                                 <div>{order.customerName}</div>
                                                 <div className="text-xs text-gray-500">{order.customerEmail}</div>
@@ -336,43 +364,30 @@ export default function AdminOrders() {
                                     <p className="font-medium">{orderDetail.locationName}</p>
                                 </div>
                             </div>
-                            {/* Payment / Square Info */}
-                            {orderDetail.squarePaymentId && (
-                                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg text-xs">
-                                    <CreditCard className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-                                    <div className="space-y-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-gray-500">Payment:</span>
-                                            <span className="font-mono text-gray-700 truncate">{orderDetail.squarePaymentId}</span>
-                                        </div>
-                                        {orderDetail.paymentStatus && (
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-gray-500">Status:</span>
-                                                <Badge variant="secondary" className="text-xs">
-                                                    {orderDetail.paymentStatus}
-                                                </Badge>
-                                            </div>
-                                        )}
-                                        {orderDetail.lastSyncSource && (
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-gray-500">Last sync:</span>
-                                                <span className="text-gray-600">{orderDetail.lastSyncSource}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                    {orderDetail.squareOrderId && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="ml-auto h-7 text-xs shrink-0"
-                                            onClick={() => retrySync.mutate(orderDetail.id)}
-                                            disabled={retrySync.isPending}
-                                        >
-                                            <RefreshCw className={`w-3 h-3 mr-1 ${retrySync.isPending ? "animate-spin" : ""}`} />
-                                            Sync
-                                        </Button>
-                                    )}
-                                </div>
+                            {(orderDetail.squarePaymentId || orderDetail.squareOrderId) && (
+                                <SquarePaymentPanel
+                                    orderNumber={orderDetail.orderNumber}
+                                    squareOrderId={orderDetail.squareOrderId}
+                                    squarePaymentId={orderDetail.squarePaymentId}
+                                    squareReceiptNumber={orderDetail.squareReceiptNumber}
+                                    paymentStatus={orderDetail.paymentStatus}
+                                    lastSyncSource={orderDetail.lastSyncSource}
+                                    squareEnvironment={orderDetail.squareEnvironment}
+                                    onSync={() => syncPayment.mutate(orderDetail.id)}
+                                    isSyncing={syncPayment.isPending || retrySync.isPending}
+                                />
+                            )}
+                            {orderDetail.squarePaymentId && !orderDetail.squareOrderId && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full text-xs"
+                                    onClick={() => retrySync.mutate(orderDetail.id)}
+                                    disabled={retrySync.isPending}
+                                >
+                                    <RefreshCw className={`w-3 h-3 mr-1 ${retrySync.isPending ? "animate-spin" : ""}`} />
+                                    Create missing Square order
+                                </Button>
                             )}
                             {typeof orderDetail.notes === 'string' && orderDetail.notes && (
                                 <div className="text-sm">

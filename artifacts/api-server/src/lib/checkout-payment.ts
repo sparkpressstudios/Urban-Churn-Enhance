@@ -39,7 +39,12 @@ export async function chargeBeforeOrderPersist(opts: {
     isPreOrder?: boolean;
     squareCustomerId?: string;
     idempotencyKey?: string;
-}): Promise<{ squareOrderId: string | null; squarePaymentId: string; locationId: string }> {
+}): Promise<{
+    squareOrderId: string | null;
+    squarePaymentId: string;
+    squareReceiptNumber: string | null;
+    locationId: string;
+}> {
     const locationId = await assertPaymentsReady();
 
     let squareOrderId: string | null = null;
@@ -73,7 +78,12 @@ export async function chargeBeforeOrderPersist(opts: {
         if (!squarePaymentId) {
             throw new CheckoutPaymentError("PAYMENT_PROCESSING_ERROR", "No payment id returned");
         }
-        return { squareOrderId, squarePaymentId, locationId };
+        return {
+            squareOrderId,
+            squarePaymentId,
+            squareReceiptNumber: payment.receiptNumber ?? null,
+            locationId,
+        };
     } catch (e) {
         if (e instanceof CheckoutPaymentError) throw e;
         const mapped = mapSquarePaymentError(e);
