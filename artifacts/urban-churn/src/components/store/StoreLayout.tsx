@@ -8,6 +8,7 @@ import {
     X,
     MapPin,
     ChevronDown,
+    KeyRound,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -120,6 +121,15 @@ export function StoreLayout({
             <div className="p-3 border-t border-white/10">
                 <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400">
                     <span className="flex-1 truncate">{user?.username}</span>
+                    <Link href="/admin/change-password" title="Change password">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-gray-400 hover:text-white h-auto p-1"
+                        >
+                            <KeyRound className="w-4 h-4" />
+                        </Button>
+                    </Link>
                     <TourHelpButton />
                     <Button
                         variant="ghost"
