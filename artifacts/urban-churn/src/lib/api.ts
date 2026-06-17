@@ -193,6 +193,10 @@ export const api = {
 
     // Admin Users
     getUsers: () => apiFetch("/admin/users"),
+    getAdminLoginLogs: (params?: Record<string, string>) => {
+        const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+        return apiFetch(`/admin/users/login-logs${qs}`);
+    },
     getUser: (id: number) => apiFetch(`/admin/users/${id}`),
     getUsersByLocation: (locationId: number) =>
         apiFetch(`/admin/users/by-location/${locationId}`),
