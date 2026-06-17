@@ -7,7 +7,116 @@ import {
     productsTable,
     sizesTable,
 } from "@workspace/db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
+
+export type OrderPaymentCategory =
+    | "valid_paid"
+    | "free_order"
+    | "unpaid"
+    | "payment_failed"
+    | "missing_square"
+    | "cancelled"
+    | "refunded";
+
+export type OrderPaymentValidity = {
+    category: OrderPaymentCategory;
+    label: string;
+    reason: string;
+    validForFulfillment: boolean;
+};
+
+type OrderPaymentInput = {
+    status: string;
+    paymentStatus: string | null;
+    totalCents: number;
+    squarePaymentId?: string | null;
+};
+
+/** SQL condition: order is eligible for fulfillment / store pickup queues. */
+export function validForFulfillmentSql(): SQL {
+    return sql`(
+        ${ordersTable.status} NOT IN ('cancelled', 'refunded')
+        AND (
+            ${ordersTable.totalCents} = 0
+            OR (
+                ${ordersTable.paymentStatus} = 'paid'
+                AND ${ordersTable.squarePaymentId} IS NOT NULL
+            )
+        )
+    )`;
+}
+
+export function classifyOrderPayment(order: OrderPaymentInput): OrderPaymentValidity {
+    if (order.status === "refunded" || order.paymentStatus === "refunded") {
+        return {
+            category: "refunded",
+            label: "Refunded",
+            reason: "This order was refunded and is not eligible for pickup.",
+            validForFulfillment: false,
+        };
+    }
+
+    if (order.status === "cancelled" || order.paymentStatus === "payment_failed") {
+        return {
+            category: order.paymentStatus === "payment_failed" ? "payment_failed" : "cancelled",
+            label: order.paymentStatus === "payment_failed" ? "Payment failed" : "Cancelled",
+            reason:
+                order.paymentStatus === "payment_failed"
+                    ? "Checkout did not complete payment. Do not fulfill this order."
+                    : "This order was cancelled and is not eligible for pickup.",
+            validForFulfillment: false,
+        };
+    }
+
+    if (order.totalCents === 0) {
+        return {
+            category: "free_order",
+            label: "Free order",
+            reason: "No payment was required for this order.",
+            validForFulfillment: true,
+        };
+    }
+
+    if (!order.paymentStatus || order.paymentStatus !== "paid") {
+        return {
+            category: "unpaid",
+            label: "Unpaid",
+            reason: "No successful payment was recorded. The customer was not charged.",
+            validForFulfillment: false,
+        };
+    }
+
+    if (!order.squarePaymentId) {
+        return {
+            category: "missing_square",
+            label: "Missing Square payment",
+            reason:
+                "Marked paid locally but no Square payment ID is linked. Verify in Square before fulfilling.",
+            validForFulfillment: false,
+        };
+    }
+
+    return {
+        category: "valid_paid",
+        label: "Paid",
+        reason: "Payment confirmed and linked to Square.",
+        validForFulfillment: true,
+    };
+}
+
+export function isOrderValidForFulfillment(order: OrderPaymentInput): boolean {
+    return classifyOrderPayment(order).validForFulfillment;
+}
+
+/** @deprecated Use isOrderValidForFulfillment */
+export function orderIsPaidForFulfillment(paymentStatus: string | null, totalCents: number) {
+    return isOrderValidForFulfillment({
+        status: "pending",
+        paymentStatus,
+        totalCents,
+        squarePaymentId: paymentStatus === "paid" && totalCents > 0 ? "linked" : null,
+    });
+}
 
 export type ResolvedOrderLine = {
     flavourName: string;
@@ -122,11 +231,6 @@ export async function revertUnpaidOrder(
             })
             .where(eq(ordersTable.id, orderId));
     });
-}
-
-/** Orders eligible for fulfillment emails and auto-ready transitions. */
-export function orderIsPaidForFulfillment(paymentStatus: string | null, totalCents: number) {
-    return paymentStatus === "paid" || totalCents === 0;
 }
 
 /** Verify managed-stock products have enough quantity before charging the card. */

@@ -43,6 +43,7 @@ import {
     RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PaymentValidityBanner } from "@/components/PaymentValidityBanner";
 
 const STATUS_BADGE: Record<string, string> = {
     pending: "bg-yellow-100 text-yellow-700 border-yellow-200",
@@ -242,6 +243,10 @@ export default function StoreOrderDetail() {
                         </p>
                     </div>
                 </div>
+
+                {order.paymentValidity && (
+                    <PaymentValidityBanner validity={order.paymentValidity} />
+                )}
 
                 {/* Remaining items warning */}
                 {order.status === "partially_picked_up" && hasRemainingItems && (

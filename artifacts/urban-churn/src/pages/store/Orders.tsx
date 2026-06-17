@@ -20,6 +20,9 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { PaymentValidityBadge } from "@/components/PaymentValidityBanner";
 
 const STATUS_OPTIONS = [
     { value: "", label: "All" },
@@ -79,6 +82,7 @@ export default function StoreOrders() {
     const [datePreset, setDatePreset] = useState("today");
     const [pickupDate, setPickupDate] = useState("");
     const [page, setPage] = useState(1);
+    const [showInvalidOrders, setShowInvalidOrders] = useState(false);
 
     const dateRange = getDateRange(datePreset);
     const params: Record<string, string> = {
@@ -91,6 +95,7 @@ export default function StoreOrders() {
     if (dateRange.to) params.to = dateRange.to;
     if (pickupDate) params.pickupDate = pickupDate;
     if (selectedLocationId) params.locationId = String(selectedLocationId);
+    if (showInvalidOrders) params.includeInvalid = "true";
 
     const { data, isLoading } = useQuery({
         queryKey: ["store", "orders", params],
@@ -190,6 +195,19 @@ export default function StoreOrders() {
                                 ))}
                             </div>
                         </div>
+                        <div className="flex items-center gap-2 pt-1">
+                            <Checkbox
+                                id="show-invalid-store"
+                                checked={showInvalidOrders}
+                                onCheckedChange={(v) => {
+                                    setShowInvalidOrders(v === true);
+                                    setPage(1);
+                                }}
+                            />
+                            <Label htmlFor="show-invalid-store" className="text-sm text-gray-600 cursor-pointer">
+                                Show unpaid / invalid orders (for lookup only)
+                            </Label>
+                        </div>
                     </CardContent>
                 </Card>
 
@@ -239,12 +257,17 @@ export default function StoreOrders() {
                                                         ${(order.totalCents / 100).toFixed(2)}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <Badge
-                                                            variant="outline"
-                                                            className={`text-xs ${STATUS_BADGE[order.status] || ""}`}
-                                                        >
-                                                            {order.status.replace(/_/g, " ")}
-                                                        </Badge>
+                                                        <div className="flex flex-col gap-1 items-start">
+                                                            <Badge
+                                                                variant="outline"
+                                                                className={`text-xs ${STATUS_BADGE[order.status] || ""}`}
+                                                            >
+                                                                {order.status.replace(/_/g, " ")}
+                                                            </Badge>
+                                                            {order.paymentValidity && (
+                                                                <PaymentValidityBadge validity={order.paymentValidity} />
+                                                            )}
+                                                        </div>
                                                     </TableCell>
                                                     <TableCell className="text-gray-400 text-xs">
                                                         {formatEasternDate(order.createdAt)}

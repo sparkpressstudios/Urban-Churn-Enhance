@@ -9,8 +9,31 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, sql, desc, asc, or, ilike, gte, lte, count } from "drizzle-orm";
 import { refundPayment } from "../../lib/square";
+import { classifyOrderPayment, validForFulfillmentSql } from "../../lib/order-payment";
 
 const router: IRouter = Router();
+
+function rejectInvalidFulfillmentOrder(
+    res: import("express").Response,
+    order: {
+        status: string;
+        paymentStatus: string | null;
+        totalCents: number;
+        squarePaymentId: string | null;
+    },
+): boolean {
+    const paymentValidity = classifyOrderPayment({
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        totalCents: order.totalCents,
+        squarePaymentId: order.squarePaymentId,
+    });
+    if (!paymentValidity.validForFulfillment) {
+        res.status(400).json({ error: paymentValidity.reason, paymentValidity });
+        return true;
+    }
+    return false;
+}
 
 // Helper: build location filter condition
 function locationCondition(storeLocationId: number | null | undefined) {
@@ -35,6 +58,7 @@ router.get("/dashboard", async (req, res) => {
         .where(
             and(
                 locCond,
+                validForFulfillmentSql(),
                 sql`${ordersTable.status} IN ('pending', 'confirmed', 'ready', 'partially_picked_up')`,
             ),
         )
@@ -66,6 +90,7 @@ router.get("/dashboard", async (req, res) => {
         .where(
             and(
                 locCond,
+                validForFulfillmentSql(),
                 sql`${ordersTable.status} IN ('pending', 'confirmed', 'ready', 'partially_picked_up')`,
             ),
         )
@@ -90,6 +115,7 @@ router.get("/dashboard", async (req, res) => {
         .where(
             and(
                 locCond,
+                validForFulfillmentSql(),
                 sql`${orderItemsTable.pickupDate} IS NOT NULL`,
                 lte(orderItemsTable.pickupDate, todayEnd),
                 sql`${orderItemsTable.quantity} > ${orderItemsTable.pickedUpQuantity}`,
@@ -108,6 +134,7 @@ router.get("/dashboard", async (req, res) => {
         .where(
             and(
                 locCond,
+                validForFulfillmentSql(),
                 sql`${orderItemsTable.pickupDate} IS NOT NULL`,
                 lte(orderItemsTable.pickupDate, todayStart),
                 sql`${orderItemsTable.quantity} > ${orderItemsTable.pickedUpQuantity}`,
@@ -154,6 +181,11 @@ router.get("/orders", async (req, res) => {
 
     const conditions: any[] = [];
     if (locId) conditions.push(eq(ordersTable.locationId, locId));
+    const includeInvalid =
+        req.query.includeInvalid === "true" || req.query.includeInvalid === "1";
+    if (!includeInvalid) {
+        conditions.push(validForFulfillmentSql());
+    }
     if (status) {
         conditions.push(eq(ordersTable.status, status as any));
     }
@@ -240,6 +272,8 @@ router.get("/orders", async (req, res) => {
             customerPhone: ordersTable.customerPhone,
             status: ordersTable.status,
             totalCents: ordersTable.totalCents,
+            paymentStatus: ordersTable.paymentStatus,
+            squarePaymentId: ordersTable.squarePaymentId,
             createdAt: ordersTable.createdAt,
             updatedAt: ordersTable.updatedAt,
         })
@@ -274,6 +308,12 @@ router.get("/orders", async (req, res) => {
             ...o,
             itemCount: itemCounts[o.id]?.total || 0,
             itemsPickedUp: itemCounts[o.id]?.pickedUp || 0,
+            paymentValidity: classifyOrderPayment({
+                status: o.status,
+                paymentStatus: o.paymentStatus,
+                totalCents: o.totalCents,
+                squarePaymentId: o.squarePaymentId,
+            }),
         })),
         total: Number(totalResult?.count || 0),
         page,
@@ -304,6 +344,8 @@ router.get("/orders/:id", async (req, res) => {
             totalCents: ordersTable.totalCents,
             discountCents: ordersTable.discountCents,
             squareOrderId: ordersTable.squareOrderId,
+            squarePaymentId: ordersTable.squarePaymentId,
+            paymentStatus: ordersTable.paymentStatus,
             createdAt: ordersTable.createdAt,
             updatedAt: ordersTable.updatedAt,
         })
@@ -354,6 +396,12 @@ router.get("/orders/:id", async (req, res) => {
 
     res.json({
         ...order,
+        paymentValidity: classifyOrderPayment({
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            totalCents: order.totalCents,
+            squarePaymentId: order.squarePaymentId,
+        }),
         items: items.map((i) => ({
             ...i,
             pickedUpByStaffName: i.pickedUpByStaffId ? staffNames[i.pickedUpByStaffId] || null : null,
@@ -388,6 +436,10 @@ router.put("/orders/:id/status", async (req, res) => {
         return;
     }
 
+    if (["ready", "partially_picked_up", "picked_up"].includes(status)) {
+        if (rejectInvalidFulfillmentOrder(res, order)) return;
+    }
+
     res.json(order);
 });
 
@@ -408,6 +460,7 @@ router.put("/orders/:id/items/:itemId/pickup", async (req, res) => {
         res.status(404).json({ error: "Order not found or access denied" });
         return;
     }
+    if (rejectInvalidFulfillmentOrder(res, order)) return;
 
     // Get the item
     const [item] = await db
@@ -558,6 +611,7 @@ router.put("/orders/:id/pickup-all", async (req, res) => {
         res.status(404).json({ error: "Order not found or access denied" });
         return;
     }
+    if (rejectInvalidFulfillmentOrder(res, order)) return;
 
     // Mark all items fully picked up
     await db
