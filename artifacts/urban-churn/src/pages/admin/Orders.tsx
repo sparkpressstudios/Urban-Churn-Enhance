@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useDebounce } from "@/hooks/use-debounce";
 import { formatEastern, formatEasternDate } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useTour } from "@/lib/tour";
@@ -34,7 +35,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, Filter, MessageSquare, Send, RefreshCw, CreditCard, AlertTriangle, RotateCcw } from "lucide-react";
+import { Eye, Filter, MessageSquare, Send, RefreshCw, CreditCard, AlertTriangle, RotateCcw, Search } from "lucide-react";
 
 const statusColors: Record<string, string> = {
     pending: "bg-yellow-100 text-yellow-800",
@@ -51,17 +52,21 @@ export default function AdminOrders() {
     const queryClient = useQueryClient();
     const { toast } = useToast();
     const [filterStatus, setFilterStatus] = useState("all");
+    const [search, setSearch] = useState("");
+    const debouncedSearch = useDebounce(search);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [noteText, setNoteText] = useState("");
     const [refundOrderId, setRefundOrderId] = useState<number | null>(null);
 
     const { data: ordersResponse } = useQuery({
-        queryKey: ["admin", "orders", filterStatus],
-        queryFn: () =>
-            api.getOrders(
-                filterStatus !== "all" ? { status: filterStatus } : undefined,
-            ),
+        queryKey: ["admin", "orders", filterStatus, debouncedSearch],
+        queryFn: () => {
+            const params: Record<string, string> = {};
+            if (filterStatus !== "all") params.status = filterStatus;
+            if (debouncedSearch) params.search = debouncedSearch;
+            return api.getOrders(Object.keys(params).length > 0 ? params : undefined);
+        },
     });
     const orders = ordersResponse?.data ?? [];
 
@@ -155,9 +160,20 @@ export default function AdminOrders() {
     return (
         <AdminLayout>
             <div className="space-y-4">
-                <div className="flex items-center justify-between" data-tour="admin-orders-header">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3" data-tour="admin-orders-header">
                     <h1 className="text-2xl font-bold text-white">Orders</h1>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <Input
+                                placeholder="Search by name, email, or order #..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="pl-10 w-full sm:w-[280px]"
+                                data-tour="admin-orders-search"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2">
                         {selectedIds.size > 0 && (
                             <Select
                                 onValueChange={(status) =>
@@ -192,6 +208,7 @@ export default function AdminOrders() {
                                 ))}
                             </SelectContent>
                         </Select>
+                        </div>
                     </div>
                 </div>
 
@@ -217,7 +234,16 @@ export default function AdminOrders() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {orders.map((order: any) => (
+                                    {orders.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={8} className="p-8 text-center text-gray-500">
+                                                {debouncedSearch
+                                                    ? "No orders match your search."
+                                                    : "No orders found."}
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                    orders.map((order: any) => (
                                         <tr key={order.id} className="border-b last:border-0 hover:bg-gray-50">
                                             <td className="p-3">
                                                 <Checkbox
@@ -271,7 +297,7 @@ export default function AdminOrders() {
                                                 </Button>
                                             </td>
                                         </tr>
-                                    ))}
+                                    )))}
                                 </tbody>
                             </table>
                         </div>
