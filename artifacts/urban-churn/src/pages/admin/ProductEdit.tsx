@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { api } from "@/lib/api";
+import { formatEasternDateTimeLocal } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1102,16 +1103,16 @@ function PreOrdersSection({
         setEditingPreOrderId(idOrIndex);
         setPreOrderForm({
             preOrderStart: po.preOrderStart
-                ? new Date(po.preOrderStart).toISOString().slice(0, 16)
+                ? formatEasternDateTimeLocal(po.preOrderStart)
                 : po.preOrderStart || "",
             preOrderEnd: po.preOrderEnd
-                ? new Date(po.preOrderEnd).toISOString().slice(0, 16)
+                ? formatEasternDateTimeLocal(po.preOrderEnd)
                 : po.preOrderEnd || "",
             pickupDate: po.pickupDate
-                ? new Date(po.pickupDate).toISOString().slice(0, 16)
+                ? formatEasternDateTimeLocal(po.pickupDate)
                 : po.pickupDate || "",
             pickupEndDate: po.pickupEndDate
-                ? new Date(po.pickupEndDate).toISOString().slice(0, 16)
+                ? formatEasternDateTimeLocal(po.pickupEndDate)
                 : "",
             status: po.status || "scheduled",
             isRecurring: po.isRecurring || false,
@@ -1124,7 +1125,7 @@ function PreOrdersSection({
                 : (Object.fromEntries(
                     ((po.locations as any[]) || [])
                         .filter((l: any) => !!l.pickupStartDate)
-                        .map((l: any) => [l.id, new Date(l.pickupStartDate).toISOString().slice(0, 16)]),
+                        .map((l: any) => [l.id, formatEasternDateTimeLocal(l.pickupStartDate)]),
                 ) as Record<number, string>),
         });
         setShowPreOrderForm(true);
@@ -1168,7 +1169,7 @@ function PreOrdersSection({
                         </h4>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
-                                <label className="text-xs text-gray-500">Orders Open</label>
+                                <label className="text-xs text-gray-500">Orders Open (Eastern)</label>
                                 <Input
                                     type="datetime-local"
                                     value={preOrderForm.preOrderStart}
@@ -1179,7 +1180,7 @@ function PreOrdersSection({
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-xs text-gray-500">Orders Close</label>
+                                <label className="text-xs text-gray-500">Orders Close (Eastern)</label>
                                 <Input
                                     type="datetime-local"
                                     value={preOrderForm.preOrderEnd}
@@ -1190,7 +1191,7 @@ function PreOrdersSection({
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-xs text-gray-500">Pickup Start</label>
+                                <label className="text-xs text-gray-500">Pickup Start (Eastern)</label>
                                 <Input
                                     type="datetime-local"
                                     value={preOrderForm.pickupDate}

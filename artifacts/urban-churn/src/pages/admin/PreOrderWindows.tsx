@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { formatEastern } from "@/lib/utils";
+import { formatEastern, formatEasternDateTimeLocal, parseEasternDateTimeLocal } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useTour } from "@/lib/tour";
 import { adminPreOrdersSteps } from "@/lib/tour/tour-steps";
@@ -181,16 +181,16 @@ export default function AdminPreOrders() {
         const locationPickupOverrides = Object.fromEntries(
             ((po.locations as any[]) || [])
                 .filter((l: any) => !!l.pickupStartDate)
-                .map((l: any) => [l.id, new Date(l.pickupStartDate).toISOString().slice(0, 16)]),
+                .map((l: any) => [l.id, formatEasternDateTimeLocal(l.pickupStartDate)]),
         ) as Record<number, string>;
 
         setEditId(po.id);
         setForm({
-            preOrderStart: new Date(po.preOrderStart).toISOString().slice(0, 16),
-            preOrderEnd: new Date(po.preOrderEnd).toISOString().slice(0, 16),
-            pickupDate: new Date(po.pickupDate).toISOString().slice(0, 16),
+            preOrderStart: formatEasternDateTimeLocal(po.preOrderStart),
+            preOrderEnd: formatEasternDateTimeLocal(po.preOrderEnd),
+            pickupDate: formatEasternDateTimeLocal(po.pickupDate),
             pickupEndDate: po.pickupEndDate
-                ? new Date(po.pickupEndDate).toISOString().slice(0, 16)
+                ? formatEasternDateTimeLocal(po.pickupEndDate)
                 : "",
             isRecurring: po.isRecurring,
             recurringIntervalDays: po.recurringRule?.intervalDays || 7,
@@ -203,15 +203,15 @@ export default function AdminPreOrders() {
 
     function handleSubmit() {
         // Validate dates
-        if (form.preOrderStart && form.preOrderEnd && new Date(form.preOrderEnd) <= new Date(form.preOrderStart)) {
+        if (form.preOrderStart && form.preOrderEnd && parseEasternDateTimeLocal(form.preOrderEnd) <= parseEasternDateTimeLocal(form.preOrderStart)) {
             toast({ title: "Invalid dates", description: "Pre-order end must be after start date", variant: "destructive" });
             return;
         }
-        if (form.pickupDate && form.pickupEndDate && new Date(form.pickupEndDate) <= new Date(form.pickupDate)) {
+        if (form.pickupDate && form.pickupEndDate && parseEasternDateTimeLocal(form.pickupEndDate) <= parseEasternDateTimeLocal(form.pickupDate)) {
             toast({ title: "Invalid dates", description: "Pickup end date must be after pickup start date", variant: "destructive" });
             return;
         }
-        if (form.pickupDate && form.preOrderEnd && new Date(form.pickupDate) < new Date(form.preOrderEnd)) {
+        if (form.pickupDate && form.preOrderEnd && parseEasternDateTimeLocal(form.pickupDate) < parseEasternDateTimeLocal(form.preOrderEnd)) {
             toast({ title: "Invalid dates", description: "Pickup date should be after the pre-order window closes", variant: "destructive" });
             return;
         }
@@ -223,7 +223,7 @@ export default function AdminPreOrders() {
         );
 
         for (const [locationIdRaw, dt] of Object.entries(locationPickupOverrides)) {
-            if (form.preOrderEnd && new Date(dt) < new Date(form.preOrderEnd)) {
+            if (form.preOrderEnd && parseEasternDateTimeLocal(dt) < parseEasternDateTimeLocal(form.preOrderEnd)) {
                 const location = allLocations.find((l: any) => l.id === Number(locationIdRaw));
                 toast({
                     title: "Invalid location pickup date",
@@ -538,7 +538,7 @@ export default function AdminPreOrders() {
 
                             {/* Schedule */}
                             <div>
-                                <h4 className="text-sm font-medium text-gray-900 mb-2">Pre-Order Dates</h4>
+                                <h4 className="text-sm font-medium text-gray-900 mb-2">Pre-Order Dates <span className="text-xs font-normal text-gray-500">(Eastern Time)</span></h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
                                         <Label>Opens At *</Label>
@@ -561,7 +561,7 @@ export default function AdminPreOrders() {
 
                             {/* Pickup dates */}
                             <div>
-                                <h4 className="text-sm font-medium text-gray-900 mb-2">Pickup Dates</h4>
+                                <h4 className="text-sm font-medium text-gray-900 mb-2">Pickup Dates <span className="text-xs font-normal text-gray-500">(Eastern Time)</span></h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
                                         <Label>Pickup Date *</Label>

@@ -489,6 +489,17 @@ export const api = {
         apiFetch(`/admin/pre-order-windows/${id}`, { method: "DELETE" }),
     triggerPreOrderPickup: (id: number) =>
         apiFetch(`/admin/pre-order-windows/${id}/trigger-pickup`, { method: "POST" }),
+    notifyFlavourPickupUpdate: (data: {
+        preOrderWindowIds: number[];
+        pickupStartLabel?: string;
+        subject?: string;
+        message?: string;
+        dryRun?: boolean;
+    }) =>
+        apiFetch("/admin/pre-order-windows/notify-flavour-pickup", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
     getEmailLog: (params?: Record<string, string>) => {
         const qs = params ? "?" + new URLSearchParams(params).toString() : "";
         return apiFetch(`/admin/pre-order-windows/email-log${qs}`);
