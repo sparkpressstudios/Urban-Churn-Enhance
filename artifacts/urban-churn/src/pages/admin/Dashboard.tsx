@@ -11,7 +11,9 @@ import { Button } from "@/components/ui/button";
 import {
     Select,
     SelectContent,
+    SelectGroup,
     SelectItem,
+    SelectLabel,
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
@@ -49,8 +51,53 @@ const statusColors: Record<string, string> = {
 
 const PIE_COLORS = ["#A1AB74", "#6B8E23", "#DAA520", "#CD853F", "#8FBC8F", "#BDB76B"];
 
+const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+];
+
+function getEasternYearMonth(): { year: number; month: number } {
+    const easternDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const [year, month] = easternDate.split("-").map(Number);
+    return { year, month };
+}
+
+function getYearMonthOptions() {
+    const { year, month } = getEasternYearMonth();
+    return Array.from({ length: month }, (_, i) => {
+        const monthNum = i + 1;
+        const value = `month:${year}-${String(monthNum).padStart(2, "0")}`;
+        return { value, label: `${MONTH_NAMES[i]} ${year}` };
+    }).reverse();
+}
+
+function periodToQueryParams(period: string): Record<string, string> {
+    if (period.startsWith("month:")) {
+        return { month: period.slice("month:".length) };
+    }
+    return { days: period };
+}
+
+function getPeriodShortLabel(period: string): string {
+    if (period.startsWith("month:")) {
+        const [, yearMonth] = period.split(":");
+        const [year, month] = yearMonth.split("-").map(Number);
+        return `${MONTH_NAMES[month - 1]} ${year}`;
+    }
+    return `${period}d`;
+}
+
+function getPeriodDescription(period: string): string {
+    if (period.startsWith("month:")) {
+        return `in ${getPeriodShortLabel(period)}`;
+    }
+    return `in last ${period} days`;
+}
+
 export default function AdminDashboard() {
     const [period, setPeriod] = useState("30");
+    const periodParams = periodToQueryParams(period);
+    const yearMonthOptions = getYearMonthOptions();
 
     const { data: stats } = useQuery({
         queryKey: ["admin", "stats"],
@@ -59,22 +106,22 @@ export default function AdminDashboard() {
 
     const { data: summary } = useQuery({
         queryKey: ["admin", "analytics", "summary", period],
-        queryFn: () => api.getAnalyticsSummary(parseInt(period)),
+        queryFn: () => api.getAnalyticsSummary(periodParams),
     });
 
     const { data: revenueData = [] } = useQuery({
         queryKey: ["admin", "analytics", "revenue", period],
-        queryFn: () => api.getRevenueTimeSeries(parseInt(period)),
+        queryFn: () => api.getRevenueTimeSeries(periodParams),
     });
 
     const { data: topProducts = [] } = useQuery({
         queryKey: ["admin", "analytics", "top-products", period],
-        queryFn: () => api.getTopProducts(parseInt(period)),
+        queryFn: () => api.getTopProducts(periodParams),
     });
 
     const { data: byLocation = [] } = useQuery({
         queryKey: ["admin", "analytics", "by-location", period],
-        queryFn: () => api.getOrdersByLocation(parseInt(period)),
+        queryFn: () => api.getOrdersByLocation(periodParams),
     });
 
     const { data: recentOrdersResponse } = useQuery({
@@ -121,13 +168,26 @@ export default function AdminDashboard() {
                     <h1 className="text-2xl font-bold text-white">Dashboard</h1>
                     <div className="flex items-center gap-2">
                         <Select value={period} onValueChange={setPeriod}>
-                            <SelectTrigger className="w-[130px]" data-tour="admin-period-selector">
+                            <SelectTrigger className="w-[180px]" data-tour="admin-period-selector">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="7">Last 7 days</SelectItem>
-                                <SelectItem value="30">Last 30 days</SelectItem>
-                                <SelectItem value="90">Last 90 days</SelectItem>
+                                <SelectGroup>
+                                    <SelectLabel>Recent</SelectLabel>
+                                    <SelectItem value="7">Last 7 days</SelectItem>
+                                    <SelectItem value="30">Last 30 days</SelectItem>
+                                    <SelectItem value="90">Last 90 days</SelectItem>
+                                </SelectGroup>
+                                {yearMonthOptions.length > 0 && (
+                                    <SelectGroup>
+                                        <SelectLabel>{getEasternYearMonth().year}</SelectLabel>
+                                        {yearMonthOptions.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectGroup>
+                                )}
                             </SelectContent>
                         </Select>
                         <Button variant="outline" size="sm" onClick={handleExport} data-tour="admin-export-btn">
@@ -151,7 +211,7 @@ export default function AdminDashboard() {
                             </div>
                             {summary && (
                                 <p className="text-xs text-gray-500 mt-1">
-                                    {summary.orders} in last {period} days
+                                    {summary.orders} {getPeriodDescription(period)}
                                 </p>
                             )}
                         </CardContent>
@@ -160,7 +220,7 @@ export default function AdminDashboard() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-medium text-gray-600">
-                                Revenue ({period}d)
+                                Revenue ({getPeriodShortLabel(period)})
                             </CardTitle>
                             <DollarSign className="w-4 h-4 text-green-500" />
                         </CardHeader>
