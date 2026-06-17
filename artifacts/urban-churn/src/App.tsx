@@ -38,6 +38,9 @@ import Privacy from "@/pages/Privacy";
 
 // Code-split admin pages
 const AdminLogin = lazy(() => import("@/pages/admin/Login"));
+const AdminForgotPassword = lazy(() => import("@/pages/admin/ForgotPassword"));
+const AdminResetPassword = lazy(() => import("@/pages/admin/ResetPassword"));
+const AdminChangePassword = lazy(() => import("@/pages/admin/ChangePassword"));
 const AdminDashboard = lazy(() => import("@/pages/admin/Dashboard"));
 const AdminOrders = lazy(() => import("@/pages/admin/Orders"));
 const AdminProductList = lazy(() => import("@/pages/admin/ProductList"));
@@ -216,6 +219,28 @@ function Router() {
         <Suspense fallback={<AdminFallback />}>
           <SEO title="Admin Login | Urban Churn" noIndex />
           <AdminLogin />
+        </Suspense>
+      </Route>
+      <Route path="/admin/forgot-password">
+        <Suspense fallback={<AdminFallback />}>
+          <SEO title="Forgot Password | Urban Churn" noIndex />
+          <AdminForgotPassword />
+        </Suspense>
+      </Route>
+      <Route path="/admin/reset-password">
+        <Suspense fallback={<AdminFallback />}>
+          <SEO title="Reset Password | Urban Churn" noIndex />
+          <AdminResetPassword />
+        </Suspense>
+      </Route>
+      <Route path="/admin/change-password">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <StoreProvider>
+              <SEO title="Change Password | Urban Churn" noIndex />
+              <AdminChangePassword />
+            </StoreProvider>
+          </ProtectedRoute>
         </Suspense>
       </Route>
       <Route path="/admin">
