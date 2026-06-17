@@ -34,7 +34,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, CreditCard, RotateCcw, AlertTriangle, Search } from "lucide-react";
+import { Eye, CreditCard, RotateCcw, AlertTriangle, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 const statusColors: Record<string, string> = {
     confirmed: "bg-blue-100 text-blue-800",
@@ -43,6 +43,7 @@ const statusColors: Record<string, string> = {
 };
 
 const statuses = ["all", "confirmed", "cancelled", "refunded"];
+const PAGE_SIZE = 50;
 
 export default function AdminEventOrders() {
     const queryClient = useQueryClient();
@@ -50,18 +51,25 @@ export default function AdminEventOrders() {
     const [filterStatus, setFilterStatus] = useState("all");
     const [search, setSearch] = useState("");
     const debouncedSearch = useDebounce(search);
+    const [page, setPage] = useState(1);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [refundOrderId, setRefundOrderId] = useState<number | null>(null);
 
-    const { data: orders = [] } = useQuery({
-        queryKey: ["admin", "event-orders", filterStatus, debouncedSearch],
+    const { data: ordersResponse } = useQuery({
+        queryKey: ["admin", "event-orders", filterStatus, debouncedSearch, page],
         queryFn: () => {
-            const params: Record<string, string> = {};
+            const params: Record<string, string> = {
+                limit: String(PAGE_SIZE),
+                offset: String((page - 1) * PAGE_SIZE),
+            };
             if (filterStatus !== "all") params.status = filterStatus;
             if (debouncedSearch) params.search = debouncedSearch;
-            return api.getEventOrdersAll(Object.keys(params).length > 0 ? params : undefined);
+            return api.getEventOrdersAll(params);
         },
     });
+    const orders = ordersResponse?.data ?? [];
+    const totalOrders = ordersResponse?.total ?? 0;
+    const totalPages = Math.max(1, Math.ceil(totalOrders / PAGE_SIZE));
 
     const { data: orderDetail } = useQuery({
         queryKey: ["admin", "event-order", selectedOrderId],
@@ -106,13 +114,16 @@ export default function AdminEventOrders() {
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <Input
-                                placeholder="Search by name, email, or order #..."
+                                placeholder="Search name, email, order #, receipt #, Square ID..."
                                 value={search}
-                                onChange={(e) => setSearch(e.target.value)}
+                                onChange={(e) => {
+                                    setSearch(e.target.value);
+                                    setPage(1);
+                                }}
                                 className="pl-10 w-full sm:w-[280px]"
                             />
                         </div>
-                        <Select value={filterStatus} onValueChange={setFilterStatus} data-tour="admin-event-orders-filter">
+                        <Select value={filterStatus} onValueChange={(value) => { setFilterStatus(value); setPage(1); }} data-tour="admin-event-orders-filter">
                         <SelectTrigger className="w-[150px]">
                             <SelectValue />
                         </SelectTrigger>
@@ -209,6 +220,22 @@ export default function AdminEventOrders() {
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        )}
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-between px-4 py-3 border-t">
+                                <p className="text-xs text-gray-500">
+                                    Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalOrders)} of {totalOrders}
+                                </p>
+                                <div className="flex gap-1">
+                                    <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                                        <ChevronLeft className="w-4 h-4" />
+                                    </Button>
+                                    <span className="text-xs text-gray-500 self-center px-2">Page {page} of {totalPages}</span>
+                                    <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                                        <ChevronRight className="w-4 h-4" />
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </CardContent>

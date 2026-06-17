@@ -67,6 +67,9 @@ router.get("/", async (req, res) => {
                 ilike(ordersTable.orderNumber, `%${search}%`),
                 ilike(ordersTable.customerName, `%${search}%`),
                 ilike(ordersTable.customerEmail, `%${search}%`),
+                ilike(ordersTable.squarePaymentId, `%${search}%`),
+                ilike(ordersTable.squareOrderId, `%${search}%`),
+                ilike(ordersTable.squareReceiptNumber, `%${search}%`),
             )!,
         );
     }
@@ -90,7 +93,9 @@ router.get("/", async (req, res) => {
             notes: ordersTable.notes,
             status: ordersTable.status,
             totalCents: ordersTable.totalCents,
+            squareOrderId: ordersTable.squareOrderId,
             squarePaymentId: ordersTable.squarePaymentId,
+            squareReceiptNumber: ordersTable.squareReceiptNumber,
             paymentStatus: ordersTable.paymentStatus,
             lastSyncSource: ordersTable.lastSyncSource,
             createdAt: ordersTable.createdAt,
@@ -124,6 +129,7 @@ router.get("/:id", async (req, res) => {
             totalCents: ordersTable.totalCents,
             squareOrderId: ordersTable.squareOrderId,
             squarePaymentId: ordersTable.squarePaymentId,
+            squareReceiptNumber: ordersTable.squareReceiptNumber,
             paymentStatus: ordersTable.paymentStatus,
             lastSyncSource: ordersTable.lastSyncSource,
             createdAt: ordersTable.createdAt,
