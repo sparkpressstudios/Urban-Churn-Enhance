@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { adminUsersTable, locationsTable } from "@workspace/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { adminUsersTable, locationsTable, adminLoginLogsTable } from "@workspace/db/schema";
+import { eq, desc, and, gte, lte, ilike } from "drizzle-orm";
 import { hashPassword } from "../../lib/password";
 import { sendStaffCredentialsEmail } from "../../lib/email";
 
@@ -24,6 +24,8 @@ router.get("/", async (_req, res) => {
             role: adminUsersTable.role,
             assignedLocationId: adminUsersTable.assignedLocationId,
             mustChangePassword: adminUsersTable.mustChangePassword,
+            lastLoginAt: adminUsersTable.lastLoginAt,
+            lastFailedLoginAt: adminUsersTable.lastFailedLoginAt,
             createdAt: adminUsersTable.createdAt,
         })
         .from(adminUsersTable)
@@ -48,6 +50,42 @@ router.get("/by-location/:locationId", async (req, res) => {
     res.json(users);
 });
 
+// Login audit log (must be registered before /:id)
+router.get("/login-logs", async (req, res) => {
+    const userId = req.query.userId ? Number(req.query.userId) : undefined;
+    const username = (req.query.username as string | undefined)?.trim();
+    const success = req.query.success as string | undefined;
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+
+    const conditions = [];
+    if (userId) conditions.push(eq(adminLoginLogsTable.adminUserId, userId));
+    if (username) conditions.push(ilike(adminLoginLogsTable.usernameAttempted, `%${username}%`));
+    if (success === "true") conditions.push(eq(adminLoginLogsTable.success, true));
+    if (success === "false") conditions.push(eq(adminLoginLogsTable.success, false));
+    if (from) conditions.push(gte(adminLoginLogsTable.createdAt, new Date(from)));
+    if (to) conditions.push(lte(adminLoginLogsTable.createdAt, new Date(to)));
+
+    const logs = await db
+        .select({
+            id: adminLoginLogsTable.id,
+            adminUserId: adminLoginLogsTable.adminUserId,
+            usernameAttempted: adminLoginLogsTable.usernameAttempted,
+            success: adminLoginLogsTable.success,
+            failureReason: adminLoginLogsTable.failureReason,
+            ipAddress: adminLoginLogsTable.ipAddress,
+            userAgent: adminLoginLogsTable.userAgent,
+            createdAt: adminLoginLogsTable.createdAt,
+        })
+        .from(adminLoginLogsTable)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(desc(adminLoginLogsTable.createdAt))
+        .limit(limit);
+
+    res.json(logs);
+});
+
 // Get single user
 router.get("/:id", async (req, res) => {
     const id = Number(req.params.id);
@@ -59,6 +97,8 @@ router.get("/:id", async (req, res) => {
             role: adminUsersTable.role,
             assignedLocationId: adminUsersTable.assignedLocationId,
             mustChangePassword: adminUsersTable.mustChangePassword,
+            lastLoginAt: adminUsersTable.lastLoginAt,
+            lastFailedLoginAt: adminUsersTable.lastFailedLoginAt,
             createdAt: adminUsersTable.createdAt,
         })
         .from(adminUsersTable)
@@ -120,6 +160,8 @@ router.post("/", async (req, res) => {
             role: adminUsersTable.role,
             assignedLocationId: adminUsersTable.assignedLocationId,
             mustChangePassword: adminUsersTable.mustChangePassword,
+            lastLoginAt: adminUsersTable.lastLoginAt,
+            lastFailedLoginAt: adminUsersTable.lastFailedLoginAt,
             createdAt: adminUsersTable.createdAt,
         });
 
@@ -184,6 +226,8 @@ router.put("/:id", async (req, res) => {
             role: adminUsersTable.role,
             assignedLocationId: adminUsersTable.assignedLocationId,
             mustChangePassword: adminUsersTable.mustChangePassword,
+            lastLoginAt: adminUsersTable.lastLoginAt,
+            lastFailedLoginAt: adminUsersTable.lastFailedLoginAt,
             createdAt: adminUsersTable.createdAt,
         });
 

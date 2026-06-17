@@ -901,6 +901,12 @@ router.get("/orders/all", async (req, res) => {
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
+    const [totalResult] = await db
+        .select({ count: count() })
+        .from(eventOrdersTable)
+        .innerJoin(eventsTable, eq(eventOrdersTable.eventId, eventsTable.id))
+        .where(whereClause);
+
     const orders = await db
         .select({
             id: eventOrdersTable.id,
@@ -925,7 +931,7 @@ router.get("/orders/all", async (req, res) => {
         .limit(limit)
         .offset(offset);
 
-    res.json(orders);
+    res.json({ data: orders, total: totalResult.count, limit, offset });
 });
 
 // Get single event order with items and tickets

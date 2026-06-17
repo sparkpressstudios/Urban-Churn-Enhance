@@ -25,11 +25,29 @@ async function apiFetch(path: string, options: RequestInit = {}) {
     const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: "include" });
     if (res.status === 401) {
         localStorage.removeItem("admin_token");
-        if ((window.location.pathname.includes("/admin") || window.location.pathname.includes("/store")) && !window.location.pathname.includes("/admin/login")) {
+        const path = window.location.pathname;
+        const isPublicAdminPath =
+            path.includes("/admin/login") ||
+            path.includes("/admin/forgot-password") ||
+            path.includes("/admin/reset-password");
+        if ((path.includes("/admin") || path.includes("/store")) && !isPublicAdminPath) {
             window.location.href = import.meta.env.BASE_URL.replace(/\/$/, "") + "/admin/login";
         }
         throw new Error("Unauthorized");
     }
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: undefined }));
+        throw new ApiError(data.error || `Request failed: ${res.status}`, data.code, data.detail);
+    }
+    return res.json();
+}
+
+async function adminPublicFetch(path: string, options: RequestInit = {}) {
+    const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(options.headers as Record<string, string>),
+    };
+    const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: "include" });
     if (!res.ok) {
         const data = await res.json().catch(() => ({ error: undefined }));
         throw new ApiError(data.error || `Request failed: ${res.status}`, data.code, data.detail);
@@ -63,6 +81,25 @@ export const api = {
         }),
     logout: () => apiFetch("/auth/logout", { method: "POST" }),
     me: () => apiFetch("/auth/me"),
+    forgotPassword: (identifier: string) => {
+        const body = identifier.includes("@")
+            ? { email: identifier }
+            : { username: identifier };
+        return adminPublicFetch("/auth/forgot-password", {
+            method: "POST",
+            body: JSON.stringify(body),
+        });
+    },
+    resetPassword: (token: string, password: string) =>
+        adminPublicFetch("/auth/reset-password", {
+            method: "POST",
+            body: JSON.stringify({ token, password }),
+        }),
+    changePassword: (currentPassword: string, newPassword: string) =>
+        apiFetch("/auth/password", {
+            method: "PUT",
+            body: JSON.stringify({ currentPassword, newPassword }),
+        }),
 
     // Admin Flavours
     getFlavours: () => apiFetch("/admin/flavours"),
@@ -195,6 +232,10 @@ export const api = {
 
     // Admin Users
     getUsers: () => apiFetch("/admin/users"),
+    getAdminLoginLogs: (params?: Record<string, string>) => {
+        const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+        return apiFetch(`/admin/users/login-logs${qs}`);
+    },
     getUser: (id: number) => apiFetch(`/admin/users/${id}`),
     getUsersByLocation: (locationId: number) =>
         apiFetch(`/admin/users/by-location/${locationId}`),

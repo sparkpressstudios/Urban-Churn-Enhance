@@ -17,6 +17,7 @@ import {
     LogOut,
     Menu,
     X,
+    KeyRound,
     Briefcase,
     IceCreamCone,
     Truck,
@@ -167,6 +168,15 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             <div className="p-3 border-t border-white/10">
                 <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400">
                     <span className="flex-1 truncate">{user?.username}</span>
+                    <Link href="/admin/change-password" title="Change password">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-gray-400 hover:text-white h-auto p-1"
+                        >
+                            <KeyRound className="w-4 h-4" />
+                        </Button>
+                    </Link>
                     <TourHelpButton />
                     <Button
                         variant="ghost"

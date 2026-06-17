@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
-import { formatEasternDate } from "@/lib/utils";
+import { formatEasternDate, formatEasternTime } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { SquarePaymentPanel } from "@/components/admin/SquarePaymentPanel";
 import { useTour } from "@/lib/tour";
@@ -35,7 +35,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, RotateCcw, AlertTriangle, Search } from "lucide-react";
+import { Eye, RotateCcw, AlertTriangle, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 const statusColors: Record<string, string> = {
     confirmed: "bg-blue-100 text-blue-800",
@@ -44,6 +44,7 @@ const statusColors: Record<string, string> = {
 };
 
 const statuses = ["all", "confirmed", "cancelled", "refunded"];
+const PAGE_SIZE = 50;
 
 export default function AdminEventOrders() {
     const queryClient = useQueryClient();
@@ -51,18 +52,25 @@ export default function AdminEventOrders() {
     const [filterStatus, setFilterStatus] = useState("all");
     const [search, setSearch] = useState("");
     const debouncedSearch = useDebounce(search);
+    const [page, setPage] = useState(1);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [refundOrderId, setRefundOrderId] = useState<number | null>(null);
 
-    const { data: orders = [] } = useQuery({
-        queryKey: ["admin", "event-orders", filterStatus, debouncedSearch],
+    const { data: ordersResponse } = useQuery({
+        queryKey: ["admin", "event-orders", filterStatus, debouncedSearch, page],
         queryFn: () => {
-            const params: Record<string, string> = {};
+            const params: Record<string, string> = {
+                limit: String(PAGE_SIZE),
+                offset: String((page - 1) * PAGE_SIZE),
+            };
             if (filterStatus !== "all") params.status = filterStatus;
             if (debouncedSearch) params.search = debouncedSearch;
-            return api.getEventOrdersAll(Object.keys(params).length > 0 ? params : undefined);
+            return api.getEventOrdersAll(params);
         },
     });
+    const orders = ordersResponse?.data ?? [];
+    const totalOrders = ordersResponse?.total ?? 0;
+    const totalPages = Math.max(1, Math.ceil(totalOrders / PAGE_SIZE));
 
     const { data: orderDetail } = useQuery({
         queryKey: ["admin", "event-order", selectedOrderId],
@@ -129,11 +137,14 @@ export default function AdminEventOrders() {
                             <Input
                                 placeholder="Search name, email, order #, receipt #, Square ID..."
                                 value={search}
-                                onChange={(e) => setSearch(e.target.value)}
+                                onChange={(e) => {
+                                    setSearch(e.target.value);
+                                    setPage(1);
+                                }}
                                 className="pl-10 w-full sm:w-[280px]"
                             />
                         </div>
-                        <Select value={filterStatus} onValueChange={setFilterStatus} data-tour="admin-event-orders-filter">
+                        <Select value={filterStatus} onValueChange={(value) => { setFilterStatus(value); setPage(1); }} data-tour="admin-event-orders-filter">
                         <SelectTrigger className="w-[150px]">
                             <SelectValue />
                         </SelectTrigger>
@@ -168,7 +179,7 @@ export default function AdminEventOrders() {
                                             <th className="p-3 font-medium">Status</th>
                                             <th className="p-3 font-medium text-right">Total</th>
                                             <th className="p-3 font-medium">Payment</th>
-                                            <th className="p-3 font-medium">Date</th>
+                                            <th className="p-3 font-medium">Placed</th>
                                             <th className="p-3 font-medium">Actions</th>
                                         </tr>
                                     </thead>
@@ -212,8 +223,11 @@ export default function AdminEventOrders() {
                                                         <span className="text-gray-400">—</span>
                                                     )}
                                                 </td>
-                                                <td className="p-3 text-gray-500 text-xs">
-                                                    {formatEasternDate(order.createdAt)}
+                                                <td className="p-3 text-gray-500 text-xs whitespace-nowrap">
+                                                    <div>{formatEasternDate(order.createdAt)}</div>
+                                                    <div className="text-[10px] text-gray-400">
+                                                        {formatEasternTime(order.createdAt)} ET
+                                                    </div>
                                                 </td>
                                                 <td className="p-3 flex gap-1">
                                                     <Button
@@ -239,6 +253,22 @@ export default function AdminEventOrders() {
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        )}
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-between px-4 py-3 border-t">
+                                <p className="text-xs text-gray-500">
+                                    Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalOrders)} of {totalOrders}
+                                </p>
+                                <div className="flex gap-1">
+                                    <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                                        <ChevronLeft className="w-4 h-4" />
+                                    </Button>
+                                    <span className="text-xs text-gray-500 self-center px-2">Page {page} of {totalPages}</span>
+                                    <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                                        <ChevronRight className="w-4 h-4" />
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </CardContent>
@@ -274,6 +304,14 @@ export default function AdminEventOrders() {
                                 <div>
                                     <span className="text-gray-500">Email:</span>
                                     <p className="font-medium">{orderDetail.customerEmail}</p>
+                                </div>
+                                <div>
+                                    <span className="text-gray-500">Placed:</span>
+                                    <p className="font-medium">
+                                        {formatEasternDate(orderDetail.createdAt)}
+                                        {" at "}
+                                        {formatEasternTime(orderDetail.createdAt)} ET
+                                    </p>
                                 </div>
                             </div>
 

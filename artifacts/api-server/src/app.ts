@@ -52,6 +52,7 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHe
 const orderLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests, please try again later" } });
 
 app.use("/api/auth", authLimiter);
+app.use("/api/auth/forgot-password", authLimiter);
 app.use("/api/customer/login", authLimiter);
 app.use("/api/customer/register", authLimiter);
 app.use("/api/orders", orderLimiter);
