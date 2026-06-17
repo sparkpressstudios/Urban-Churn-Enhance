@@ -19,6 +19,8 @@ export const adminUsersTable = pgTable("admin_users", {
     assignedLocationId: integer("assigned_location_id").references(() => locationsTable.id),
     wholesaleCustomerId: integer("wholesale_customer_id").references(() => wholesaleCustomersTable.id),
     mustChangePassword: boolean("must_change_password").notNull().default(false),
+    lastLoginAt: timestamp("last_login_at"),
+    lastFailedLoginAt: timestamp("last_failed_login_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

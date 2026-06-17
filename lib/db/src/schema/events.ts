@@ -100,6 +100,7 @@ export const eventOrdersTable = pgTable("event_orders", {
     totalCents: integer("total_cents").notNull().default(0),
     squareOrderId: text("square_order_id"),
     squarePaymentId: text("square_payment_id"),
+    squareReceiptNumber: text("square_receipt_number"),
     notes: text("notes").default(""),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

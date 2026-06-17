@@ -41,6 +41,8 @@ export const ordersTable = pgTable("orders", {
     discountCents: integer("discount_cents").notNull().default(0),
     squareOrderId: text("square_order_id"),
     squarePaymentId: text("square_payment_id"),
+    squareReceiptNumber: text("square_receipt_number"),
+    squareLocationId: text("square_location_id"),
     paymentStatus: text("payment_status"),
     lastSyncSource: text("last_sync_source"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

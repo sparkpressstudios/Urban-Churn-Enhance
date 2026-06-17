@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { formatEasternDate } from "@/lib/utils";
+import { formatEasternDate, formatEasternDateTime } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useTour } from "@/lib/tour";
 import { adminUsersSteps } from "@/lib/tour/tour-steps";
@@ -42,6 +42,8 @@ import {
     Copy,
     Check,
     KeyRound,
+    History,
+    AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -49,6 +51,12 @@ const ROLE_COLORS: Record<string, string> = {
     admin: "destructive",
     manager: "default",
     staff: "secondary",
+};
+
+const FAILURE_LABELS: Record<string, string> = {
+    missing_credentials: "Missing username or password",
+    user_not_found: "Username not found",
+    invalid_password: "Wrong password",
 };
 
 interface UserForm {
@@ -86,6 +94,7 @@ export default function AdminUsers() {
         | null
     >(null);
     const [copied, setCopied] = useState<string | null>(null);
+    const [loginHistoryUser, setLoginHistoryUser] = useState<any | null>(null);
 
     const { data: users = [] } = useQuery({
         queryKey: ["admin", "users"],
@@ -95,6 +104,20 @@ export default function AdminUsers() {
     const { data: locations = [] } = useQuery({
         queryKey: ["admin", "locations"],
         queryFn: () => api.getLocations(),
+    });
+
+    const { data: recentFailedLogins = [] } = useQuery({
+        queryKey: ["admin", "login-logs", "recent-failed"],
+        queryFn: () => api.getAdminLoginLogs({ success: "false", limit: "25" }),
+    });
+
+    const { data: userLoginLogs = [] } = useQuery({
+        queryKey: ["admin", "login-logs", loginHistoryUser?.id],
+        queryFn: () => api.getAdminLoginLogs({
+            userId: String(loginHistoryUser!.id),
+            limit: "50",
+        }),
+        enabled: !!loginHistoryUser,
     });
 
     const createMutation = useMutation({
@@ -231,6 +254,47 @@ export default function AdminUsers() {
                     </CardContent>
                 </Card>
 
+                {recentFailedLogins.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                                <AlertCircle className="w-4 h-4 text-amber-500" />
+                                Recent failed logins
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>When</TableHead>
+                                            <TableHead>Username</TableHead>
+                                            <TableHead>Reason</TableHead>
+                                            <TableHead>IP</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {recentFailedLogins.map((log: any) => (
+                                            <TableRow key={log.id}>
+                                                <TableCell className="text-xs whitespace-nowrap">
+                                                    {formatEasternDateTime(log.createdAt)}
+                                                </TableCell>
+                                                <TableCell className="font-mono text-xs">{log.usernameAttempted}</TableCell>
+                                                <TableCell className="text-xs text-amber-700">
+                                                    {FAILURE_LABELS[log.failureReason] || log.failureReason || "Failed"}
+                                                </TableCell>
+                                                <TableCell className="text-xs text-white/60 font-mono">
+                                                    {log.ipAddress || "—"}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
                 <Card data-tour="admin-users-table">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -246,6 +310,7 @@ export default function AdminUsers() {
                                     <TableHead>Email</TableHead>
                                     <TableHead>Role</TableHead>
                                     <TableHead>Location</TableHead>
+                                    <TableHead>Last login</TableHead>
                                     <TableHead>Created</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
@@ -276,11 +341,31 @@ export default function AdminUsers() {
                                                     ? <span className="text-red-400 text-xs">⚠ not assigned</span>
                                                     : "All"}
                                         </TableCell>
+                                        <TableCell className="text-xs">
+                                            {user.lastLoginAt ? (
+                                                <span className="text-green-700">{formatEasternDateTime(user.lastLoginAt)}</span>
+                                            ) : (
+                                                <span className="text-white/40">Never</span>
+                                            )}
+                                            {user.lastFailedLoginAt && (
+                                                <div className="text-[10px] text-amber-600 mt-0.5">
+                                                    Failed {formatEasternDateTime(user.lastFailedLoginAt)}
+                                                </div>
+                                            )}
+                                        </TableCell>
                                         <TableCell>
                                             {formatEasternDate(user.createdAt)}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex items-center justify-end gap-1">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    title="View login history"
+                                                    onClick={() => setLoginHistoryUser(user)}
+                                                >
+                                                    <History className="w-4 h-4" />
+                                                </Button>
                                                 {user.email && (
                                                     <Button
                                                         variant="ghost"
@@ -620,6 +705,60 @@ export default function AdminUsers() {
                                     : "Store Portal"}
                                 . They should change this password from their profile.
                             </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={!!loginHistoryUser}
+                onOpenChange={(open) => !open && setLoginHistoryUser(null)}
+            >
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Login history — {loginHistoryUser?.username}</DialogTitle>
+                        <DialogDescription>
+                            Successful and failed sign-in attempts at /admin/login
+                        </DialogDescription>
+                    </DialogHeader>
+                    {userLoginLogs.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-4 text-center">
+                            No login attempts recorded yet.
+                        </p>
+                    ) : (
+                        <div className="max-h-96 overflow-y-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>When</TableHead>
+                                        <TableHead>Result</TableHead>
+                                        <TableHead>Details</TableHead>
+                                        <TableHead>IP</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {userLoginLogs.map((log: any) => (
+                                        <TableRow key={log.id}>
+                                            <TableCell className="text-xs whitespace-nowrap">
+                                                {formatEasternDateTime(log.createdAt)}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant={log.success ? "default" : "destructive"}>
+                                                    {log.success ? "Success" : "Failed"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-xs">
+                                                {log.success
+                                                    ? "Signed in"
+                                                    : FAILURE_LABELS[log.failureReason] || log.failureReason || "Failed"}
+                                            </TableCell>
+                                            <TableCell className="text-xs font-mono text-muted-foreground">
+                                                {log.ipAddress || "—"}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
                         </div>
                     )}
                 </DialogContent>

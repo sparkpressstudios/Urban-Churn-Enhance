@@ -892,11 +892,20 @@ router.get("/orders/all", async (req, res) => {
                 ilike(eventOrdersTable.orderNumber, `%${search}%`),
                 ilike(eventOrdersTable.customerName, `%${search}%`),
                 ilike(eventOrdersTable.customerEmail, `%${search}%`),
+                ilike(eventOrdersTable.squarePaymentId, `%${search}%`),
+                ilike(eventOrdersTable.squareOrderId, `%${search}%`),
+                ilike(eventOrdersTable.squareReceiptNumber, `%${search}%`),
             )!,
         );
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [totalResult] = await db
+        .select({ count: count() })
+        .from(eventOrdersTable)
+        .innerJoin(eventsTable, eq(eventOrdersTable.eventId, eventsTable.id))
+        .where(whereClause);
 
     const orders = await db
         .select({
@@ -909,7 +918,9 @@ router.get("/orders/all", async (req, res) => {
             customerEmail: eventOrdersTable.customerEmail,
             status: eventOrdersTable.status,
             totalCents: eventOrdersTable.totalCents,
+            squareOrderId: eventOrdersTable.squareOrderId,
             squarePaymentId: eventOrdersTable.squarePaymentId,
+            squareReceiptNumber: eventOrdersTable.squareReceiptNumber,
             ticketCount: sql<number>`(select count(*) from event_tickets where event_order_id = ${eventOrdersTable.id})::int`,
             createdAt: eventOrdersTable.createdAt,
         })
@@ -920,7 +931,7 @@ router.get("/orders/all", async (req, res) => {
         .limit(limit)
         .offset(offset);
 
-    res.json(orders);
+    res.json({ data: orders, total: totalResult.count, limit, offset });
 });
 
 // Get single event order with items and tickets
