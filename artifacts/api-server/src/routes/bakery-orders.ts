@@ -17,6 +17,7 @@ import {
     sendBakeryOrderNotification,
     sendBakeryOrderConfirmation,
 } from "../lib/email";
+import { isPreOrderAcceptingOrders } from "../lib/pre-order-windows";
 
 const router: IRouter = Router();
 
@@ -302,6 +303,7 @@ router.get("/windows/active", async (_req, res) => {
                 id: productPreOrdersTable.id,
                 flavourId: productPreOrdersTable.flavourId,
                 flavourName: flavoursTable.name,
+                status: productPreOrdersTable.status,
                 preOrderStart: productPreOrdersTable.preOrderStart,
                 preOrderEnd: productPreOrdersTable.preOrderEnd,
                 pickupDate: productPreOrdersTable.pickupDate,
@@ -377,7 +379,12 @@ router.get("/windows/active", async (_req, res) => {
                 preOrderEnd: po.preOrderEnd,
                 pickupDate: pickupOverrideByPreOrder.get(po.id) ?? po.pickupDate,
                 pickupEndDate: po.pickupEndDate,
-                acceptingOrders: new Date(po.preOrderEnd) >= now,
+                acceptingOrders: isPreOrderAcceptingOrders(
+                    po.status,
+                    po.preOrderStart,
+                    po.preOrderEnd,
+                    now,
+                ),
             }))
             .filter((po) => po.acceptingOrders || new Date(po.pickupDate) >= now);
 
