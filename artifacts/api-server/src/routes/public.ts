@@ -1284,6 +1284,9 @@ router.get("/sitemap.xml", async (_req, res) => {
             { loc: "/fundraising", changefreq: "monthly", priority: "0.6" },
             { loc: "/careers", changefreq: "weekly", priority: "0.5" },
             { loc: "/contact", changefreq: "yearly", priority: "0.5" },
+            { loc: "/gift-cards", changefreq: "monthly", priority: "0.6" },
+            { loc: "/terms", changefreq: "yearly", priority: "0.3" },
+            { loc: "/privacy", changefreq: "yearly", priority: "0.3" },
         ];
 
         const urls = staticRoutes.map(

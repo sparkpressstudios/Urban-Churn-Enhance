@@ -3,6 +3,7 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import SEO from "@/components/SEO";
+import OptimizedImage from "@/components/OptimizedImage";
 import { Link } from "wouter";
 import { api } from "@/lib/api";
 
@@ -124,7 +125,7 @@ export default function Wholesale() {
       {/* Hero */}
       <section className="relative bg-[#111118] text-white overflow-hidden">
         <div className="absolute inset-0 opacity-50">
-          <img src={`${BASE}images/uc-wholesale-hero.jpg`} alt="Urban Churn wholesale craft ice cream partnership" className="w-full h-full object-cover" />
+          <OptimizedImage src="uc-wholesale-hero.jpg" alt="Urban Churn wholesale craft ice cream partnership" className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-r from-[#111118] via-[#111118]/50 to-transparent" />
         </div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-8 pt-36 pb-24 md:pt-48 md:pb-32">
