@@ -9,6 +9,12 @@ export const adminOrdersSteps: Step[] = [
         skipBeacon: true,
     },
     {
+        target: '[data-tour="admin-orders-search"]',
+        title: "Search Orders",
+        content:
+            "Find orders quickly by customer name, email, or order number — useful for refunds and status updates.",
+    },
+    {
         target: '[data-tour="admin-orders-status-filter"]',
         title: "Filter by Status",
         content:

@@ -9,7 +9,7 @@ import {
     eventQuestionsTable,
     locationsTable,
 } from "@workspace/db/schema";
-import { eq, desc, asc, and, gte, lte, sql, count, inArray } from "drizzle-orm";
+import { eq, desc, asc, and, gte, lte, sql, count, inArray, or, ilike } from "drizzle-orm";
 import * as crypto from "node:crypto";
 import { sendTicketConfirmation, sendEventUpdate } from "../../lib/email";
 import { refundPayment } from "../../lib/square";
@@ -879,12 +879,22 @@ router.delete("/questions/:questionId", async (req, res) => {
 router.get("/orders/all", async (req, res) => {
     const eventId = req.query.eventId ? Number(req.query.eventId) : undefined;
     const status = req.query.status as string | undefined;
+    const search = (req.query.search as string | undefined)?.trim();
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
     const conditions = [];
     if (eventId) conditions.push(eq(eventOrdersTable.eventId, eventId));
     if (status) conditions.push(eq(eventOrdersTable.status, status as any));
+    if (search) {
+        conditions.push(
+            or(
+                ilike(eventOrdersTable.orderNumber, `%${search}%`),
+                ilike(eventOrdersTable.customerName, `%${search}%`),
+                ilike(eventOrdersTable.customerEmail, `%${search}%`),
+            )!,
+        );
+    }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
