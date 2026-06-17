@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { db } from "@workspace/db";
 import { sentEmailsLogTable } from "@workspace/db/schema";
+import { BUSINESS_TZ } from "./business-timezone";
 
 const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
@@ -33,6 +34,16 @@ function formatLocationBlock(loc: LocationInfo): string {
 }
 
 const LOGO_URL = "https://urbanchurn.com/images/uc-logo-white.png";
+
+const easternDateTimeOptions: Intl.DateTimeFormatOptions = {
+  timeZone: BUSINESS_TZ,
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZoneName: "short",
+};
 
 const HEADER_HTML = `
       <div style="background:#111118;padding:24px;border-radius:12px 12px 0 0;text-align:center">
@@ -794,7 +805,7 @@ export async function sendWindowClosingReport(
       ${HEADER_HTML}
       <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 12px 12px">
         <h2 style="margin-top:0">📋 Pre-Order Window Closed: ${window.name}</h2>
-        <p>The ordering window <strong>${window.name}</strong> closed on <strong>${new Date(window.closeAt).toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" })}</strong>.</p>
+        <p>The ordering window <strong>${window.name}</strong> closed on <strong>${new Date(window.closeAt).toLocaleString("en-US", easternDateTimeOptions)}</strong>.</p>
 
         <div style="display:flex;gap:16px;margin:16px 0">
           <div style="background:#f9fafb;padding:16px;border-radius:8px;flex:1;text-align:center">
@@ -893,7 +904,7 @@ export async function sendAdminOrdersClosedReminder(
         <p>This is a reminder that the pre-order window <strong>${window.name}</strong> has closed.</p>
         <div style="background:#f9fafb;padding:16px;border-radius:8px;margin:16px 0">
           <p style="margin:0 0 4px"><strong>Window:</strong> ${window.name}</p>
-          <p style="margin:0 0 4px"><strong>Closed:</strong> ${new Date(window.closeAt).toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
+          <p style="margin:0 0 4px"><strong>Closed:</strong> ${new Date(window.closeAt).toLocaleString("en-US", easternDateTimeOptions)}</p>
           <p style="margin:0"><strong>Total Orders:</strong> ${orderCount}</p>
         </div>
         <p>Please ensure all orders are being prepared and will be ready for pickup at the designated locations.</p>
@@ -1696,4 +1707,113 @@ export async function sendGiftCardPurchaseConfirmation(opts: {
     </div>`;
 
   return send(opts.buyerEmail, `Gift Card Purchase Confirmed — #${opts.orderNumber}`, html);
+}
+
+export async function sendFlavourPickupUpdateToCustomers(opts: {
+  preOrderWindowIds: number[];
+  pickupStartLabel: string;
+  subject?: string;
+  message?: string;
+  dryRun?: boolean;
+}): Promise<{
+  totalRecipients: number;
+  emailsSent: number;
+  emailsFailed: number;
+  dryRun: boolean;
+  recipients: { email: string; name: string; flavourNames: string[] }[];
+}> {
+  const { ordersTable, orderItemsTable } = await import("@workspace/db/schema");
+  const { db } = await import("@workspace/db");
+  const { eq, inArray, and, isNotNull } = await import("drizzle-orm");
+
+  const rows = await db
+    .select({
+      customerEmail: ordersTable.customerEmail,
+      customerName: ordersTable.customerName,
+      flavourName: orderItemsTable.flavourName,
+      preOrderWindowId: orderItemsTable.preOrderWindowId,
+    })
+    .from(ordersTable)
+    .innerJoin(orderItemsTable, eq(orderItemsTable.orderId, ordersTable.id))
+    .where(
+      and(
+        inArray(orderItemsTable.preOrderWindowId, opts.preOrderWindowIds),
+        isNotNull(ordersTable.customerEmail),
+      ),
+    );
+
+  const byEmail = new Map<string, { name: string; flavourNames: Set<string> }>();
+  for (const row of rows) {
+    const email = row.customerEmail!.trim().toLowerCase();
+    if (!email) continue;
+    const existing = byEmail.get(email) ?? { name: row.customerName || "there", flavourNames: new Set<string>() };
+    if (row.flavourName) existing.flavourNames.add(row.flavourName);
+    if (!existing.name && row.customerName) existing.name = row.customerName;
+    byEmail.set(email, existing);
+  }
+
+  const recipients = [...byEmail.entries()].map(([email, info]) => ({
+    email,
+    name: info.name || "there",
+    flavourNames: [...info.flavourNames],
+  }));
+
+  if (opts.dryRun) {
+    return {
+      totalRecipients: recipients.length,
+      emailsSent: 0,
+      emailsFailed: 0,
+      dryRun: true,
+      recipients,
+    };
+  }
+
+  const defaultMessage =
+    "We wanted to share an important update about pickup timing for your recent pre-order. " +
+    "All pickups for the German Chocolate Cake and Dark Soul Peanut Butter Cup flavours will begin on " +
+    `${opts.pickupStartLabel}. We'll send another email when your order is ready. Thank you for your patience!`;
+
+  const bodyMessage = opts.message?.trim() || defaultMessage;
+  const subject = opts.subject || "Important update about your Urban Churn pre-order pickup";
+
+  let emailsSent = 0;
+  let emailsFailed = 0;
+
+  for (const recipient of recipients) {
+    const flavourList = recipient.flavourNames.length
+      ? recipient.flavourNames.join(", ")
+      : "your pre-ordered flavour(s)";
+
+    const html = `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+      ${headerHtml("Pre-Order Pickup Update")}
+      <div style="padding:24px;background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 12px 12px">
+        <h2 style="margin-top:0">Pre-Order Pickup Update</h2>
+        <p>Hi ${recipient.name},</p>
+        <p>${bodyMessage}</p>
+        <div style="background:#f9fafb;padding:16px;border-radius:8px;margin:16px 0">
+          <p style="margin:0 0 4px"><strong>Your item(s):</strong> ${flavourList}</p>
+          <p style="margin:0"><strong>Pickup starts:</strong> ${opts.pickupStartLabel}</p>
+        </div>
+        ${HOURS_REMINDER_HTML}
+        <p style="margin:0">Questions? Reply to this email or call us at <a href="tel:7172087256" style="color:#A1AB74">(717) 208-7256</a>.</p>
+        ${FOOTER_HTML}
+      </div>
+    </div>`;
+
+    const result = await send(recipient.email, subject, html);
+    if (result) emailsSent++;
+    else emailsFailed++;
+
+    // Gentle pacing for Resend rate limits
+    await new Promise((r) => setTimeout(r, 120));
+  }
+
+  return {
+    totalRecipients: recipients.length,
+    emailsSent,
+    emailsFailed,
+    dryRun: false,
+    recipients,
+  };
 }

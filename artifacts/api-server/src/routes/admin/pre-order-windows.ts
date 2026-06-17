@@ -15,6 +15,8 @@ import {
     asc,
     inArray,
 } from "drizzle-orm";
+import { parsePreOrderDateInput } from "../../lib/business-timezone";
+import { sendFlavourPickupUpdateToCustomers } from "../../lib/email";
 
 const router: IRouter = Router();
 
@@ -28,7 +30,7 @@ function normalizeLocationPickupOverrides(input: unknown): Map<number, Date> {
             const locationId = Number((row as any).locationId);
             const rawDate = (row as any).pickupStartDate;
             if (!locationId || !rawDate) continue;
-            const parsed = new Date(rawDate);
+            const parsed = parsePreOrderDateInput(String(rawDate));
             if (!Number.isNaN(parsed.getTime())) {
                 overrides.set(locationId, parsed);
             }
@@ -40,7 +42,7 @@ function normalizeLocationPickupOverrides(input: unknown): Map<number, Date> {
         for (const [locationIdRaw, rawDate] of Object.entries(input as Record<string, unknown>)) {
             const locationId = Number(locationIdRaw);
             if (!locationId || !rawDate) continue;
-            const parsed = new Date(rawDate as string);
+            const parsed = parsePreOrderDateInput(String(rawDate));
             if (!Number.isNaN(parsed.getTime())) {
                 overrides.set(locationId, parsed);
             }
@@ -144,6 +146,43 @@ router.get("/email-log", async (req, res) => {
     }
 });
 
+// ── Notify customers who ordered specific pre-order windows ──
+router.post("/notify-flavour-pickup", async (req, res) => {
+    try {
+        const {
+            preOrderWindowIds,
+            pickupStartLabel,
+            subject,
+            message,
+            dryRun,
+        } = req.body as {
+            preOrderWindowIds?: number[];
+            pickupStartLabel?: string;
+            subject?: string;
+            message?: string;
+            dryRun?: boolean;
+        };
+
+        if (!preOrderWindowIds?.length) {
+            res.status(400).json({ error: "preOrderWindowIds array is required" });
+            return;
+        }
+
+        const result = await sendFlavourPickupUpdateToCustomers({
+            preOrderWindowIds,
+            pickupStartLabel: pickupStartLabel || "Tuesday, July 1, 2026",
+            subject: subject || "Important update about your Urban Churn pre-order pickup",
+            message,
+            dryRun: !!dryRun,
+        });
+
+        res.json(result);
+    } catch (error) {
+        console.error("[PRE-ORDERS] Flavour pickup notify failed:", error);
+        res.status(500).json({ error: "Failed to send flavour pickup notifications" });
+    }
+});
+
 // ── Get single pre-order ──
 router.get("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
@@ -215,8 +254,8 @@ router.post("/", async (req, res) => {
             return;
         }
 
-        const startDate = new Date(preOrderStart);
-        const endDate = new Date(preOrderEnd);
+        const startDate = parsePreOrderDateInput(String(preOrderStart));
+        const endDate = parsePreOrderDateInput(String(preOrderEnd));
         if (endDate <= startDate) {
             res.status(400).json({ error: "preOrderEnd must be after preOrderStart" });
             return;
@@ -250,8 +289,8 @@ router.post("/", async (req, res) => {
                     flavourId: fid,
                     preOrderStart: startDate,
                     preOrderEnd: endDate,
-                    pickupDate: new Date(pickupDate),
-                    pickupEndDate: pickupEndDate ? new Date(pickupEndDate) : null,
+                    pickupDate: parsePreOrderDateInput(String(pickupDate)),
+                    pickupEndDate: pickupEndDate ? parsePreOrderDateInput(String(pickupEndDate)) : null,
                     isRecurring: isRecurring || false,
                     recurringRule: recurringRule || null,
                     status: computedStatus,
@@ -317,10 +356,10 @@ router.put("/:id", async (req, res) => {
         } = req.body;
 
         const updates: Record<string, any> = { updatedAt: new Date() };
-        if (preOrderStart !== undefined) updates.preOrderStart = new Date(preOrderStart);
-        if (preOrderEnd !== undefined) updates.preOrderEnd = new Date(preOrderEnd);
-        if (pickupDate !== undefined) updates.pickupDate = new Date(pickupDate);
-        if (pickupEndDate !== undefined) updates.pickupEndDate = pickupEndDate ? new Date(pickupEndDate) : null;
+        if (preOrderStart !== undefined) updates.preOrderStart = parsePreOrderDateInput(String(preOrderStart));
+        if (preOrderEnd !== undefined) updates.preOrderEnd = parsePreOrderDateInput(String(preOrderEnd));
+        if (pickupDate !== undefined) updates.pickupDate = parsePreOrderDateInput(String(pickupDate));
+        if (pickupEndDate !== undefined) updates.pickupEndDate = pickupEndDate ? parsePreOrderDateInput(String(pickupEndDate)) : null;
         if (isRecurring !== undefined) updates.isRecurring = isRecurring;
         if (recurringRule !== undefined) updates.recurringRule = recurringRule;
         if (status !== undefined) updates.status = status;
@@ -386,10 +425,10 @@ router.put("/batch/update", async (req, res) => {
         }
 
         const setValues: Record<string, any> = { updatedAt: new Date() };
-        if (updates.preOrderStart !== undefined) setValues.preOrderStart = new Date(updates.preOrderStart);
-        if (updates.preOrderEnd !== undefined) setValues.preOrderEnd = new Date(updates.preOrderEnd);
-        if (updates.pickupDate !== undefined) setValues.pickupDate = new Date(updates.pickupDate);
-        if (updates.pickupEndDate !== undefined) setValues.pickupEndDate = updates.pickupEndDate ? new Date(updates.pickupEndDate) : null;
+        if (updates.preOrderStart !== undefined) setValues.preOrderStart = parsePreOrderDateInput(String(updates.preOrderStart));
+        if (updates.preOrderEnd !== undefined) setValues.preOrderEnd = parsePreOrderDateInput(String(updates.preOrderEnd));
+        if (updates.pickupDate !== undefined) setValues.pickupDate = parsePreOrderDateInput(String(updates.pickupDate));
+        if (updates.pickupEndDate !== undefined) setValues.pickupEndDate = updates.pickupEndDate ? parsePreOrderDateInput(String(updates.pickupEndDate)) : null;
         if (updates.status !== undefined) setValues.status = updates.status;
 
         await db

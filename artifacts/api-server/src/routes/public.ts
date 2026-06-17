@@ -19,7 +19,7 @@ import {
     eventsTable,
     preOrderLocationsTable,
 } from "@workspace/db/schema";
-import { eq, asc, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, asc, desc, and, sql, inArray, lte } from "drizzle-orm";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { signToken } from "../lib/jwt";
 import * as crypto from "node:crypto";
@@ -146,7 +146,8 @@ router.get("/pre-order-locations", async (req, res) => {
         return;
     }
 
-    // Find active pre-orders for these flavour IDs
+    // Find active pre-orders for these flavour IDs (within Eastern-scheduled window)
+    const now = new Date();
     const activePreOrders = await db
         .select({ id: productPreOrdersTable.id, flavourId: productPreOrdersTable.flavourId })
         .from(productPreOrdersTable)
@@ -154,6 +155,8 @@ router.get("/pre-order-locations", async (req, res) => {
             and(
                 inArray(productPreOrdersTable.flavourId, flavourIds),
                 inArray(productPreOrdersTable.status, ["open", "scheduled"]),
+                lte(productPreOrdersTable.preOrderStart, now),
+                sql`${productPreOrdersTable.preOrderEnd} > ${now}`,
             ),
         );
 
@@ -541,6 +544,7 @@ router.post("/orders", async (req, res) => {
     let discountCents = 0;
 
     // Check pre-order restrictions for standard products and capture per-flavour pickup dates
+    const now = new Date();
     const openPreOrders = await db
         .select({
             id: productPreOrdersTable.id,
@@ -550,7 +554,13 @@ router.post("/orders", async (req, res) => {
         })
         .from(productPreOrdersTable)
         .innerJoin(flavoursTable, eq(productPreOrdersTable.flavourId, flavoursTable.id))
-        .where(eq(productPreOrdersTable.status, "open"));
+        .where(
+            and(
+                eq(productPreOrdersTable.status, "open"),
+                lte(productPreOrdersTable.preOrderStart, now),
+                sql`${productPreOrdersTable.preOrderEnd} > ${now}`,
+            ),
+        );
 
     const pickupOverrideByPreOrder = new Map<number, Date>();
     if (openPreOrders.length > 0) {
