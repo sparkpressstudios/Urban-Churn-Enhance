@@ -345,14 +345,22 @@ export const api = {
         apiFetch(`/admin/events/orders/${orderId}/sync-square-payment`, { method: "POST" }),
 
     // Analytics
-    getAnalyticsSummary: (days?: number) =>
-        apiFetch(`/admin/analytics/summary${days ? `?days=${days}` : ""}`),
-    getRevenueTimeSeries: (days?: number) =>
-        apiFetch(`/admin/analytics/revenue${days ? `?days=${days}` : ""}`),
-    getTopProducts: (days?: number) =>
-        apiFetch(`/admin/analytics/top-products${days ? `?days=${days}` : ""}`),
-    getOrdersByLocation: (days?: number) =>
-        apiFetch(`/admin/analytics/by-location${days ? `?days=${days}` : ""}`),
+    getAnalyticsSummary: (params?: Record<string, string>) => {
+        const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+        return apiFetch(`/admin/analytics/summary${qs}`);
+    },
+    getRevenueTimeSeries: (params?: Record<string, string>) => {
+        const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+        return apiFetch(`/admin/analytics/revenue${qs}`);
+    },
+    getTopProducts: (params?: Record<string, string>) => {
+        const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+        return apiFetch(`/admin/analytics/top-products${qs}`);
+    },
+    getOrdersByLocation: (params?: Record<string, string>) => {
+        const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+        return apiFetch(`/admin/analytics/by-location${qs}`);
+    },
     exportOrdersCsv: (from?: string, to?: string) => {
         const params = new URLSearchParams();
         if (from) params.set("from", from);
