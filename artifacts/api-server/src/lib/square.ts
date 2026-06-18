@@ -356,6 +356,45 @@ export async function listSquareLocations(token?: string, env?: string) {
 
 // ── Square Customer Sync ──
 
+export interface SquareCustomerRecord {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+    address: string;
+    city: string;
+    state: string;
+    zip: string;
+}
+
+/** Paginate through all Square customers that have an email address. */
+export async function listAllSquareCustomers(): Promise<SquareCustomerRecord[]> {
+    const client = await getSquareClient();
+    if (!client) return [];
+
+    const customers: SquareCustomerRecord[] = [];
+    const page = await client.customers.list({ limit: 100 });
+
+    for await (const customer of page) {
+        const email = customer.emailAddress?.trim();
+        if (!email || !customer.id) continue;
+        customers.push({
+            id: customer.id,
+            email: email.toLowerCase(),
+            firstName: customer.givenName || "",
+            lastName: customer.familyName || "",
+            phone: customer.phoneNumber || "",
+            address: customer.address?.addressLine1 || "",
+            city: customer.address?.locality || "",
+            state: customer.address?.administrativeDistrictLevel1 || "",
+            zip: customer.address?.postalCode || "",
+        });
+    }
+
+    return customers;
+}
+
 export async function searchSquareCustomer(email: string): Promise<string | null> {
     const client = await getSquareClient();
     if (!client) return null;

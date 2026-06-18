@@ -57,6 +57,17 @@ const AdminSettings = lazy(() => import("@/pages/admin/Settings"));
 const AdminBakeryOrders = lazy(() => import("@/pages/admin/BakeryOrders"));
 const AdminPreOrderWindows = lazy(() => import("@/pages/admin/PreOrderWindows"));
 const AdminEmailLog = lazy(() => import("@/pages/admin/EmailLog"));
+const AdminEmailMarketingDashboard = lazy(() => import("@/pages/admin/EmailMarketingDashboard"));
+const AdminEmailContacts = lazy(() => import("@/pages/admin/EmailContacts"));
+const AdminEmailContactDetail = lazy(() => import("@/pages/admin/EmailContactDetail"));
+const AdminEmailSegments = lazy(() => import("@/pages/admin/EmailSegments"));
+const AdminEmailSegmentDetail = lazy(() => import("@/pages/admin/EmailSegmentDetail"));
+const AdminEmailTemplates = lazy(() => import("@/pages/admin/EmailTemplates"));
+const AdminEmailTemplateEditor = lazy(() => import("@/pages/admin/EmailTemplateEditor"));
+const AdminEmailCampaigns = lazy(() => import("@/pages/admin/EmailCampaigns"));
+const AdminEmailCampaignEditor = lazy(() => import("@/pages/admin/EmailCampaignEditor"));
+const AdminEmailTopics = lazy(() => import("@/pages/admin/EmailTopics"));
+const AdminEmailSuppression = lazy(() => import("@/pages/admin/EmailSuppression"));
 const AdminCareers = lazy(() => import("@/pages/admin/Careers"));
 const AdminRotatingFlavours = lazy(() => import("@/pages/admin/RotatingFlavours"));
 const AdminWholesaleOrders = lazy(() => import("@/pages/admin/Wholesale"));
@@ -381,6 +392,83 @@ function Router() {
         <Suspense fallback={<AdminFallback />}>
           <ProtectedRoute>
             <AdminPreOrderWindows />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email/contacts/:id">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailContactDetail />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email/topics">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailTopics />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email/suppression">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailSuppression />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email/templates/:id">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailTemplateEditor />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email/templates">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailTemplates />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email/campaigns/:id">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailCampaignEditor />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email/campaigns">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailCampaigns />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email/segments/:id">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailSegmentDetail />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email/segments">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailSegments />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email/contacts">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailContacts />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/email">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminEmailMarketingDashboard />
           </ProtectedRoute>
         </Suspense>
       </Route>

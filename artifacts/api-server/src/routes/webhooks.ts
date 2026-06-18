@@ -17,6 +17,7 @@ import {
     sendAdminWholesaleOrderAlert,
     sendWholesaleParseFailureAlert,
 } from "../lib/email";
+import { handleMarketingWebhookEvent } from "../lib/resend-marketing";
 
 const router: IRouter = Router();
 
@@ -260,6 +261,24 @@ router.post("/resend", async (req, res) => {
     }
 
     const event = req.body;
+
+    // Marketing campaign delivery events
+    const marketingEvents = new Set([
+        "email.delivered",
+        "email.opened",
+        "email.clicked",
+        "email.bounced",
+        "email.complained",
+        "email.unsubscribed",
+    ]);
+    if (marketingEvents.has(event?.type)) {
+        const resendEventId = (req.headers["svix-id"] as string) || undefined;
+        handleMarketingWebhookEvent(event, { resendEventId }).catch((err) =>
+            console.error("[WEBHOOK] Marketing event handler failed:", err),
+        );
+        res.status(200).json({ received: true });
+        return;
+    }
 
     // Only process inbound email events
     if (event?.type !== "email.received") {
