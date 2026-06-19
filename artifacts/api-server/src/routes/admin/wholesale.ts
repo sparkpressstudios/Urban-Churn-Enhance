@@ -20,8 +20,8 @@ import {
 } from "@workspace/db/schema";
 import {
     eq,
-    desc,
     and,
+    desc,
     gte,
     lte,
     count,
@@ -846,22 +846,72 @@ router.get("/orders/stats", async (_req, res) => {
         .select({ count: count() })
         .from(wholesaleOrdersTable)
         .where(gte(wholesaleOrdersTable.createdAt, today));
+    const [awaitingDelivery] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.status, "ready"));
+    const [unpaidAwaitingDelivery] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                or(
+                    eq(wholesaleOrdersTable.status, "ready"),
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                )!,
+                sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`,
+            ),
+        );
 
     res.json({
         totalOrders: total.count,
         pendingReview: pendingReview.count,
         confirmedOrders: confirmed.count,
         todayOrders: todayCount.count,
+        awaitingDelivery: awaitingDelivery.count,
+        unpaidAwaitingDelivery: unpaidAwaitingDelivery.count,
     });
 });
 
 router.get("/orders", async (req, res) => {
     const status = req.query.status as string | undefined;
+    const filter = req.query.filter as string | undefined;
     const customerId = req.query.customerId as string | undefined;
     const search = req.query.search as string | undefined;
 
     const conditions = [];
-    if (status) conditions.push(eq(wholesaleOrdersTable.status, status as any));
+    if (filter === "awaiting_delivery") {
+        conditions.push(eq(wholesaleOrdersTable.status, "ready"));
+    } else if (filter === "unpaid_awaiting_delivery") {
+        conditions.push(
+            and(
+                or(
+                    eq(wholesaleOrdersTable.status, "ready"),
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                )!,
+                sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`,
+            )!,
+        );
+    } else if (filter === "has_unmatched") {
+        conditions.push(
+            and(
+                or(
+                    eq(wholesaleOrdersTable.status, "pending_review"),
+                    eq(wholesaleOrdersTable.status, "confirmed"),
+                    eq(wholesaleOrdersTable.status, "in_production"),
+                )!,
+                sql`EXISTS (
+                    SELECT 1 FROM wholesale_order_items
+                    WHERE wholesale_order_id = ${wholesaleOrdersTable.id}
+                    AND matched = false
+                )`,
+            )!,
+        );
+    } else if (status) {
+        conditions.push(eq(wholesaleOrdersTable.status, status as any));
+    }
     if (customerId) conditions.push(eq(wholesaleOrdersTable.wholesaleCustomerId, Number(customerId)));
     if (search) {
         conditions.push(
@@ -1403,19 +1453,42 @@ router.get("/delivery-schedule", async (req, res) => {
 // ── Dashboard Summary ──
 // ═══════════════════════════════════════
 
-router.get("/dashboard", async (_req, res) => {
+router.get("/dashboard", async (req, res) => {
+    const scope = (req.query.scope as string) || "week";
     const now = new Date();
-    const weekLater = new Date(now);
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    const weekLater = new Date(today);
     weekLater.setDate(weekLater.getDate() + 7);
-    const todayStr = now.toISOString().slice(0, 10);
-    const weekStr = weekLater.toISOString().slice(0, 10);
+    const twoWeeksAgo = new Date(today);
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 13);
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    // Counts by status
+    const todayStr = today.toISOString().slice(0, 10);
+    const weekStr = weekLater.toISOString().slice(0, 10);
+    const twoWeeksStr = twoWeeksAgo.toISOString().slice(0, 10);
+    const monthStartStr = monthStart.toISOString().slice(0, 10);
+
+    const scopeEndStr =
+        scope === "today" ? todayStr : scope === "month" ? weekStr : weekStr;
+    const scopeStartStr =
+        scope === "today" ? todayStr : scope === "month" ? monthStartStr : todayStr;
+
+    const activeOrderStatuses = or(
+        eq(wholesaleOrdersTable.status, "pending_review"),
+        eq(wholesaleOrdersTable.status, "confirmed"),
+        eq(wholesaleOrdersTable.status, "in_production"),
+        eq(wholesaleOrdersTable.status, "ready"),
+    )!;
+
+    const fulfillmentStatuses = or(
+        eq(wholesaleOrdersTable.status, "confirmed"),
+        eq(wholesaleOrdersTable.status, "in_production"),
+        eq(wholesaleOrdersTable.status, "ready"),
+    )!;
+
     const statusCounts = await db
-        .select({
-            status: wholesaleOrdersTable.status,
-            count: count(),
-        })
+        .select({ status: wholesaleOrdersTable.status, count: count() })
         .from(wholesaleOrdersTable)
         .groupBy(wholesaleOrdersTable.status);
 
@@ -1424,32 +1497,46 @@ router.get("/dashboard", async (_req, res) => {
         statusMap[s.status] = Number(s.count);
     });
 
-    // Deliveries this week
+    const activePipeline = {
+        pending_review: statusMap.pending_review || 0,
+        confirmed: statusMap.confirmed || 0,
+        in_production: statusMap.in_production || 0,
+        ready: statusMap.ready || 0,
+    };
+
+    const [totalOrders] = await db.select({ count: count() }).from(wholesaleOrdersTable);
+    const [todayOrders] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(gte(wholesaleOrdersTable.createdAt, today));
+    const [awaitingDelivery] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.status, "ready"));
+    const [unpaidAwaitingDelivery] = await db
+        .select({ count: count() })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(fulfillmentStatuses, sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`),
+        );
+
     const [deliveriesThisWeek] = await db
         .select({ count: count() })
         .from(wholesaleOrdersTable)
         .where(
             and(
-                or(
-                    eq(wholesaleOrdersTable.status, "confirmed"),
-                    eq(wholesaleOrdersTable.status, "in_production"),
-                    eq(wholesaleOrdersTable.status, "ready"),
-                )!,
+                fulfillmentStatuses,
                 gte(wholesaleOrdersTable.confirmedDeliveryDate, todayStr),
                 lte(wholesaleOrdersTable.confirmedDeliveryDate, weekStr),
             ),
         );
 
-    // Unmatched items count
     const [unmatchedItems] = await db
         .select({ count: count() })
         .from(wholesaleOrderItemsTable)
         .innerJoin(
             wholesaleOrdersTable,
-            eq(
-                wholesaleOrderItemsTable.wholesaleOrderId,
-                wholesaleOrdersTable.id,
-            ),
+            eq(wholesaleOrderItemsTable.wholesaleOrderId, wholesaleOrdersTable.id),
         )
         .where(
             and(
@@ -1462,7 +1549,101 @@ router.get("/dashboard", async (_req, res) => {
             ),
         );
 
-    // Production by flavour (next 7 days)
+    const [totalActiveItems] = await db
+        .select({ count: count() })
+        .from(wholesaleOrderItemsTable)
+        .innerJoin(
+            wholesaleOrdersTable,
+            eq(wholesaleOrderItemsTable.wholesaleOrderId, wholesaleOrdersTable.id),
+        )
+        .where(
+            or(
+                eq(wholesaleOrdersTable.status, "pending_review"),
+                eq(wholesaleOrdersTable.status, "confirmed"),
+                eq(wholesaleOrdersTable.status, "in_production"),
+            )!,
+        );
+
+    const unmatchedItemRate =
+        Number(totalActiveItems?.count || 0) > 0
+            ? Number(unmatchedItems?.count || 0) / Number(totalActiveItems.count)
+            : 0;
+
+    const pendingOrders = await db
+        .select({ createdAt: wholesaleOrdersTable.createdAt })
+        .from(wholesaleOrdersTable)
+        .where(eq(wholesaleOrdersTable.status, "pending_review"))
+        .orderBy(asc(wholesaleOrdersTable.createdAt))
+        .limit(1);
+
+    const pendingReviewOldestHours = pendingOrders[0]
+        ? Math.round((now.getTime() - pendingOrders[0].createdAt.getTime()) / 3_600_000)
+        : 0;
+
+    const [revenueScope] = await db
+        .select({ total: sum(wholesaleOrdersTable.subtotalCents) })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                gte(wholesaleOrdersTable.confirmedDeliveryDate, scopeStartStr),
+                lte(wholesaleOrdersTable.confirmedDeliveryDate, scopeEndStr),
+                sql`${wholesaleOrdersTable.status} NOT IN ('cancelled')`,
+            ),
+        );
+
+    const [revenueMonth] = await db
+        .select({ total: sum(wholesaleOrdersTable.subtotalCents) })
+        .from(wholesaleOrdersTable)
+        .where(
+            and(
+                gte(wholesaleOrdersTable.confirmedDeliveryDate, monthStartStr),
+                sql`${wholesaleOrdersTable.status} NOT IN ('cancelled')`,
+            ),
+        );
+
+    const ordersByDayRows = await db
+        .select({
+            day: sql<string>`to_char(${wholesaleOrdersTable.createdAt}, 'YYYY-MM-DD')`.as("day"),
+            count: count(),
+        })
+        .from(wholesaleOrdersTable)
+        .where(gte(wholesaleOrdersTable.createdAt, twoWeeksAgo))
+        .groupBy(sql`to_char(${wholesaleOrdersTable.createdAt}, 'YYYY-MM-DD')`)
+        .orderBy(sql`to_char(${wholesaleOrdersTable.createdAt}, 'YYYY-MM-DD')`);
+
+    const ordersByDayMap = new Map(
+        ordersByDayRows.map((r) => [r.day, Number(r.count)]),
+    );
+    const ordersByDay: { date: string; count: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        ordersByDay.push({ date: key, count: ordersByDayMap.get(key) || 0 });
+    }
+
+    const topCustomers = await db
+        .select({
+            customerId: wholesaleCustomersTable.id,
+            businessName: wholesaleCustomersTable.businessName,
+            orderCount: count(),
+            totalCents: sum(wholesaleOrdersTable.subtotalCents),
+        })
+        .from(wholesaleOrdersTable)
+        .innerJoin(
+            wholesaleCustomersTable,
+            eq(wholesaleOrdersTable.wholesaleCustomerId, wholesaleCustomersTable.id),
+        )
+        .where(
+            and(
+                gte(wholesaleOrdersTable.createdAt, new Date(today.getTime() - 30 * 24 * 3_600_000)),
+                sql`${wholesaleOrdersTable.status} NOT IN ('cancelled')`,
+            ),
+        )
+        .groupBy(wholesaleCustomersTable.id, wholesaleCustomersTable.businessName)
+        .orderBy(desc(count()))
+        .limit(5);
+
     const productionByFlavour = await db
         .select({
             flavourName: flavoursTable.name,
@@ -1471,15 +1652,9 @@ router.get("/dashboard", async (_req, res) => {
         .from(wholesaleOrderItemsTable)
         .innerJoin(
             wholesaleOrdersTable,
-            eq(
-                wholesaleOrderItemsTable.wholesaleOrderId,
-                wholesaleOrdersTable.id,
-            ),
+            eq(wholesaleOrderItemsTable.wholesaleOrderId, wholesaleOrdersTable.id),
         )
-        .leftJoin(
-            flavoursTable,
-            eq(wholesaleOrderItemsTable.flavourId, flavoursTable.id),
-        )
+        .leftJoin(flavoursTable, eq(wholesaleOrderItemsTable.flavourId, flavoursTable.id))
         .where(
             and(
                 or(
@@ -1492,43 +1667,166 @@ router.get("/dashboard", async (_req, res) => {
         )
         .groupBy(flavoursTable.name);
 
-    // Upcoming deliveries (next 5)
-    const upcomingDeliveries = await db
+    const productionByProduct = await db
         .select({
-            id: wholesaleOrdersTable.id,
-            orderNumber: wholesaleOrdersTable.orderNumber,
-            customerName: wholesaleCustomersTable.businessName,
-            confirmedDeliveryDate: wholesaleOrdersTable.confirmedDeliveryDate,
-            status: wholesaleOrdersTable.status,
-            deliveryMethod: wholesaleOrdersTable.deliveryMethod,
+            flavourName: flavoursTable.name,
+            productName: wholesaleProductsTable.name,
+            totalQuantity: sum(wholesaleOrderItemsTable.quantity),
         })
-        .from(wholesaleOrdersTable)
+        .from(wholesaleOrderItemsTable)
         .innerJoin(
-            wholesaleCustomersTable,
-            eq(
-                wholesaleOrdersTable.wholesaleCustomerId,
-                wholesaleCustomersTable.id,
-            ),
+            wholesaleOrdersTable,
+            eq(wholesaleOrderItemsTable.wholesaleOrderId, wholesaleOrdersTable.id),
         )
+        .leftJoin(
+            wholesaleProductsTable,
+            eq(wholesaleOrderItemsTable.wholesaleProductId, wholesaleProductsTable.id),
+        )
+        .leftJoin(flavoursTable, eq(wholesaleOrderItemsTable.flavourId, flavoursTable.id))
         .where(
             and(
                 or(
                     eq(wholesaleOrdersTable.status, "confirmed"),
                     eq(wholesaleOrdersTable.status, "in_production"),
-                    eq(wholesaleOrdersTable.status, "ready"),
                 )!,
                 gte(wholesaleOrdersTable.confirmedDeliveryDate, todayStr),
+                lte(wholesaleOrdersTable.confirmedDeliveryDate, weekStr),
             ),
         )
+        .groupBy(flavoursTable.name, wholesaleProductsTable.name)
+        .orderBy(desc(sum(wholesaleOrderItemsTable.quantity)))
+        .limit(10);
+
+    const upcomingDeliveries = await db
+        .select({
+            id: wholesaleOrdersTable.id,
+            orderNumber: wholesaleOrdersTable.orderNumber,
+            customerName: wholesaleCustomersTable.businessName,
+            customerCity: wholesaleCustomersTable.city,
+            confirmedDeliveryDate: wholesaleOrdersTable.confirmedDeliveryDate,
+            status: wholesaleOrdersTable.status,
+            deliveryMethod: wholesaleOrdersTable.deliveryMethod,
+            paymentStatus: wholesaleOrdersTable.paymentStatus,
+            subtotalCents: wholesaleOrdersTable.subtotalCents,
+            hasUnmatchedItems: sql<boolean>`EXISTS (
+                SELECT 1 FROM wholesale_order_items
+                WHERE wholesale_order_id = ${wholesaleOrdersTable.id}
+                AND matched = false
+            )`.as("has_unmatched_items"),
+        })
+        .from(wholesaleOrdersTable)
+        .innerJoin(
+            wholesaleCustomersTable,
+            eq(wholesaleOrdersTable.wholesaleCustomerId, wholesaleCustomersTable.id),
+        )
+        .where(and(fulfillmentStatuses, gte(wholesaleOrdersTable.confirmedDeliveryDate, todayStr)))
         .orderBy(asc(wholesaleOrdersTable.confirmedDeliveryDate))
-        .limit(5);
+        .limit(15);
+
+    const attentionCandidates = await db
+        .select({
+            id: wholesaleOrdersTable.id,
+            orderNumber: wholesaleOrdersTable.orderNumber,
+            customerName: wholesaleCustomersTable.businessName,
+            status: wholesaleOrdersTable.status,
+            aiParseConfidence: wholesaleOrdersTable.aiParseConfidence,
+            createdAt: wholesaleOrdersTable.createdAt,
+            paymentStatus: wholesaleOrdersTable.paymentStatus,
+            unmatchedCount: sql<number>`(
+                SELECT count(*)::int FROM wholesale_order_items
+                WHERE wholesale_order_id = ${wholesaleOrdersTable.id}
+                AND matched = false
+            )`.as("unmatched_count"),
+        })
+        .from(wholesaleOrdersTable)
+        .innerJoin(
+            wholesaleCustomersTable,
+            eq(wholesaleOrdersTable.wholesaleCustomerId, wholesaleCustomersTable.id),
+        )
+        .where(
+            or(
+                eq(wholesaleOrdersTable.status, "pending_review"),
+                and(
+                    fulfillmentStatuses,
+                    sql`${wholesaleOrdersTable.paymentStatus} != 'paid'`,
+                )!,
+                sql`EXISTS (
+                    SELECT 1 FROM wholesale_order_items
+                    WHERE wholesale_order_id = ${wholesaleOrdersTable.id}
+                    AND matched = false
+                )`,
+            )!,
+        )
+        .orderBy(asc(wholesaleOrdersTable.createdAt))
+        .limit(40);
+
+    type AttentionReason = "pending_review" | "unmatched_items" | "unpaid" | "low_confidence";
+    const needsAttention = attentionCandidates
+        .map((o) => {
+            const reasons: AttentionReason[] = [];
+            if (o.status === "pending_review") reasons.push("pending_review");
+            if (Number(o.unmatchedCount) > 0) reasons.push("unmatched_items");
+            if (
+                ["confirmed", "in_production", "ready"].includes(o.status) &&
+                o.paymentStatus !== "paid"
+            ) {
+                reasons.push("unpaid");
+            }
+            if (o.aiParseConfidence !== null && o.aiParseConfidence < 0.7) {
+                reasons.push("low_confidence");
+            }
+            const priority =
+                (o.status === "pending_review" ? 100 : 0) +
+                (Number(o.unmatchedCount) > 0 ? 50 : 0) +
+                (o.paymentStatus !== "paid" && o.status === "ready" ? 40 : 0) +
+                (o.aiParseConfidence !== null && o.aiParseConfidence < 0.7 ? 30 : 0) +
+                Math.min(24, Math.round((now.getTime() - o.createdAt.getTime()) / 3_600_000));
+
+            return {
+                id: o.id,
+                orderNumber: o.orderNumber,
+                customerName: o.customerName,
+                status: o.status,
+                reasons,
+                priority,
+                aiParseConfidence: o.aiParseConfidence,
+                createdAt: o.createdAt,
+                paymentStatus: o.paymentStatus,
+                unmatchedCount: Number(o.unmatchedCount),
+            };
+        })
+        .filter((o) => o.reasons.length > 0)
+        .sort((a, b) => b.priority - a.priority)
+        .slice(0, 15);
 
     res.json({
+        lastUpdatedAt: new Date().toISOString(),
+        scope,
         statusCounts: statusMap,
+        activePipeline,
+        totalOrders: Number(totalOrders?.count || 0),
+        pendingReview: statusMap.pending_review || 0,
+        confirmedOrders: statusMap.confirmed || 0,
+        todayOrders: Number(todayOrders?.count || 0),
+        awaitingDelivery: Number(awaitingDelivery?.count || 0),
+        unpaidAwaitingDelivery: Number(unpaidAwaitingDelivery?.count || 0),
         deliveriesThisWeek: Number(deliveriesThisWeek?.count || 0),
         unmatchedItems: Number(unmatchedItems?.count || 0),
+        unmatchedItemRate,
+        pendingReviewOldestHours,
+        revenueScopeCents: Number(revenueScope?.total || 0),
+        revenueMonthCents: Number(revenueMonth?.total || 0),
+        ordersByDay,
+        topCustomers: topCustomers.map((c) => ({
+            customerId: c.customerId,
+            businessName: c.businessName,
+            orderCount: Number(c.orderCount),
+            totalCents: Number(c.totalCents || 0),
+        })),
         productionByFlavour,
+        productionByProduct,
         upcomingDeliveries,
+        needsAttention,
     });
 });
 
