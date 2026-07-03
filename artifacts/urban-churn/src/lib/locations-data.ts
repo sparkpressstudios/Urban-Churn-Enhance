@@ -8,7 +8,13 @@ export type VendorCategory =
   | "market"
   | "other";
 
+export interface LocationNotice {
+  title: string;
+  message: string;
+}
+
 export interface LocationInfo {
+  slug?: string;
   name: string;
   address: string;
   city: string;
@@ -22,7 +28,17 @@ export interface LocationInfo {
   type: "shop" | "vendor";
   hideHours: boolean;
   vendorCategory: VendorCategory | null;
+  notice?: LocationNotice;
 }
+
+/** Temporary operational notices keyed by location slug. Remove when no longer needed. */
+export const LOCATION_NOTICES: Record<string, LocationNotice> = {
+  "carlisle-pike": {
+    title: "Carlisle Pike Location Update",
+    message:
+      "Our Carlisle Pike Scoop Shop is open with limited service today due to an AC malfunction.\n\nWe are still available for pre-order pickup and grab-and-go items, including branded pints, hand-packed pints, quarts, half gallons, ice cream cakes, coffee, espresso drinks, and other non-ice cream beverages.\n\nBasically, all pre-packaged and grab-and-go items are available. Thank you for your patience while we work through this!",
+  },
+};
 
 function buildHours(spec: Record<number, [string, string] | null>): Hour[] {
   return Array.from({ length: 7 }, (_, d) => {
@@ -35,6 +51,7 @@ function buildHours(spec: Record<number, [string, string] | null>): Hour[] {
 
 export const LOCATIONS: LocationInfo[] = [
   {
+    slug: "carlisle-pike",
     name: "Carlisle Pike, Mech PA",
     address: "6391 Carlisle Pike",
     city: "Mechanicsburg",
@@ -56,8 +73,10 @@ export const LOCATIONS: LocationInfo[] = [
     type: "shop",
     hideHours: false,
     vendorCategory: null,
+    notice: LOCATION_NOTICES["carlisle-pike"],
   },
   {
+    slug: "carlisle",
     name: "Carlisle Shop",
     address: "258 Westminster Drive",
     city: "South Middleton Township",
@@ -81,6 +100,7 @@ export const LOCATIONS: LocationInfo[] = [
     vendorCategory: null,
   },
   {
+    slug: "louise-drive",
     name: "Louise Drive, Mech PA",
     address: "4902 Louise Drive",
     city: "Mechanicsburg",
@@ -104,6 +124,7 @@ export const LOCATIONS: LocationInfo[] = [
     vendorCategory: null,
   },
   {
+    slug: "harrisburg",
     name: "UC Harrisburg",
     address: "1004 N 3rd Street",
     city: "Harrisburg",
@@ -146,7 +167,11 @@ export function mergeLocations(apiLocations: any[] | undefined): LocationInfo[] 
     const fallbackIdx = FALLBACK_BY_SLUG[a.slug as string];
     const fb = fallbackIdx !== undefined ? LOCATIONS[fallbackIdx] : undefined;
 
+    const slug = a.slug || fb?.slug;
+    const notice = slug ? LOCATION_NOTICES[slug] : undefined;
+
     return {
+      slug,
       name: a.name || fb?.name || "",
       address: a.address || fb?.address || "",
       city: a.city || fb?.city || "",
@@ -160,6 +185,7 @@ export function mergeLocations(apiLocations: any[] | undefined): LocationInfo[] 
       type: a.type || "shop",
       hideHours: a.hideHours ?? false,
       vendorCategory: (a.vendorCategory ?? null) as VendorCategory | null,
+      notice,
     };
   });
 }
