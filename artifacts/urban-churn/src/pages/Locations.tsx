@@ -176,20 +176,6 @@ export default function Locations() {
                     <p className="text-[#555] text-sm leading-relaxed mb-1">{loc.address}</p>
                     <p className="text-[#555] text-sm mb-4">{loc.city}, {loc.state} {loc.zip}</p>
 
-                    {loc.notice && (
-                      <div
-                        role="alert"
-                        className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left"
-                      >
-                        <p className="text-sm font-bold text-amber-900 mb-2">{loc.notice.title}</p>
-                        <div className="text-xs text-amber-800 leading-relaxed space-y-2">
-                          {loc.notice.message.split("\n\n").map((paragraph) => (
-                            <p key={paragraph.slice(0, 40)}>{paragraph}</p>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
                     {/* Status detail */}
                     {status && (status.closesAt || status.opensAt) && (
                       <p className="text-xs text-[#888] mb-4">{status.closesAt || status.opensAt}</p>
