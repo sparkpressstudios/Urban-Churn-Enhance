@@ -1,6 +1,6 @@
 import app from "./app";
 import { initScheduler } from "./lib/scheduler";
-import { runPendingFlavourPickupEmailIfNeeded } from "./lib/pending-jobs";
+import { clearAnnouncementBarOnce, runPendingFlavourPickupEmailIfNeeded } from "./lib/pending-jobs";
 
 const rawPort = process.env["PORT"];
 
@@ -26,6 +26,9 @@ process.on("unhandledRejection", (reason) => {
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
   initScheduler();
+  clearAnnouncementBarOnce().catch((err) => {
+    console.error("[PENDING-JOB] Announcement clear job failed:", err);
+  });
   runPendingFlavourPickupEmailIfNeeded().catch((err) => {
     console.error("[PENDING-JOB] Startup job failed:", err);
   });

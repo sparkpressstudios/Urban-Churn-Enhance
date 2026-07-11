@@ -10,6 +10,7 @@
     "enrich-from-wp-xml": "tsx ./src/enrich-customers-from-wp-xml.ts",
     "import-wp-flavours": "tsx ./src/import-wp-flavours.ts",
     "import-woo-orders": "tsx ./src/import-woo-orders.ts",
+    "clear-announcement": "tsx ./src/clear-announcement.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
