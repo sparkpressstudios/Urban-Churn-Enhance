@@ -1201,6 +1201,16 @@ router.post("/careers/apply", async (req, res) => {
 
     const data = { name, email, phone, location, about: about || "", why: why || "" };
 
+    // Persist the application to the same admin CRM used by other public forms.
+    await db.insert(inquiriesTable).values({
+        type: "career",
+        name,
+        email,
+        phone,
+        message: why || "",
+        formData: data,
+    });
+
     sendCareerApplicationNotification(data).catch((e) =>
         console.error("[EMAIL] Career application notification failed:", e),
     );
