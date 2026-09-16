@@ -54,7 +54,7 @@ const navGroups: NavGroup[] = [
             { href: "/admin/coupons", label: "Coupons", icon: Ticket },
             { href: "/admin/events", label: "Events", icon: CalendarDays },
             { href: "/admin/event-orders", label: "Event Orders", icon: TicketCheck },
-            { href: "/admin/careers", label: "Careers", icon: Briefcase },
+            { href: "/admin/careers", label: "Careers & Hiring", icon: Briefcase },
             { href: "/admin/rotating-flavours", label: "Rotating Flavors", icon: IceCreamCone },
         ],
     },

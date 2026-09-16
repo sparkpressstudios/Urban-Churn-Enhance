@@ -5,14 +5,14 @@ export const adminCareersSteps: Step[] = [
         target: '[data-tour="admin-careers-header"]',
         title: "Careers Management",
         content:
-            "Manage job postings and career page benefits displayed on the public careers page.",
+            "Review job applications, manage postings, and career page benefits displayed on the public careers page.",
         skipBeacon: true,
     },
     {
         target: '[data-tour="admin-careers-tabs"]',
         title: "Careers Sections",
         content:
-            "Switch between Job Postings and Benefits to manage each independently.",
+            "Switch between Applications, Job Postings, and Benefits to review applicants and manage the careers page.",
     },
     {
         target: '[data-tour="admin-careers-create"]',

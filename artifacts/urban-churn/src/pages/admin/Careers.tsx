@@ -32,8 +32,9 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { Briefcase, Plus, Pencil, Trash2, Heart } from "lucide-react";
+import { Briefcase, Plus, Pencil, Trash2, Heart, UserRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { CareerApplicationsTab } from "@/components/admin/CareerApplicationsTab";
 
 // ── Types ──
 
@@ -139,6 +140,11 @@ export default function AdminCareers() {
     const { data: benefits = [], isLoading: benefitsLoading } = useQuery<CareerBenefit[]>({
         queryKey: ["admin", "career-benefits"],
         queryFn: () => api.getCareerBenefits(),
+    });
+
+    const { data: applicationsData } = useQuery({
+        queryKey: ["career-applications"],
+        queryFn: () => api.getInquiries({ type: "career" }),
     });
 
     // ── Job mutations ──
@@ -287,6 +293,8 @@ export default function AdminCareers() {
 
     const activeJobs = jobs.filter((j) => j.active).length;
     const activeBenefits = benefits.filter((b) => b.active).length;
+    const applications = applicationsData?.inquiries || [];
+    const newApplications = applications.filter((a: { status: string }) => a.status === "new").length;
 
     useTour("admin-careers", adminCareersSteps);
 
@@ -296,12 +304,23 @@ export default function AdminCareers() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6" data-tour="admin-careers-header">
                 <div>
                     <h1 className="text-xl sm:text-2xl font-bold text-white">Careers</h1>
-                    <p className="text-white/70 text-sm mt-1">Manage job postings and career page benefits</p>
+                    <p className="text-white/70 text-sm mt-1">
+                        Review job applications, manage postings, and career page benefits
+                    </p>
                 </div>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" data-tour="admin-careers-stats">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6" data-tour="admin-careers-stats">
+                <Card>
+                    <CardContent className="p-4">
+                        <p className="text-xs text-gray-500 font-medium">Applications</p>
+                        <p className="text-2xl font-bold">{applications.length}</p>
+                        {newApplications > 0 && (
+                            <p className="text-xs text-yellow-700 mt-1">{newApplications} new</p>
+                        )}
+                    </CardContent>
+                </Card>
                 <Card>
                     <CardContent className="p-4">
                         <p className="text-xs text-gray-500 font-medium">Total Jobs</p>
@@ -329,8 +348,17 @@ export default function AdminCareers() {
             </div>
 
             {/* Tabs */}
-            <Tabs defaultValue="jobs" className="space-y-4" data-tour="admin-careers-tabs">
+            <Tabs defaultValue={newApplications > 0 ? "applications" : "jobs"} className="space-y-4" data-tour="admin-careers-tabs">
                 <TabsList>
+                    <TabsTrigger value="applications" className="gap-2">
+                        <UserRound className="w-4 h-4" />
+                        Applications
+                        {applications.length > 0 && (
+                            <Badge variant="secondary" className="ml-1 text-xs">
+                                {applications.length}
+                            </Badge>
+                        )}
+                    </TabsTrigger>
                     <TabsTrigger value="jobs" className="gap-2">
                         <Briefcase className="w-4 h-4" />
                         Job Postings
@@ -340,6 +368,10 @@ export default function AdminCareers() {
                         Benefits
                     </TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="applications">
+                    <CareerApplicationsTab />
+                </TabsContent>
 
                 {/* ═══ Job Postings Tab ═══ */}
                 <TabsContent value="jobs">
