@@ -390,6 +390,10 @@ export const api = {
         apiFetch(`/admin/careers/benefits/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteCareerBenefit: (id: number) =>
         apiFetch(`/admin/careers/benefits/${id}`, { method: "DELETE" }),
+    previewCareerApplicationImport: () =>
+        apiFetch("/admin/careers/applications/import-preview"),
+    importCareerApplications: () =>
+        apiFetch("/admin/careers/applications/import", { method: "POST" }),
 
     // Public Careers
     getPublicCareers: () => apiFetch("/careers"),

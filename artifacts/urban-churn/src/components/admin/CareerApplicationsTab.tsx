@@ -17,6 +17,7 @@ import {
     Archive,
     ChevronRight,
     Clock,
+    Download,
     Mail,
     MapPin,
     MessageSquare,
@@ -87,6 +88,11 @@ export function CareerApplicationsTab() {
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [noteText, setNoteText] = useState("");
 
+    const { data: importPreview } = useQuery({
+        queryKey: ["career-applications-import-preview"],
+        queryFn: () => api.previewCareerApplicationImport(),
+    });
+
     const { data, isLoading } = useQuery({
         queryKey: ["career-applications"],
         queryFn: () => api.getInquiries({ type: "career" }),
@@ -130,6 +136,34 @@ export function CareerApplicationsTab() {
         },
     });
 
+    const importMutation = useMutation({
+        mutationFn: () => api.importCareerApplications(),
+        onSuccess: (result: {
+            imported: number;
+            skipped: number;
+            partial: number;
+            totalEmailLogs: number;
+        }) => {
+            queryClient.invalidateQueries({ queryKey: ["career-applications"] });
+            queryClient.invalidateQueries({ queryKey: ["career-applications-import-preview"] });
+            queryClient.invalidateQueries({ queryKey: ["inquiry-stats"] });
+            toast({
+                title: `Imported ${result.imported} application${result.imported === 1 ? "" : "s"}`,
+                description:
+                    result.partial > 0
+                        ? `${result.partial} imported with limited details from older email records.`
+                        : undefined,
+            });
+        },
+        onError: () => {
+            toast({
+                title: "Import failed",
+                description: "Could not import past applications. Please try again.",
+                variant: "destructive",
+            });
+        },
+    });
+
     const applications: CareerApplication[] = data?.inquiries || [];
     const newCount = applications.filter((a) => a.status === "new").length;
 
@@ -144,11 +178,25 @@ export function CareerApplicationsTab() {
                                 Submissions from the public careers page application form
                             </p>
                         </div>
-                        {newCount > 0 && (
-                            <Badge className="bg-yellow-100 text-yellow-800">
-                                {newCount} new
-                            </Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {newCount > 0 && (
+                                <Badge className="bg-yellow-100 text-yellow-800">
+                                    {newCount} new
+                                </Badge>
+                            )}
+                            {(importPreview?.pendingImport || 0) > 0 && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-2"
+                                    disabled={importMutation.isPending}
+                                    onClick={() => importMutation.mutate()}
+                                >
+                                    <Download className="h-4 w-4" />
+                                    Import {importPreview.pendingImport} past
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -161,8 +209,21 @@ export function CareerApplicationsTab() {
                             <UserRound className="mx-auto h-10 w-10 mb-3 opacity-40" />
                             <p>No applications yet</p>
                             <p className="text-xs mt-1">
-                                Applications submitted on the careers page will appear here
+                                Applications submitted on the careers page will appear here.
+                                {(importPreview?.pendingImport || 0) > 0 &&
+                                    " Older submissions can be imported from the email log."}
                             </p>
+                            {(importPreview?.pendingImport || 0) > 0 && (
+                                <Button
+                                    className="mt-4 gap-2"
+                                    variant="outline"
+                                    disabled={importMutation.isPending}
+                                    onClick={() => importMutation.mutate()}
+                                >
+                                    <Download className="h-4 w-4" />
+                                    Import {importPreview.pendingImport} past applications
+                                </Button>
+                            )}
                         </div>
                     ) : (
                         <div className="space-y-2">
@@ -187,6 +248,11 @@ export function CareerApplicationsTab() {
                                                         >
                                                             {STATUS_LABELS[application.status]}
                                                         </Badge>
+                                                        {application.formData?.importSource === "email_log" && (
+                                                            <Badge variant="outline" className="text-[10px]">
+                                                                Imported
+                                                            </Badge>
+                                                        )}
                                                     </div>
                                                     <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                                                         <span className="flex items-center gap-1">
@@ -280,20 +346,39 @@ export function CareerApplicationsTab() {
                                     </div>
                                 </div>
 
+                                {detail.formData?.importSource === "email_log" && (
+                                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                                        Imported from older email notifications
+                                        {detail.formData.partialImport
+                                            ? " with limited details. Check the original notification email if contact info is missing."
+                                            : "."}
+                                    </div>
+                                )}
+
                                 <div>
                                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                                         Contact Info
                                     </label>
                                     <div className="mt-1.5 space-y-1 text-sm">
-                                        <p className="flex items-center gap-2">
-                                            <Mail className="h-4 w-4 text-muted-foreground" />
-                                            <a
-                                                href={`mailto:${detail.email}`}
-                                                className="text-blue-600 hover:underline"
-                                            >
-                                                {detail.email}
-                                            </a>
-                                        </p>
+                                        {(() => {
+                                            const applicantEmail =
+                                                detail.formData?.email ||
+                                                (detail.email.includes("@legacy.urbanchurn.local")
+                                                    ? ""
+                                                    : detail.email);
+                                            if (!applicantEmail) return null;
+                                            return (
+                                                <p className="flex items-center gap-2">
+                                                    <Mail className="h-4 w-4 text-muted-foreground" />
+                                                    <a
+                                                        href={`mailto:${applicantEmail}`}
+                                                        className="text-blue-600 hover:underline"
+                                                    >
+                                                        {applicantEmail}
+                                                    </a>
+                                                </p>
+                                            );
+                                        })()}
                                         {detail.phone && (
                                             <p className="flex items-center gap-2">
                                                 <Phone className="h-4 w-4 text-muted-foreground" />
