@@ -2,6 +2,7 @@ import { useState, useMemo, useRef } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import SEO from "@/components/SEO";
+import OptimizedImage from "@/components/OptimizedImage";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -125,7 +126,7 @@ export default function Events() {
             {/* Hero */}
             <section className="bg-[#111118] text-white relative overflow-hidden">
                 <div className="absolute inset-0">
-                    <img src={`${BASE}images/uc-events-hero.jpg`} alt="Urban Churn events, tastings and ice cream experiences" className="w-full h-full object-cover object-center opacity-40" />
+                    <OptimizedImage src="uc-events-hero.jpg" alt="Urban Churn events, tastings and ice cream experiences" className="w-full h-full object-cover object-center opacity-40" />
                     <div className="absolute inset-0 bg-gradient-to-r from-[#111118] via-[#111118]/50 to-transparent" />
                 </div>
                 <div className="relative max-w-7xl mx-auto px-4 sm:px-8 pt-36 pb-20 md:pt-44 md:pb-24">

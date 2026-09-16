@@ -126,6 +126,63 @@ function injectOgTags(html: string, og: OgData): string {
 const PRODUCT_PATTERN = /^\/pre-order\/([^/]+)\/?$/;
 const EVENT_PATTERN = /^\/events\/([^/]+)\/?$/;
 
+/** Static SEO metadata for key marketing pages (served before React hydrates) */
+const STATIC_PAGE_OG: Record<string, OgData> = {
+    "/": {
+        title: "Urban Churn | Craft Ice Cream — Unique Flavors, Natural Ingredients",
+        description: "Urban Churn crafts super premium ice cream with 16% butterfat local PA dairy, no artificial colors or flavors. Pre-order limited batch flavors for pickup in Carlisle, Mechanicsburg & Harrisburg, PA.",
+        image: DEFAULT_OG_IMAGE,
+        url: `${PUBLIC_URL}/`,
+    },
+    "/pre-order": {
+        title: "Pre-Order Ice Cream | Urban Churn",
+        description: "Pre-order limited batch craft ice cream for pickup at Urban Churn locations in Carlisle, Mechanicsburg, and Harrisburg, PA.",
+        image: DEFAULT_OG_IMAGE,
+        url: `${PUBLIC_URL}/pre-order`,
+    },
+    "/locations": {
+        title: "Locations & Menu | Urban Churn",
+        description: "Visit Urban Churn in Carlisle, Mechanicsburg, or Harrisburg, PA. View store hours, menus, and rotating flavors at each location.",
+        image: DEFAULT_OG_IMAGE,
+        url: `${PUBLIC_URL}/locations`,
+    },
+    "/about": {
+        title: "About Us | Urban Churn",
+        description: "Learn the story behind Urban Churn — a Central PA craft creamery making unique, culturally inspired ice cream with natural ingredients.",
+        image: DEFAULT_OG_IMAGE,
+        url: `${PUBLIC_URL}/about`,
+    },
+    "/events": {
+        title: "Events | Urban Churn",
+        description: "Discover upcoming Urban Churn events — tastings, pop-ups, and community gatherings across Central PA.",
+        image: DEFAULT_OG_IMAGE,
+        url: `${PUBLIC_URL}/events`,
+    },
+    "/catering": {
+        title: "Ice Cream Catering | Urban Churn",
+        description: "Book Urban Churn for weddings, corporate events, and parties. Craft ice cream catering across Central Pennsylvania.",
+        image: DEFAULT_OG_IMAGE,
+        url: `${PUBLIC_URL}/catering`,
+    },
+    "/contact": {
+        title: "Contact Us | Urban Churn",
+        description: "Get in touch with Urban Churn. Questions about pre-orders, catering, wholesale, or visiting our Central PA locations.",
+        image: DEFAULT_OG_IMAGE,
+        url: `${PUBLIC_URL}/contact`,
+    },
+    "/gift-cards": {
+        title: "Gift Cards | Urban Churn",
+        description: "Send a digital gift card redeemable at all Urban Churn locations in Carlisle, Mechanicsburg, and Harrisburg, PA.",
+        image: DEFAULT_OG_IMAGE,
+        url: `${PUBLIC_URL}/gift-cards`,
+    },
+};
+
+function getStaticPageOg(path: string): OgData | null {
+    const normalized = path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path;
+    return STATIC_PAGE_OG[normalized] ?? null;
+}
+
 async function getProductOg(slug: string): Promise<OgData | null> {
     const [flavour] = await db
         .select({
@@ -205,6 +262,10 @@ export function ogTagsMiddleware() {
             } catch (err) {
                 console.error("[OG] Error fetching event data:", err);
             }
+        }
+
+        if (!og) {
+            og = getStaticPageOg(req.path);
         }
 
         let html: string;

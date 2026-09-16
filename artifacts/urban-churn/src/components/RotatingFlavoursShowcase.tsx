@@ -2,6 +2,7 @@ import { useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
+import OptimizedImage from "@/components/OptimizedImage";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -99,7 +100,7 @@ export default function RotatingFlavoursShowcase({
       <div ref={sectionRef} className="relative w-full lg:min-h-screen" style={{ background: "#111118" }}>
         {/* Background image + overlay */}
         <div className="absolute inset-0">
-          <img src={`${BASE}images/uc-rotating-bg.jpg`} alt="Rotating seasonal ice cream flavors" className="w-full h-full object-cover object-bottom" />
+          <OptimizedImage src="uc-rotating-bg.jpg" alt="Rotating seasonal ice cream flavors" className="w-full h-full object-cover object-bottom" />
           <div className="absolute inset-0 bg-[#111118]/60" />
         </div>
 

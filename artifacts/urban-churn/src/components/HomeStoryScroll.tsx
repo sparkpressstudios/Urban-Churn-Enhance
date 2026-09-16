@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
+import OptimizedImage from "@/components/OptimizedImage";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -98,8 +99,8 @@ export default function HomeStoryScroll() {
       <section ref={sectionRef} className="relative h-screen overflow-hidden bg-[#111118]">
         {/* Background image */}
         <div className="absolute inset-0 overflow-hidden z-0">
-          <img
-            src={`${BASE}images/uc-history.jpg`}
+          <OptimizedImage
+            src="uc-history.jpg"
             alt="The Urban Churn story — craft ice cream heritage"
             className="story-bg-img w-full h-full object-cover scale-[1.05]"
           />
