@@ -19,6 +19,7 @@ export const inquiryTypeEnum = pgEnum("inquiry_type", [
     "catering",
     "fundraising",
     "bakery",
+    "career",
 ]);
 
 export const inquiryStatusEnum = pgEnum("inquiry_status", [
