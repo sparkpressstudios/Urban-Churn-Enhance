@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
 import { locationsTable, locationHoursTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 
 type HourSpec = { openTime: string; closeTime: string; isClosed: boolean };
 
@@ -69,7 +69,7 @@ async function main() {
             .where(
                 and(
                     eq(locationHoursTable.locationId, loc.id),
-                    eq(locationHoursTable.setNumber, 2),
+                    ne(locationHoursTable.setNumber, 1),
                 ),
             );
 
