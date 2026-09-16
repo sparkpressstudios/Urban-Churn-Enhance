@@ -1201,6 +1201,18 @@ router.post("/careers/apply", async (req, res) => {
 
     const data = { name, email, phone, location, about: about || "", why: why || "" };
 
+    // Persist to CRM
+    db.insert(inquiriesTable)
+        .values({
+            type: "career",
+            name,
+            email,
+            phone,
+            message: why || about || "",
+            formData: data,
+        })
+        .catch((e) => console.error("[DB] Failed to persist career inquiry:", e));
+
     sendCareerApplicationNotification(data).catch((e) =>
         console.error("[EMAIL] Career application notification failed:", e),
     );
