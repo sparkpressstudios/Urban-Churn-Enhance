@@ -39,11 +39,12 @@ import {
     Calendar,
     Users,
     Building2,
+    MapPin,
 } from "lucide-react";
 
 // ── Types ──
 
-type InquiryType = "contact" | "wholesale" | "catering" | "fundraising" | "bakery";
+type InquiryType = "contact" | "wholesale" | "catering" | "fundraising" | "bakery" | "career";
 type InquiryStatus = "new" | "follow_up" | "contacted" | "completed" | "archived";
 
 interface InquiryNote {
@@ -79,6 +80,7 @@ const TYPE_LABELS: Record<InquiryType, string> = {
     catering: "Catering",
     fundraising: "Fundraising",
     bakery: "Bakery",
+    career: "Career",
 };
 
 const TYPE_COLORS: Record<InquiryType, string> = {
@@ -87,6 +89,7 @@ const TYPE_COLORS: Record<InquiryType, string> = {
     catering: "bg-orange-100 text-orange-800",
     fundraising: "bg-green-100 text-green-800",
     bakery: "bg-pink-100 text-pink-800",
+    career: "bg-teal-100 text-teal-800",
 };
 
 const STATUS_LABELS: Record<InquiryStatus, string> = {
@@ -239,7 +242,7 @@ export default function AdminInquiries() {
                 <div data-tour="admin-inquiries-header">
                     <h1 className="text-xl sm:text-2xl font-bold text-white">Inquiries</h1>
                     <p className="text-white/70 text-sm mt-1">
-                        Contact forms, wholesale interest, catering requests &amp; fundraising leads
+                        Contact forms, wholesale interest, catering requests, fundraising leads &amp; career applications
                     </p>
                 </div>
 
@@ -281,7 +284,7 @@ export default function AdminInquiries() {
                         onValueChange={setTypeFilter}
                         className="w-full sm:w-auto"
                     >
-                        <TabsList>
+                        <TabsList className="h-auto flex-wrap justify-start">
                             <TabsTrigger value="all">
                                 All{" "}
                                 <Badge variant="secondary" className="ml-1.5 text-xs">
@@ -467,6 +470,12 @@ function InquiryRow({
                                     {fd.businessName}
                                 </span>
                             )}
+                            {inquiry.type === "career" && fd.location && (
+                                <span className="flex items-center gap-1">
+                                    <MapPin className="h-3 w-3" />
+                                    {fd.location}
+                                </span>
+                            )}
                         </div>
 
                         {inquiry.message && (
@@ -643,10 +652,21 @@ function InquiryDetail({
                 {inquiry.message && (
                     <div>
                         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Message
+                            {inquiry.type === "career" ? "About Themselves" : "Message"}
                         </label>
                         <p className="mt-1.5 text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded-lg">
                             {inquiry.message}
+                        </p>
+                    </div>
+                )}
+
+                {inquiry.type === "career" && fd.why && (
+                    <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Why They Want to Join
+                        </label>
+                        <p className="mt-1.5 text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded-lg">
+                            {fd.why}
                         </p>
                     </div>
                 )}
@@ -776,6 +796,10 @@ function FormDataSection({
                 fields.push({ label: "Organization", value: data.orgName });
             if (data.orgType)
                 fields.push({ label: "Org Type", value: data.orgType });
+            break;
+        case "career":
+            if (data.location)
+                fields.push({ label: "Location", value: data.location });
             break;
         case "bakery":
             if (data.orderNumber)
