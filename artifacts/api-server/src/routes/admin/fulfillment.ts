@@ -5,37 +5,22 @@ import {
     orderItemsTable,
     locationsTable,
 } from "@workspace/db/schema";
-import { eq, and, sql, desc, asc, or, ilike, gte, lte } from "drizzle-orm";
+import { eq, and, sql, desc, asc } from "drizzle-orm";
 import { updateSquareOrderState } from "../../lib/square";
+import {
+    buildFulfillmentItemConditions,
+    buildFulfillmentOrderConditions,
+    generateFulfillmentCsv,
+    parseFulfillmentFilters,
+    type FulfillmentExportFormat,
+} from "../../lib/fulfillment-export";
 
 const router: IRouter = Router();
 
 // Fulfillment summary: aggregate unfulfilled orders by location → flavour × size
 router.get("/summary", async (req, res) => {
-    const locationId = req.query.locationId
-        ? Number(req.query.locationId)
-        : undefined;
-    const from = req.query.from as string | undefined;
-    const to = req.query.to as string | undefined;
-    const flavourName = req.query.flavourName as string | undefined;
-
-    const conditions = [
-        sql`${ordersTable.status} IN ('pending', 'confirmed', 'ready')`,
-    ];
-    if (locationId) {
-        conditions.push(eq(ordersTable.locationId, locationId));
-    }
-    if (from) {
-        conditions.push(gte(ordersTable.createdAt, new Date(from)));
-    }
-    if (to) {
-        const toEnd = new Date(to);
-        toEnd.setHours(23, 59, 59, 999);
-        conditions.push(lte(ordersTable.createdAt, toEnd));
-    }
-    if (flavourName) {
-        conditions.push(ilike(orderItemsTable.flavourName, flavourName));
-    }
+    const filters = parseFulfillmentFilters(req.query);
+    const conditions = buildFulfillmentItemConditions(filters);
 
     const rows = await db
         .select({
@@ -69,7 +54,6 @@ router.get("/summary", async (req, res) => {
             asc(orderItemsTable.sizeName),
         );
 
-    // Group by location for easier frontend consumption
     const byLocation: Record<
         number,
         {
@@ -105,47 +89,8 @@ router.get("/summary", async (req, res) => {
 
 // Fulfillment orders: searchable list of unfulfilled orders for pickup
 router.get("/orders", async (req, res) => {
-    const search = (req.query.search as string) || "";
-    const locationId = req.query.locationId
-        ? Number(req.query.locationId)
-        : undefined;
-    const from = req.query.from as string | undefined;
-    const to = req.query.to as string | undefined;
-    const flavourName = req.query.flavourName as string | undefined;
-
-    const conditions = [
-        sql`${ordersTable.status} IN ('pending', 'confirmed', 'ready')`,
-    ];
-    if (locationId) {
-        conditions.push(eq(ordersTable.locationId, locationId));
-    }
-    if (from) {
-        conditions.push(gte(ordersTable.createdAt, new Date(from)));
-    }
-    if (to) {
-        const toEnd = new Date(to);
-        toEnd.setHours(23, 59, 59, 999);
-        conditions.push(lte(ordersTable.createdAt, toEnd));
-    }
-    if (search) {
-        conditions.push(
-            or(
-                ilike(ordersTable.orderNumber, `%${search}%`),
-                ilike(ordersTable.customerName, `%${search}%`),
-                ilike(ordersTable.customerEmail, `%${search}%`),
-            )!,
-        );
-    }
-
-    // When filtering by flavour, use a subquery to find matching order IDs
-    if (flavourName) {
-        conditions.push(
-            sql`${ordersTable.id} IN (
-                SELECT ${orderItemsTable.orderId} FROM ${orderItemsTable}
-                WHERE ${orderItemsTable.flavourName} ILIKE ${flavourName}
-            )`,
-        );
-    }
+    const filters = parseFulfillmentFilters(req.query);
+    const conditions = buildFulfillmentOrderConditions(filters);
 
     const orders = await db
         .select({
@@ -170,7 +115,6 @@ router.get("/orders", async (req, res) => {
         .orderBy(desc(ordersTable.createdAt))
         .limit(100);
 
-    // Attach items for each order
     const orderIds = orders.map((o) => o.id);
     const items =
         orderIds.length > 0
@@ -199,6 +143,25 @@ router.get("/orders", async (req, res) => {
     );
 });
 
+// CSV export for fulfillment (summary or line-item detail)
+router.get("/export/csv", async (req, res) => {
+    const format: FulfillmentExportFormat =
+        req.query.format === "summary" ? "summary" : "detail";
+    const filters = parseFulfillmentFilters(req.query);
+
+    const csv = await generateFulfillmentCsv(format, filters);
+    const date = new Date().toISOString().split("T")[0];
+    const prefix =
+        format === "summary" ? "fulfillment-summary" : "fulfillment-orders";
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${prefix}-${date}.csv"`,
+    );
+    res.send("\uFEFF" + csv);
+});
+
 // Mark order as picked up
 router.put("/orders/:id/pickup", async (req, res) => {
     const id = Number(req.params.id);
@@ -221,7 +184,6 @@ router.put("/orders/:id/pickup", async (req, res) => {
         return;
     }
 
-    // Push status to Square POS
     let squareSyncError = false;
     if (order.squareOrderId) {
         const [loc] = await db

@@ -358,17 +358,34 @@ export const api = {
     },
 
     // Fulfillment
-    getFulfillmentSummary: (params?: { locationId?: number; from?: string; to?: string; flavourName?: string }) => {
+    getFulfillmentSummary: (params?: { locationId?: number; from?: string; to?: string; flavourName?: string; preOrderWindowId?: number }) => {
         const qs = params ? "?" + new URLSearchParams(
             Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
         ).toString() : "";
         return apiFetch(`/admin/fulfillment/summary${qs}`);
     },
-    getFulfillmentOrders: (params?: { search?: string; locationId?: number; from?: string; to?: string; flavourName?: string }) => {
+    getFulfillmentOrders: (params?: { search?: string; locationId?: number; from?: string; to?: string; flavourName?: string; preOrderWindowId?: number }) => {
         const qs = params ? "?" + new URLSearchParams(
             Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
         ).toString() : "";
         return apiFetch(`/admin/fulfillment/orders${qs}`);
+    },
+    exportFulfillmentCsv: (params?: {
+        format?: "summary" | "detail";
+        locationId?: number;
+        from?: string;
+        to?: string;
+        flavourName?: string;
+        preOrderWindowId?: number;
+    }) => {
+        const searchParams = new URLSearchParams();
+        if (params) {
+            for (const [key, value] of Object.entries(params)) {
+                if (value !== undefined) searchParams.set(key, String(value));
+            }
+        }
+        const qs = searchParams.toString();
+        return `${API_BASE}/admin/fulfillment/export/csv${qs ? `?${qs}` : ""}`;
     },
     markOrderPickup: (id: number) =>
         apiFetch(`/admin/fulfillment/orders/${id}/pickup`, { method: "PUT" }),
