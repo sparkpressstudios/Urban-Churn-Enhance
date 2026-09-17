@@ -66,6 +66,13 @@ const STATUS_COLORS: Record<InquiryStatus, string> = {
 };
 
 const PIPELINE_STATUSES: InquiryStatus[] = ["new", "follow_up", "contacted", "completed"];
+const APPLICATION_WINDOW_DAYS = 30;
+
+function applicationWindowStart(): string {
+    const start = new Date();
+    start.setDate(start.getDate() - APPLICATION_WINDOW_DAYS);
+    return start.toISOString();
+}
 
 function timeAgo(dateStr: string): string {
     const now = new Date();
@@ -95,7 +102,12 @@ export function CareerApplicationsTab() {
 
     const { data, isLoading } = useQuery({
         queryKey: ["career-applications"],
-        queryFn: () => api.getInquiries({ type: "career" }),
+        queryFn: () =>
+            api.getInquiries({
+                type: "career",
+                dateFrom: applicationWindowStart(),
+                limit: "200",
+            }),
     });
 
     const { data: detail } = useQuery({
@@ -175,7 +187,7 @@ export function CareerApplicationsTab() {
                         <div>
                             <CardTitle className="text-lg">Job Applications</CardTitle>
                             <p className="text-sm text-muted-foreground mt-1">
-                                Submissions from the public careers page application form
+                                Submissions from the last 30 days
                             </p>
                         </div>
                         <div className="flex items-center gap-2">

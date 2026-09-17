@@ -1,9 +1,16 @@
 import { Resend } from "resend";
 import { db } from "@workspace/db";
 import { inquiriesTable, sentEmailsLogTable } from "@workspace/db/schema";
-import { and, eq, like, sql } from "drizzle-orm";
+import { and, eq, gte, like, sql } from "drizzle-orm";
 
 const CAREER_SUBJECT_PREFIX = "Career Application:";
+const IMPORT_WINDOW_DAYS = 30;
+
+function importCutoffDate() {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - IMPORT_WINDOW_DAYS);
+    return cutoff;
+}
 
 export interface ParsedCareerApplication {
     name: string;
@@ -77,7 +84,12 @@ export async function previewCareerApplicationImport() {
             id: sentEmailsLogTable.id,
         })
         .from(sentEmailsLogTable)
-        .where(like(sentEmailsLogTable.subject, `${CAREER_SUBJECT_PREFIX}%`));
+        .where(
+            and(
+                like(sentEmailsLogTable.subject, `${CAREER_SUBJECT_PREFIX}%`),
+                gte(sentEmailsLogTable.createdAt, importCutoffDate()),
+            ),
+        );
 
     const importedRows = await db
         .select({
@@ -103,10 +115,16 @@ export async function previewCareerApplicationImport() {
 }
 
 export async function importCareerApplicationsFromEmailLog() {
+    const cutoff = importCutoffDate();
     const emailLogs = await db
         .select()
         .from(sentEmailsLogTable)
-        .where(like(sentEmailsLogTable.subject, `${CAREER_SUBJECT_PREFIX}%`))
+        .where(
+            and(
+                like(sentEmailsLogTable.subject, `${CAREER_SUBJECT_PREFIX}%`),
+                gte(sentEmailsLogTable.createdAt, cutoff),
+            ),
+        )
         .orderBy(sentEmailsLogTable.createdAt);
 
     const importedRows = await db

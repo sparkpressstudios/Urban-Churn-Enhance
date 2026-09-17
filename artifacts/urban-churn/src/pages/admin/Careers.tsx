@@ -144,7 +144,15 @@ export default function AdminCareers() {
 
     const { data: applicationsData } = useQuery({
         queryKey: ["career-applications"],
-        queryFn: () => api.getInquiries({ type: "career" }),
+        queryFn: () => {
+            const start = new Date();
+            start.setDate(start.getDate() - 30);
+            return api.getInquiries({
+                type: "career",
+                dateFrom: start.toISOString(),
+                limit: "200",
+            });
+        },
     });
 
     // ── Job mutations ──
