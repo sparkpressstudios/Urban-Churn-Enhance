@@ -110,7 +110,7 @@ export function CareerApplicationsTab() {
             }),
     });
 
-    const { data: detail } = useQuery({
+    const { data: detail } = useQuery<CareerApplication & { notes: InquiryNote[] }>({
         queryKey: ["inquiry", selectedId],
         queryFn: () => api.getInquiry(selectedId!),
         enabled: selectedId !== null,
@@ -468,7 +468,7 @@ export function CareerApplicationsTab() {
                                         </div>
                                         {detail.notes && detail.notes.length > 0 ? (
                                             <div className="space-y-2 max-h-64 overflow-y-auto">
-                                                {detail.notes.map((note) => (
+                                                {detail.notes.map((note: InquiryNote) => (
                                                     <div
                                                         key={note.id}
                                                         className="bg-muted/50 rounded-lg p-3 text-sm"
