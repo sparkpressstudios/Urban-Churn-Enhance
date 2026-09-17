@@ -402,6 +402,12 @@ export async function sendTicketConfirmation(order: {
 // ── Form Submission Emails ──
 
 const CONTACT_EMAIL = "contact@urbanchurn.com";
+const FORM_NOTIFICATION_EMAILS = [
+    CONTACT_EMAIL,
+    "zach@urbanchurn.com",
+    "kiah@urbanchurn.com",
+    "nichole@urbanchurn.com",
+];
 
 export async function sendContactFormNotification(data: {
   name: string;
@@ -428,7 +434,7 @@ export async function sendContactFormNotification(data: {
       </div>
     </div>`;
 
-  return send(CONTACT_EMAIL, `Contact Form: ${data.subject || "General"} — ${data.name}`, html);
+  return sendToMany(FORM_NOTIFICATION_EMAILS, `Contact Form: ${data.subject || "General"} — ${data.name}`, html);
 }
 
 export async function sendContactFormConfirmation(data: {
@@ -479,7 +485,7 @@ export async function sendWholesaleFormNotification(data: {
       </div>
     </div>`;
 
-  return send(CONTACT_EMAIL, `Wholesale Application: ${data.businessName} — ${data.contactName}`, html);
+  return sendToMany(FORM_NOTIFICATION_EMAILS, `Wholesale Application: ${data.businessName} — ${data.contactName}`, html);
 }
 
 export async function sendWholesaleFormConfirmation(data: {
@@ -530,7 +536,7 @@ export async function sendCateringFormNotification(data: {
       </div>
     </div>`;
 
-  return send(CONTACT_EMAIL, `Catering Request: ${data.eventType} — ${data.firstName} ${data.lastName}`, html);
+  return sendToMany(FORM_NOTIFICATION_EMAILS, `Catering Request: ${data.eventType} — ${data.firstName} ${data.lastName}`, html);
 }
 
 export async function sendCateringFormConfirmation(data: {
@@ -655,7 +661,7 @@ export async function sendBakeryOrderNotification(order: {
 
   // Keep all bakery staff recipients in one Resend send so every address appears in Resend logs.
   await sendToMany(
-    [CONTACT_EMAIL, ORDERS_EMAIL, LOUISE_DRIVE_BAKERY_EMAIL],
+    [...FORM_NOTIFICATION_EMAILS, ORDERS_EMAIL, LOUISE_DRIVE_BAKERY_EMAIL],
     subject,
     html,
   );
@@ -1110,8 +1116,6 @@ export async function sendEventQuestionNotification(opts: {
   email: string;
   message: string;
 }) {
-  const CONTACT_EMAIL = "contact@urbanchurn.com";
-
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       ${headerHtml('Event Question')}
@@ -1127,7 +1131,7 @@ export async function sendEventQuestionNotification(opts: {
       </div>
     </div>`;
 
-  return send(CONTACT_EMAIL, `Event Question: ${opts.eventTitle} — from ${opts.name}`, html);
+  return sendToMany(FORM_NOTIFICATION_EMAILS, `Event Question: ${opts.eventTitle} — from ${opts.name}`, html);
 }
 
 // ── Career Application Emails ──
@@ -1140,8 +1144,6 @@ export async function sendCareerApplicationNotification(data: {
   about: string;
   why: string;
 }) {
-  const CONTACT_EMAIL = "contact@urbanchurn.com";
-
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
       ${HEADER_HTML}
@@ -1160,7 +1162,7 @@ export async function sendCareerApplicationNotification(data: {
       </div>
     </div>`;
 
-  return send(CONTACT_EMAIL, `Career Application: ${data.location} — ${data.name}`, html);
+  return sendToMany(FORM_NOTIFICATION_EMAILS, `Career Application: ${data.location} — ${data.name}`, html);
 }
 
 export async function sendCareerApplicationConfirmation(data: {
@@ -1210,7 +1212,7 @@ export async function sendFundraisingFormNotification(data: {
       </div>
     </div>`;
 
-  return send(CONTACT_EMAIL, `Fundraiser Application: ${data.orgName} — ${data.contactName}`, html);
+  return sendToMany(FORM_NOTIFICATION_EMAILS, `Fundraiser Application: ${data.orgName} — ${data.contactName}`, html);
 }
 
 export async function sendFundraisingFormConfirmation(data: {
