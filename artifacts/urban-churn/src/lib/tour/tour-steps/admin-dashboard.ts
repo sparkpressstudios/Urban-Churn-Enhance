@@ -12,7 +12,7 @@ export const adminDashboardSteps: Step[] = [
         target: '[data-tour="admin-period-selector"]',
         title: "Time Period",
         content:
-            "Switch between 7, 30, or 90-day views. All stats, charts, and tables update to reflect the selected window.",
+            "Switch between recent windows (7, 30, or 90 days) or pick any month from this year. All stats, charts, and tables update to reflect the selected period.",
     },
     {
         target: '[data-tour="admin-export-btn"]',
