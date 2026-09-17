@@ -3,9 +3,9 @@ import type { Step } from "react-joyride";
 export const adminCareersSteps: Step[] = [
     {
         target: '[data-tour="admin-careers-header"]',
-        title: "Careers Management",
+        title: "Careers",
         content:
-            "Review job applications, manage postings, and career page benefits displayed on the public careers page.",
+            "The Careers section in the sidebar has Applications, Job Postings, and Benefits. Open Applications to review employment submissions.",
         skipBeacon: true,
     },
     {

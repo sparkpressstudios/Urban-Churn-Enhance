@@ -23,6 +23,8 @@ import {
     Truck,
     MessageSquare,
     TicketCheck,
+    UserRound,
+    Heart,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -54,8 +56,15 @@ const navGroups: NavGroup[] = [
             { href: "/admin/coupons", label: "Coupons", icon: Ticket },
             { href: "/admin/events", label: "Events", icon: CalendarDays },
             { href: "/admin/event-orders", label: "Event Orders", icon: TicketCheck },
-            { href: "/admin/careers", label: "Careers & Hiring", icon: Briefcase },
             { href: "/admin/rotating-flavours", label: "Rotating Flavors", icon: IceCreamCone },
+        ],
+    },
+    {
+        heading: "Careers",
+        items: [
+            { href: "/admin/careers", label: "Applications", icon: UserRound },
+            { href: "/admin/careers/jobs", label: "Job Postings", icon: Briefcase },
+            { href: "/admin/careers/benefits", label: "Benefits", icon: Heart },
         ],
     },
     {
@@ -114,9 +123,17 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         })
         .filter((g): g is NavGroup => g !== null && g.items.length > 0);
 
+    const allHrefs = visibleGroups.flatMap((group) => group.items.map((item) => item.href));
     const isActive = (href: string) => {
         if (href === "/admin") return location === "/admin";
-        return location.startsWith(href);
+        if (location === href) return true;
+        const matching = allHrefs.filter(
+            (candidate) =>
+                candidate !== "/admin" &&
+                (location === candidate || location.startsWith(`${candidate}/`)),
+        );
+        const best = matching.sort((a, b) => b.length - a.length)[0];
+        return best === href;
     };
 
     const sidebar = (

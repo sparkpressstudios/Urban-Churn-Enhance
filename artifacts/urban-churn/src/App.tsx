@@ -356,6 +356,20 @@ function Router() {
           </ProtectedRoute>
         </Suspense>
       </Route>
+      <Route path="/admin/careers/jobs">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminCareers />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+      <Route path="/admin/careers/benefits">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <AdminCareers />
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
       <Route path="/admin/careers">
         <Suspense fallback={<AdminFallback />}>
           <ProtectedRoute>

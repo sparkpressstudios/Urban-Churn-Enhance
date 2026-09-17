@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -118,6 +119,13 @@ const emptyBenefit: Omit<CareerBenefit, "id"> = {
 export default function AdminCareers() {
     const queryClient = useQueryClient();
     const { toast } = useToast();
+    const [location, setLocation] = useLocation();
+    const activeTab =
+        location.startsWith("/admin/careers/benefits")
+            ? "benefits"
+            : location.startsWith("/admin/careers/jobs")
+                ? "jobs"
+                : "applications";
 
     // Job dialog state
     const [jobDialogOpen, setJobDialogOpen] = useState(false);
@@ -311,9 +319,17 @@ export default function AdminCareers() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6" data-tour="admin-careers-header">
                 <div>
-                    <h1 className="text-xl sm:text-2xl font-bold text-white">Careers</h1>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white">
+                        {activeTab === "applications"
+                            ? "Career Applications"
+                            : activeTab === "jobs"
+                                ? "Job Postings"
+                                : "Career Benefits"}
+                    </h1>
                     <p className="text-white/70 text-sm mt-1">
-                        Review job applications, manage postings, and career page benefits
+                        {activeTab === "applications"
+                            ? "Employment applications from the public careers form"
+                            : "Manage job postings and career page benefits"}
                     </p>
                 </div>
             </div>
@@ -356,7 +372,16 @@ export default function AdminCareers() {
             </div>
 
             {/* Tabs */}
-            <Tabs defaultValue={newApplications > 0 ? "applications" : "jobs"} className="space-y-4" data-tour="admin-careers-tabs">
+            <Tabs
+                value={activeTab}
+                onValueChange={(value) => {
+                    if (value === "jobs") setLocation("/admin/careers/jobs");
+                    else if (value === "benefits") setLocation("/admin/careers/benefits");
+                    else setLocation("/admin/careers");
+                }}
+                className="space-y-4"
+                data-tour="admin-careers-tabs"
+            >
                 <TabsList>
                     <TabsTrigger value="applications" className="gap-2">
                         <UserRound className="w-4 h-4" />
