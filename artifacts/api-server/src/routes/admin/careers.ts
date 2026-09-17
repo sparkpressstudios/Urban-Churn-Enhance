@@ -2,8 +2,24 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { jobPostingsTable, careerBenefitsTable } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
+import {
+    importCareerApplicationsFromEmailLog,
+    previewCareerApplicationImport,
+} from "../../lib/career-application-import";
 
 const router: IRouter = Router();
+
+// ══════════════════════════════════════════
+//  APPLICATION IMPORT (legacy email log)
+// ══════════════════════════════════════════
+
+router.get("/applications/import-preview", async (_req, res) => {
+    res.json(await previewCareerApplicationImport());
+});
+
+router.post("/applications/import", async (_req, res) => {
+    res.json(await importCareerApplicationsFromEmailLog());
+});
 
 // ══════════════════════════════════════════
 //  JOB POSTINGS

@@ -5,7 +5,7 @@ export const adminInquiriesSteps: Step[] = [
         target: '[data-tour="admin-inquiries-header"]',
         title: "Inquiries & Leads",
         content:
-            "Manage contact form submissions, catering requests, fundraising leads, and wholesale inquiries in one pipeline.",
+            "Manage contact form submissions, career applications, catering requests, fundraising leads, and wholesale inquiries in one pipeline.",
         skipBeacon: true,
     },
     {
@@ -18,7 +18,7 @@ export const adminInquiriesSteps: Step[] = [
         target: '[data-tour="admin-inquiries-type-tabs"]',
         title: "Inquiry Types",
         content:
-            "Filter by type — Contact, Wholesale, Catering, Fundraising, or Bakery — to focus on specific requests.",
+            "Filter by type — Contact, Career, Wholesale, Catering, Fundraising, or Bakery — to focus on specific requests.",
     },
     {
         target: '[data-tour="admin-inquiries-search"]',
