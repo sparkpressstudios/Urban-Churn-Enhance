@@ -810,17 +810,21 @@ export async function syncInquiriesToContacts(): Promise<{ imported: number; ski
 }
 
 export async function syncSquareCustomersToContacts(): Promise<{
+    fetched: number;
     imported: number;
     skipped: number;
     updated: number;
     subscribed: number;
     suppressed: number;
 }> {
-    const { listAllSquareCustomers } = await import("./square");
-    const squareCustomers = await listAllSquareCustomers();
+    const { listSquareMarketingCustomers } = await import("./square");
+    const squareSubscribers = await listSquareMarketingCustomers();
     const existingContacts = await db.select().from(emailContactsTable);
     const contactsByEmail = new Map(
         existingContacts.map((contact) => [contact.email.toLowerCase(), contact]),
+    );
+    const explicitSquareEmails = new Set(
+        squareSubscribers.map((customer) => customer.email.toLowerCase()),
     );
 
     let imported = 0;
@@ -829,12 +833,11 @@ export async function syncSquareCustomersToContacts(): Promise<{
     let subscribed = 0;
     let suppressed = 0;
 
-    for (const customer of squareCustomers) {
+    for (const customer of squareSubscribers) {
         const email = customer.email.toLowerCase().trim();
         const existing = contactsByEmail.get(email);
 
         if (!existing) {
-            const hasConsent = customer.marketingConsent && !customer.emailUnsubscribed;
             const [created] = await db.insert(emailContactsTable).values({
                 email,
                 firstName: customer.firstName,
@@ -844,26 +847,18 @@ export async function syncSquareCustomersToContacts(): Promise<{
                 city: customer.city,
                 state: customer.state,
                 zip: customer.zip,
-                marketingStatus: hasConsent ? "subscribed" : "unsubscribed",
+                marketingStatus: "subscribed",
                 source: "square_sync",
-                consentSource: hasConsent
-                    ? "square_marketing_opt_in"
-                    : "square_customer_no_marketing_consent",
-                consentAt: hasConsent ? new Date() : null,
+                consentSource: "square_marketing_opt_in",
+                consentAt: new Date(),
                 customProperties: { squareCustomerId: customer.id },
             }).returning();
 
-            contactsByEmail.set(email, {
-                ...created,
-            });
-
-            if (hasConsent) {
-                await syncContactToResend(created.id, { allowResubscribe: true });
-                await sleep(150);
-            }
+            contactsByEmail.set(email, created);
+            await syncContactToResend(created.id, { allowResubscribe: true });
+            await sleep(150);
             imported++;
-            if (hasConsent) subscribed++;
-            else suppressed++;
+            subscribed++;
             continue;
         }
 
@@ -872,47 +867,33 @@ export async function syncSquareCustomersToContacts(): Promise<{
             squareCustomerId: customer.id,
         };
 
+        const isHardSuppressed =
+            existing.marketingStatus === "bounced" ||
+            existing.marketingStatus === "complained" ||
+            existing.consentSource === "resend_unsubscribe";
+
+        const squareManagedConsent =
+            ["square_pos", "square_customer_no_marketing_consent", "square_marketing_opt_out", "square_marketing_opt_out_or_removed", "square_marketing_opt_in"]
+                .includes(existing.consentSource);
+
         let nextStatus = existing.marketingStatus;
         let nextConsentSource = existing.consentSource;
         let nextConsentAt = existing.consentAt;
         let allowResubscribe = false;
 
-        if (
-            customer.emailUnsubscribed &&
-            existing.marketingStatus !== "bounced" &&
-            existing.marketingStatus !== "complained"
-        ) {
-            nextStatus = "unsubscribed";
-            nextConsentSource = "square_marketing_opt_out";
-            nextConsentAt = null;
-        } else if (
-            customer.marketingConsent &&
-            existing.marketingStatus !== "bounced" &&
-            existing.marketingStatus !== "complained" &&
-            existing.consentSource !== "resend_unsubscribe" &&
-            (
-                existing.marketingStatus === "subscribed" ||
-                ["square_pos", "square_customer_no_marketing_consent", "square_marketing_opt_out"].includes(existing.consentSource)
-            )
-        ) {
+        if (!isHardSuppressed && (existing.marketingStatus !== "subscribed" || squareManagedConsent)) {
             nextStatus = "subscribed";
             nextConsentSource = "square_marketing_opt_in";
-            nextConsentAt = new Date();
+            if (
+                existing.marketingStatus !== "subscribed" ||
+                existing.consentSource !== "square_marketing_opt_in"
+            ) {
+                nextConsentAt = new Date();
+            }
             allowResubscribe = existing.marketingStatus !== "subscribed";
-        } else if (
-            !customer.marketingConsent &&
-            existing.source === "square_sync" &&
-            existing.marketingStatus === "subscribed" &&
-            existing.consentSource === "square_pos"
-        ) {
-            // Repair records imported by the old sync, which treated a receipt
-            // email as marketing permission.
-            nextStatus = "unsubscribed";
-            nextConsentSource = "square_customer_no_marketing_consent";
-            nextConsentAt = null;
         }
 
-        const stateChanged =
+        const statusChanged =
             nextStatus !== existing.marketingStatus ||
             nextConsentSource !== existing.consentSource ||
             nextConsentAt !== existing.consentAt;
@@ -928,7 +909,7 @@ export async function syncSquareCustomersToContacts(): Promise<{
             (!existing.state && !!customer.state) ||
             (!existing.zip && !!customer.zip);
 
-        if (stateChanged || squareIdChanged || profileChanged) {
+        if (statusChanged || squareIdChanged || profileChanged) {
             await db
                 .update(emailContactsTable)
                 .set({
@@ -946,45 +927,61 @@ export async function syncSquareCustomersToContacts(): Promise<{
                     updatedAt: new Date(),
                 })
                 .where(eq(emailContactsTable.id, existing.id));
+            updated++;
+        } else {
+            skipped++;
         }
 
-        if (stateChanged || (!existing.resendContactId && nextStatus === "subscribed")) {
+        if (
+            !isHardSuppressed &&
+            (statusChanged || (!existing.resendContactId && nextStatus === "subscribed"))
+        ) {
             await syncContactToResend(existing.id, { allowResubscribe });
             await sleep(150);
         }
 
-        if (stateChanged) {
-            updated++;
-            if (nextStatus === "subscribed") subscribed++;
-            if (nextStatus === "unsubscribed") suppressed++;
-        } else {
-            skipped++;
+        if (statusChanged && nextStatus === "subscribed") {
+            subscribed++;
         }
     }
 
-    // Link Square customer ids onto website customer records for order/payment reconciliation.
-    const { customersTable } = await import("@workspace/db/schema");
-    const localCustomers = await db
-        .select({ id: customersTable.id, email: customersTable.email, squareCustomerId: customersTable.squareCustomerId })
-        .from(customersTable);
-    const localByEmail = new Map(
-        localCustomers
-            .filter((customer) => !!customer.email)
-            .map((customer) => [customer.email.toLowerCase(), customer]),
-    );
+    // Reconcile Square-managed subscriptions that are no longer present in
+    // Square's explicit subscriber audience. This catches opt-outs/removals
+    // without ever importing receipt-only customers.
+    for (const contact of existingContacts) {
+        if (contact.marketingStatus !== "subscribed") continue;
+        if (!["square_pos", "square_marketing_opt_in"].includes(contact.consentSource)) continue;
 
-    for (const sq of squareCustomers) {
-        const local = localByEmail.get(sq.email.toLowerCase());
-        if (local && !local.squareCustomerId) {
-            await db
-                .update(customersTable)
-                .set({ squareCustomerId: sq.id, updatedAt: new Date() })
-                .where(eq(customersTable.id, local.id));
-            updated++;
+        const email = contact.email.toLowerCase();
+        if (explicitSquareEmails.has(email)) continue;
+
+        await db
+            .update(emailContactsTable)
+            .set({
+                marketingStatus: "unsubscribed",
+                consentSource: "square_marketing_opt_out_or_removed",
+                consentAt: null,
+                updatedAt: new Date(),
+            })
+            .where(eq(emailContactsTable.id, contact.id));
+
+        if (contact.resendContactId) {
+            await syncContactToResend(contact.id);
+            await sleep(150);
         }
+
+        suppressed++;
+        updated++;
     }
 
-    return { imported, skipped, updated, subscribed, suppressed };
+    return {
+        fetched: squareSubscribers.length,
+        imported,
+        skipped,
+        updated,
+        subscribed,
+        suppressed,
+    };
 }
 
 export async function scheduleMarketingCampaign(
