@@ -9,6 +9,7 @@ import {
     emailTemplatesTable,
     emailTopicsTable,
     sentEmailsLogTable,
+    settingsTable,
     type EmailContact,
 } from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
@@ -23,6 +24,23 @@ export const MARKETING_FROM_EMAIL =
     process.env.MARKETING_FROM_EMAIL ||
     process.env.FROM_EMAIL ||
     "Urban Churn <noreply@urbanchurn.com>";
+
+export const MARKETING_POSTAL_ADDRESS =
+    process.env.MARKETING_POSTAL_ADDRESS ||
+    "1004 N 3rd St, Harrisburg, PA 17102";
+
+const MARKETING_WEBHOOK_SECRET_KEY = "resend_marketing_webhook_secret";
+const MARKETING_WEBHOOK_ID_KEY = "resend_marketing_webhook_id";
+
+function withMarketingComplianceFooter(html: string): string {
+    if (html.includes("RESEND_UNSUBSCRIBE_URL")) return html;
+
+    return `${html}
+<div style="border-top:1px solid #e5e7eb;margin-top:32px;padding:20px 16px;text-align:center;color:#6b7280;font-family:Arial,sans-serif;font-size:12px;line-height:1.5">
+  <p style="margin:0 0 6px">Urban Churn Craft Creamery · ${MARKETING_POSTAL_ADDRESS}</p>
+  <p style="margin:0"><a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:#4b5563;text-decoration:underline">Unsubscribe</a> · <a href="https://urbanchurn.com/privacy" style="color:#4b5563;text-decoration:underline">Privacy Policy</a></p>
+</div>`;
+}
 
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,6 +70,104 @@ export function isResendMarketingConfigured(): boolean {
     return !!resend;
 }
 
+export async function ensureResendMarketingWebhook(): Promise<{ configured: boolean; error?: string }> {
+    if (!resend) return { configured: false, error: "RESEND_API_KEY is not configured" };
+
+    const [savedSecret] = await db
+        .select({ value: settingsTable.value })
+        .from(settingsTable)
+        .where(eq(settingsTable.key, MARKETING_WEBHOOK_SECRET_KEY))
+        .limit(1);
+
+    if (savedSecret?.value) {
+        return { configured: true };
+    }
+
+    const baseUrl = (process.env.PUBLIC_SITE_URL || "https://urbanchurn.com").replace(/\/$/, "");
+    const endpoint = `${baseUrl}/api/webhooks/resend-marketing`;
+    const events = [
+        "email.delivered",
+        "email.opened",
+        "email.clicked",
+        "email.bounced",
+        "email.complained",
+        "contact.updated",
+    ];
+
+    try {
+        const { data, error } = await resend.webhooks.create({
+            endpoint,
+            events: events as any,
+        });
+
+        if (error) {
+            console.error("[RESEND-MARKETING] Could not create marketing webhook:", error.message);
+            return { configured: false, error: error.message };
+        }
+
+        const webhookId = (data as any)?.id as string | undefined;
+        const signingSecret =
+            ((data as any)?.signingSecret as string | undefined) ||
+            ((data as any)?.signing_secret as string | undefined);
+
+        if (!webhookId || !signingSecret) {
+            const message = "Resend created the webhook but did not return its id/signing secret";
+            console.error("[RESEND-MARKETING]", message);
+            return { configured: false, error: message };
+        }
+
+        await db
+            .insert(settingsTable)
+            .values({ key: MARKETING_WEBHOOK_SECRET_KEY, value: signingSecret })
+            .onConflictDoUpdate({
+                target: settingsTable.key,
+                set: { value: signingSecret, updatedAt: new Date() },
+            });
+
+        await db
+            .insert(settingsTable)
+            .values({ key: MARKETING_WEBHOOK_ID_KEY, value: webhookId })
+            .onConflictDoUpdate({
+                target: settingsTable.key,
+                set: { value: webhookId, updatedAt: new Date() },
+            });
+
+        console.log(`[RESEND-MARKETING] Marketing webhook configured: ${endpoint}`);
+        return { configured: true };
+    } catch (err: any) {
+        const message = err?.message || String(err);
+        console.error("[RESEND-MARKETING] Marketing webhook setup failed:", message);
+        return { configured: false, error: message };
+    }
+}
+
+export async function getResendMarketingWebhookSecret(): Promise<string | null> {
+    if (process.env.RESEND_MARKETING_WEBHOOK_SECRET) {
+        return process.env.RESEND_MARKETING_WEBHOOK_SECRET;
+    }
+
+    const [row] = await db
+        .select({ value: settingsTable.value })
+        .from(settingsTable)
+        .where(eq(settingsTable.key, MARKETING_WEBHOOK_SECRET_KEY))
+        .limit(1);
+
+    return row?.value || null;
+}
+
+export function verifyResendMarketingWebhook(payload: string, headers: {
+    id: string;
+    timestamp: string;
+    signature: string;
+}, webhookSecret: string): any {
+    if (!resend) throw new Error("RESEND_API_KEY is not configured");
+    return resend.webhooks.verify({
+        payload,
+        headers,
+        webhookSecret,
+    });
+}
+
 function buildResendContactProperties(contact: EmailContact): Record<string, string | number | null> {
     const props: Record<string, string | number | null> = {
         ...(contact.customProperties as Record<string, string | number | null>),
@@ -64,21 +180,34 @@ function buildResendContactProperties(contact: EmailContact): Record<string, str
     return props;
 }
 
-export async function upsertResendContact(contact: EmailContact): Promise<string | null> {
+export async function upsertResendContact(
+    contact: EmailContact,
+    opts: { allowResubscribe?: boolean } = {},
+): Promise<string | null> {
     if (!resend) return null;
 
-    const baseFields = {
+    const profileFields = {
         firstName: contact.firstName || undefined,
         lastName: contact.lastName || undefined,
-        unsubscribed: contact.marketingStatus !== "subscribed",
         properties: buildResendContactProperties(contact),
     };
+
+    // Never silently re-subscribe an existing Resend contact. We only send
+    // unsubscribed:false after a fresh, explicit opt-in (website form/admin
+    // action/Square marketing-consent change). Suppression is always allowed.
+    const subscriptionFields =
+        contact.marketingStatus !== "subscribed"
+            ? { unsubscribed: true }
+            : opts.allowResubscribe
+              ? { unsubscribed: false }
+              : {};
 
     if (contact.resendContactId) {
         const { data, error } = await resend.contacts.update({
             id: contact.resendContactId,
             email: null,
-            ...baseFields,
+            ...profileFields,
+            ...subscriptionFields,
         });
         if (error) {
             console.error("[RESEND-MARKETING] contact update failed:", error.message);
@@ -89,16 +218,19 @@ export async function upsertResendContact(contact: EmailContact): Promise<string
 
     const { data, error } = await resend.contacts.create({
         email: contact.email,
-        ...baseFields,
+        ...profileFields,
+        unsubscribed: contact.marketingStatus !== "subscribed",
     });
     if (error) {
-        // Contact may already exist — try update by email
+        // Contact may already exist in Resend. Preserve its existing
+        // subscription state unless this call represents explicit re-consent.
         const existing = await resend.contacts.get({ email: contact.email });
         if (existing.data?.id) {
             const updated = await resend.contacts.update({
                 id: existing.data.id,
                 email: null,
-                ...baseFields,
+                ...profileFields,
+                ...subscriptionFields,
             });
             if (updated.error) {
                 console.error("[RESEND-MARKETING] contact update by email failed:", updated.error.message);
@@ -191,7 +323,10 @@ export async function syncSegmentMembersToResend(segmentId: number): Promise<{ s
 }
 
 /** Best-effort sync after local contact create/update (non-blocking for API response). */
-export async function syncContactToResend(contactId: number): Promise<void> {
+export async function syncContactToResend(
+    contactId: number,
+    opts: { allowResubscribe?: boolean } = {},
+): Promise<void> {
     if (!resend) return;
 
     const [contact] = await db
@@ -202,7 +337,7 @@ export async function syncContactToResend(contactId: number): Promise<void> {
 
     if (!contact) return;
 
-    const resendContactId = await upsertResendContact(contact);
+    const resendContactId = await upsertResendContact(contact, opts);
     if (resendContactId && contact.resendContactId !== resendContactId) {
         await db
             .update(emailContactsTable)
@@ -275,9 +410,10 @@ export async function sendMarketingCampaign(campaignId: number): Promise<{
 
     if (!template) return { success: false, error: "Template not found" };
 
-    const html =
+    const html = withMarketingComplianceFooter(
         template.compiledHtml ||
-        compileEmailDocument(template.document as EmailDocument);
+        compileEmailDocument(template.document as EmailDocument),
+    );
 
     const { synced, failed } = await syncSegmentMembersToResend(campaign.segmentId);
     if (synced === 0 && failed > 0) {
@@ -361,6 +497,9 @@ export async function handleMarketingWebhookEvent(
     event: {
         type: string;
         data?: {
+            id?: string;
+            email?: string;
+            unsubscribed?: boolean;
             email_id?: string;
             to?: string | string[];
             broadcast_id?: string;
@@ -370,6 +509,32 @@ export async function handleMarketingWebhookEvent(
     },
     opts?: { resendEventId?: string },
 ): Promise<void> {
+    // Resend reports unsubscribe changes as contact.updated. Persist that state
+    // locally so a future campaign cannot accidentally re-add the contact.
+    if (event.type === "contact.updated") {
+        const email = event.data?.email?.toLowerCase().trim();
+        if (email && event.data?.unsubscribed === true) {
+            const [contact] = await db
+                .select()
+                .from(emailContactsTable)
+                .where(eq(emailContactsTable.email, email))
+                .limit(1);
+
+            if (contact && contact.marketingStatus !== "bounced" && contact.marketingStatus !== "complained") {
+                await db
+                    .update(emailContactsTable)
+                    .set({
+                        marketingStatus: "unsubscribed",
+                        consentSource: "resend_unsubscribe",
+                        consentAt: null,
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(emailContactsTable.id, contact.id));
+            }
+        }
+        return;
+    }
+
     const broadcastId = event.data?.broadcast_id;
     if (!broadcastId) return;
 
@@ -421,11 +586,9 @@ export async function handleMarketingWebhookEvent(
                   ? "bounced"
                   : eventType === "complained"
                     ? "complained"
-                    : eventType === "unsubscribed"
-                      ? "unsubscribed"
-                      : null;
+                    : null;
 
-    if (statKey && statKey !== "unsubscribed") {
+    if (statKey) {
         const stats = (campaign.stats as Record<string, number>) || {};
         stats[statKey] = (stats[statKey] || 0) + 1;
         await db
@@ -434,16 +597,14 @@ export async function handleMarketingWebhookEvent(
             .where(eq(emailCampaignsTable.id, campaign.id));
     }
 
-    if ((eventType === "bounced" || eventType === "complained" || eventType === "unsubscribed") && contactId) {
-        const status =
-            eventType === "bounced"
-                ? "bounced"
-                : eventType === "complained"
-                  ? "complained"
-                  : "unsubscribed";
+    if ((eventType === "bounced" || eventType === "complained") && contactId) {
         await db
             .update(emailContactsTable)
-            .set({ marketingStatus: status, updatedAt: new Date() })
+            .set({
+                marketingStatus: eventType,
+                consentAt: null,
+                updatedAt: new Date(),
+            })
             .where(eq(emailContactsTable.id, contactId));
     }
 
@@ -495,12 +656,13 @@ export async function refreshSegmentContactCount(segmentId: number): Promise<num
     return count;
 }
 
-export async function syncCustomersToContacts(): Promise<{ imported: number; skipped: number }> {
+export async function syncCustomersToContacts(): Promise<{ imported: number; skipped: number; suppressed: number }> {
     const { customersTable } = await import("@workspace/db/schema");
     const customers = await db.select().from(customersTable);
 
     let imported = 0;
     let skipped = 0;
+    let suppressed = 0;
 
     for (const customer of customers) {
         if (!customer.email) {
@@ -510,17 +672,35 @@ export async function syncCustomersToContacts(): Promise<{ imported: number; ski
 
         const email = customer.email.toLowerCase().trim();
         const [existing] = await db
-            .select({ id: emailContactsTable.id })
+            .select()
             .from(emailContactsTable)
             .where(eq(emailContactsTable.email, email))
             .limit(1);
 
         if (existing) {
-            skipped++;
+            if (
+                existing.source === "customer_sync" &&
+                existing.consentSource === "customer_record" &&
+                existing.marketingStatus === "subscribed"
+            ) {
+                await db
+                    .update(emailContactsTable)
+                    .set({
+                        marketingStatus: "unsubscribed",
+                        consentSource: "customer_record_no_marketing_consent",
+                        consentAt: null,
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(emailContactsTable.id, existing.id));
+                await syncContactToResend(existing.id);
+                suppressed++;
+            } else {
+                skipped++;
+            }
             continue;
         }
 
-        await db.insert(emailContactsTable).values({
+        const [created] = await db.insert(emailContactsTable).values({
             email,
             firstName: customer.firstName,
             lastName: customer.lastName,
@@ -530,22 +710,25 @@ export async function syncCustomersToContacts(): Promise<{ imported: number; ski
             state: customer.state,
             zip: customer.zip,
             country: customer.country,
+            marketingStatus: "unsubscribed",
             source: "customer_sync",
-            consentSource: "customer_record",
-            consentAt: new Date(),
-        });
+            consentSource: "customer_record_no_marketing_consent",
+            consentAt: null,
+        }).returning();
+        await syncContactToResend(created.id);
         imported++;
     }
 
-    return { imported, skipped };
+    return { imported, skipped, suppressed };
 }
 
-export async function syncInquiriesToContacts(): Promise<{ imported: number; skipped: number }> {
+export async function syncInquiriesToContacts(): Promise<{ imported: number; skipped: number; suppressed: number }> {
     const { inquiriesTable } = await import("@workspace/db/schema");
     const inquiries = await db.select().from(inquiriesTable);
 
     let imported = 0;
     let skipped = 0;
+    let suppressed = 0;
 
     for (const inquiry of inquiries) {
         if (!inquiry.email) {
@@ -555,71 +738,186 @@ export async function syncInquiriesToContacts(): Promise<{ imported: number; ski
 
         const email = inquiry.email.toLowerCase().trim();
         const [existing] = await db
-            .select({ id: emailContactsTable.id })
+            .select()
             .from(emailContactsTable)
             .where(eq(emailContactsTable.email, email))
             .limit(1);
 
         if (existing) {
-            skipped++;
+            if (
+                existing.source === "inquiry_sync" &&
+                existing.consentSource.startsWith("inquiry:") &&
+                existing.marketingStatus === "subscribed"
+            ) {
+                await db
+                    .update(emailContactsTable)
+                    .set({
+                        marketingStatus: "unsubscribed",
+                        consentSource: "inquiry_no_marketing_consent",
+                        consentAt: null,
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(emailContactsTable.id, existing.id));
+                await syncContactToResend(existing.id);
+                suppressed++;
+            } else {
+                skipped++;
+            }
             continue;
         }
 
         const nameParts = (inquiry.name || "").trim().split(/\s+/);
-        await db.insert(emailContactsTable).values({
+        const [created] = await db.insert(emailContactsTable).values({
             email,
             firstName: nameParts[0] || "",
             lastName: nameParts.slice(1).join(" "),
             phone: inquiry.phone || "",
+            marketingStatus: "unsubscribed",
             source: "inquiry_sync",
-            consentSource: `inquiry:${inquiry.type}`,
-            consentAt: inquiry.createdAt,
-        });
+            consentSource: "inquiry_no_marketing_consent",
+            consentAt: null,
+            customProperties: { inquiryType: inquiry.type },
+        }).returning();
+        await syncContactToResend(created.id);
         imported++;
     }
 
-    return { imported, skipped };
+    return { imported, skipped, suppressed };
 }
 
-export async function syncSquareCustomersToContacts(): Promise<{ imported: number; skipped: number; updated: number }> {
+export async function syncSquareCustomersToContacts(): Promise<{
+    imported: number;
+    skipped: number;
+    updated: number;
+    subscribed: number;
+    suppressed: number;
+}> {
     const { listAllSquareCustomers } = await import("./square");
     const squareCustomers = await listAllSquareCustomers();
 
     let imported = 0;
     let skipped = 0;
     let updated = 0;
+    let subscribed = 0;
+    let suppressed = 0;
 
     for (const customer of squareCustomers) {
         const email = customer.email.toLowerCase().trim();
         const [existing] = await db
-            .select({ id: emailContactsTable.id })
+            .select()
             .from(emailContactsTable)
             .where(eq(emailContactsTable.email, email))
             .limit(1);
 
-        if (existing) {
-            skipped++;
+        if (!existing) {
+            const hasConsent = customer.marketingConsent && !customer.emailUnsubscribed;
+            const [created] = await db.insert(emailContactsTable).values({
+                email,
+                firstName: customer.firstName,
+                lastName: customer.lastName,
+                phone: customer.phone,
+                address: customer.address,
+                city: customer.city,
+                state: customer.state,
+                zip: customer.zip,
+                marketingStatus: hasConsent ? "subscribed" : "unsubscribed",
+                source: "square_sync",
+                consentSource: hasConsent
+                    ? "square_marketing_opt_in"
+                    : "square_customer_no_marketing_consent",
+                consentAt: hasConsent ? new Date() : null,
+                customProperties: { squareCustomerId: customer.id },
+            }).returning();
+
+            await syncContactToResend(created.id, { allowResubscribe: hasConsent });
+            imported++;
+            if (hasConsent) subscribed++;
+            else suppressed++;
             continue;
         }
 
-        await db.insert(emailContactsTable).values({
-            email,
-            firstName: customer.firstName,
-            lastName: customer.lastName,
-            phone: customer.phone,
-            address: customer.address,
-            city: customer.city,
-            state: customer.state,
-            zip: customer.zip,
-            source: "square_sync",
-            consentSource: "square_pos",
-            consentAt: new Date(),
-            customProperties: { squareCustomerId: customer.id },
-        });
-        imported++;
+        const customProperties = {
+            ...(existing.customProperties as Record<string, unknown>),
+            squareCustomerId: customer.id,
+        };
+
+        let nextStatus = existing.marketingStatus;
+        let nextConsentSource = existing.consentSource;
+        let nextConsentAt = existing.consentAt;
+        let allowResubscribe = false;
+
+        if (
+            customer.emailUnsubscribed &&
+            existing.marketingStatus !== "bounced" &&
+            existing.marketingStatus !== "complained"
+        ) {
+            nextStatus = "unsubscribed";
+            nextConsentSource = "square_marketing_opt_out";
+            nextConsentAt = null;
+        } else if (
+            customer.marketingConsent &&
+            existing.marketingStatus !== "bounced" &&
+            existing.marketingStatus !== "complained" &&
+            existing.consentSource !== "resend_unsubscribe" &&
+            (
+                existing.marketingStatus === "subscribed" ||
+                ["square_pos", "square_customer_no_marketing_consent", "square_marketing_opt_out"].includes(existing.consentSource)
+            )
+        ) {
+            nextStatus = "subscribed";
+            nextConsentSource = "square_marketing_opt_in";
+            nextConsentAt = new Date();
+            allowResubscribe = existing.marketingStatus !== "subscribed";
+        } else if (
+            !customer.marketingConsent &&
+            existing.source === "square_sync" &&
+            existing.marketingStatus === "subscribed" &&
+            existing.consentSource === "square_pos"
+        ) {
+            // Repair records imported by the old sync, which treated a receipt
+            // email as marketing permission.
+            nextStatus = "unsubscribed";
+            nextConsentSource = "square_customer_no_marketing_consent";
+            nextConsentAt = null;
+        }
+
+        const stateChanged =
+            nextStatus !== existing.marketingStatus ||
+            nextConsentSource !== existing.consentSource ||
+            nextConsentAt !== existing.consentAt;
+
+        await db
+            .update(emailContactsTable)
+            .set({
+                firstName: existing.firstName || customer.firstName,
+                lastName: existing.lastName || customer.lastName,
+                phone: existing.phone || customer.phone,
+                address: existing.address || customer.address,
+                city: existing.city || customer.city,
+                state: existing.state || customer.state,
+                zip: existing.zip || customer.zip,
+                customProperties,
+                marketingStatus: nextStatus,
+                consentSource: nextConsentSource,
+                consentAt: nextConsentAt,
+                updatedAt: new Date(),
+            })
+            .where(eq(emailContactsTable.id, existing.id));
+
+        if (stateChanged || !existing.resendContactId) {
+            await syncContactToResend(existing.id, { allowResubscribe });
+        }
+
+        if (stateChanged) {
+            updated++;
+            if (nextStatus === "subscribed") subscribed++;
+            if (nextStatus === "unsubscribed") suppressed++;
+        } else {
+            skipped++;
+        }
     }
 
-    // Also link squareCustomerId on existing customer records when missing
+    // Link Square customer ids onto website customer records for order/payment reconciliation.
     const { customersTable } = await import("@workspace/db/schema");
     for (const sq of squareCustomers) {
         const [local] = await db
@@ -636,7 +934,7 @@ export async function syncSquareCustomersToContacts(): Promise<{ imported: numbe
         }
     }
 
-    return { imported, skipped, updated };
+    return { imported, skipped, updated, subscribed, suppressed };
 }
 
 export async function scheduleMarketingCampaign(
