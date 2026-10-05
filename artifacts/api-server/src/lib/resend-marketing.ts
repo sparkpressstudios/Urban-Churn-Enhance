@@ -643,6 +643,43 @@ export async function refreshSegmentContactCount(segmentId: number): Promise<num
     return count;
 }
 
+export async function repairLegacyImplicitMarketingConsent(): Promise<{
+    repaired: number;
+    resendSuppressed: number;
+}> {
+    const contacts = await db.select().from(emailContactsTable);
+    const legacy = contacts.filter((contact) =>
+        contact.marketingStatus === "subscribed" &&
+        (
+            (contact.source === "customer_sync" && contact.consentSource === "customer_record") ||
+            (contact.source === "inquiry_sync" && contact.consentSource.startsWith("inquiry:"))
+        ),
+    );
+
+    if (!legacy.length) return { repaired: 0, resendSuppressed: 0 };
+
+    const ids = legacy.map((contact) => contact.id);
+    await db
+        .update(emailContactsTable)
+        .set({
+            marketingStatus: "unsubscribed",
+            consentSource: "legacy_implicit_no_marketing_consent",
+            consentAt: null,
+            updatedAt: new Date(),
+        })
+        .where(inArray(emailContactsTable.id, ids));
+
+    let resendSuppressed = 0;
+    for (const contact of legacy) {
+        if (!contact.resendContactId) continue;
+        await syncContactToResend(contact.id);
+        await sleep(150);
+        resendSuppressed++;
+    }
+
+    return { repaired: legacy.length, resendSuppressed };
+}
+
 export async function syncCustomersToContacts(): Promise<{ imported: number; skipped: number; suppressed: number }> {
     const { customersTable } = await import("@workspace/db/schema");
     const customers = await db.select().from(customersTable);
@@ -781,6 +818,10 @@ export async function syncSquareCustomersToContacts(): Promise<{
 }> {
     const { listAllSquareCustomers } = await import("./square");
     const squareCustomers = await listAllSquareCustomers();
+    const existingContacts = await db.select().from(emailContactsTable);
+    const contactsByEmail = new Map(
+        existingContacts.map((contact) => [contact.email.toLowerCase(), contact]),
+    );
 
     let imported = 0;
     let skipped = 0;
@@ -790,11 +831,7 @@ export async function syncSquareCustomersToContacts(): Promise<{
 
     for (const customer of squareCustomers) {
         const email = customer.email.toLowerCase().trim();
-        const [existing] = await db
-            .select()
-            .from(emailContactsTable)
-            .where(eq(emailContactsTable.email, email))
-            .limit(1);
+        const existing = contactsByEmail.get(email);
 
         if (!existing) {
             const hasConsent = customer.marketingConsent && !customer.emailUnsubscribed;
@@ -815,6 +852,10 @@ export async function syncSquareCustomersToContacts(): Promise<{
                 consentAt: hasConsent ? new Date() : null,
                 customProperties: { squareCustomerId: customer.id },
             }).returning();
+
+            contactsByEmail.set(email, {
+                ...created,
+            });
 
             if (hasConsent) {
                 await syncContactToResend(created.id, { allowResubscribe: true });
@@ -876,23 +917,36 @@ export async function syncSquareCustomersToContacts(): Promise<{
             nextConsentSource !== existing.consentSource ||
             nextConsentAt !== existing.consentAt;
 
-        await db
-            .update(emailContactsTable)
-            .set({
-                firstName: existing.firstName || customer.firstName,
-                lastName: existing.lastName || customer.lastName,
-                phone: existing.phone || customer.phone,
-                address: existing.address || customer.address,
-                city: existing.city || customer.city,
-                state: existing.state || customer.state,
-                zip: existing.zip || customer.zip,
-                customProperties,
-                marketingStatus: nextStatus,
-                consentSource: nextConsentSource,
-                consentAt: nextConsentAt,
-                updatedAt: new Date(),
-            })
-            .where(eq(emailContactsTable.id, existing.id));
+        const squareIdChanged =
+            (existing.customProperties as Record<string, unknown>)?.squareCustomerId !== customer.id;
+        const profileChanged =
+            (!existing.firstName && !!customer.firstName) ||
+            (!existing.lastName && !!customer.lastName) ||
+            (!existing.phone && !!customer.phone) ||
+            (!existing.address && !!customer.address) ||
+            (!existing.city && !!customer.city) ||
+            (!existing.state && !!customer.state) ||
+            (!existing.zip && !!customer.zip);
+
+        if (stateChanged || squareIdChanged || profileChanged) {
+            await db
+                .update(emailContactsTable)
+                .set({
+                    firstName: existing.firstName || customer.firstName,
+                    lastName: existing.lastName || customer.lastName,
+                    phone: existing.phone || customer.phone,
+                    address: existing.address || customer.address,
+                    city: existing.city || customer.city,
+                    state: existing.state || customer.state,
+                    zip: existing.zip || customer.zip,
+                    customProperties,
+                    marketingStatus: nextStatus,
+                    consentSource: nextConsentSource,
+                    consentAt: nextConsentAt,
+                    updatedAt: new Date(),
+                })
+                .where(eq(emailContactsTable.id, existing.id));
+        }
 
         if (stateChanged || (!existing.resendContactId && nextStatus === "subscribed")) {
             await syncContactToResend(existing.id, { allowResubscribe });
@@ -910,12 +964,17 @@ export async function syncSquareCustomersToContacts(): Promise<{
 
     // Link Square customer ids onto website customer records for order/payment reconciliation.
     const { customersTable } = await import("@workspace/db/schema");
+    const localCustomers = await db
+        .select({ id: customersTable.id, email: customersTable.email, squareCustomerId: customersTable.squareCustomerId })
+        .from(customersTable);
+    const localByEmail = new Map(
+        localCustomers
+            .filter((customer) => !!customer.email)
+            .map((customer) => [customer.email.toLowerCase(), customer]),
+    );
+
     for (const sq of squareCustomers) {
-        const [local] = await db
-            .select({ id: customersTable.id, squareCustomerId: customersTable.squareCustomerId })
-            .from(customersTable)
-            .where(eq(customersTable.email, sq.email))
-            .limit(1);
+        const local = localByEmail.get(sq.email.toLowerCase());
         if (local && !local.squareCustomerId) {
             await db
                 .update(customersTable)
