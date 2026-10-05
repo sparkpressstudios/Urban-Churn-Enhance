@@ -412,19 +412,78 @@ export interface SquareCustomerRecord {
     city: string;
     state: string;
     zip: string;
+    marketingConsent: boolean;
+    emailUnsubscribed: boolean;
 }
 
-/** Paginate through all Square customers that have an email address. */
+function isSquareMarketingConsentName(name: string): boolean {
+    const normalized = name.trim().toLowerCase();
+    return (
+        normalized === "collected emails" ||
+        normalized === "subscribed customers" ||
+        normalized === "email subscribers" ||
+        normalized === "email marketing" ||
+        normalized.includes("collected email")
+    );
+}
+
+async function getSquareMarketingConsentIds(client: SquareClient): Promise<{
+    groupIds: Set<string>;
+    segmentIds: Set<string>;
+}> {
+    const groupIds = new Set<string>();
+    const segmentIds = new Set<string>();
+
+    try {
+        const groups = await client.customers.groups.list({ limit: 50 });
+        for await (const group of groups) {
+            if (group.id && isSquareMarketingConsentName(group.name || "")) {
+                groupIds.add(group.id);
+            }
+        }
+    } catch (err) {
+        console.warn("[SQUARE] Could not read customer groups for marketing consent:", err);
+    }
+
+    try {
+        const segments = await client.customers.segments.list({ limit: 50 });
+        for await (const segment of segments) {
+            if (segment.id && isSquareMarketingConsentName(segment.name || "")) {
+                segmentIds.add(segment.id);
+            }
+        }
+    } catch (err) {
+        console.warn("[SQUARE] Could not read customer segments for marketing consent:", err);
+    }
+
+    return { groupIds, segmentIds };
+}
+
+/**
+ * Paginate through all Square customers that have an email address.
+ *
+ * Marketing consent is intentionally conservative. A customer is considered
+ * opted in only when they are in a Square marketing-consent group/segment
+ * (for example "Collected Emails" or "Subscribed Customers") and have not
+ * unsubscribed. A receipt email alone is never treated as marketing consent.
+ */
 export async function listAllSquareCustomers(): Promise<SquareCustomerRecord[]> {
     const client = await getSquareClient();
     if (!client) return [];
 
+    const consentIds = await getSquareMarketingConsentIds(client);
     const customers: SquareCustomerRecord[] = [];
     const page = await client.customers.list({ limit: 100 });
 
     for await (const customer of page) {
         const email = customer.emailAddress?.trim();
         if (!email || !customer.id) continue;
+
+        const emailUnsubscribed = customer.preferences?.emailUnsubscribed === true;
+        const hasConsentGroup = (customer.groupIds || []).some((id) => consentIds.groupIds.has(id));
+        const hasConsentSegment = (customer.segmentIds || []).some((id) => consentIds.segmentIds.has(id));
+        const marketingConsent = !emailUnsubscribed && (hasConsentGroup || hasConsentSegment);
+
         customers.push({
             id: customer.id,
             email: email.toLowerCase(),
@@ -435,6 +494,8 @@ export async function listAllSquareCustomers(): Promise<SquareCustomerRecord[]> 
             city: customer.address?.locality || "",
             state: customer.address?.administrativeDistrictLevel1 || "",
             zip: customer.address?.postalCode || "",
+            marketingConsent,
+            emailUnsubscribed,
         });
     }
 

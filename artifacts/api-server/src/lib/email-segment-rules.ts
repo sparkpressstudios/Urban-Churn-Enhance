@@ -25,7 +25,7 @@ export interface SegmentRules {
 
 export const SEGMENT_RULE_FIELDS = [
     { field: "marketing_status", label: "Marketing status", ops: ["eq"] as SegmentConditionOp[], valueType: "select", options: ["subscribed", "unsubscribed", "bounced", "complained"] },
-    { field: "source", label: "Contact source", ops: ["eq"] as SegmentConditionOp[], valueType: "select", options: ["manual", "import", "customer_sync", "inquiry_sync"] },
+    { field: "source", label: "Contact source", ops: ["eq"] as SegmentConditionOp[], valueType: "select", options: ["manual", "import", "customer_sync", "inquiry_sync", "square_sync"] },
     { field: "city", label: "City", ops: ["eq", "contains"] as SegmentConditionOp[], valueType: "text" },
     { field: "state", label: "State", ops: ["eq", "contains"] as SegmentConditionOp[], valueType: "text" },
     { field: "country", label: "Country", ops: ["eq"] as SegmentConditionOp[], valueType: "text" },

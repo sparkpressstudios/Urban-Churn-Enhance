@@ -40,7 +40,11 @@ app.use(cookieParser());
 app.use(express.json({
   limit: "10mb",
   verify: (req: any, _res, buf) => {
-    if (req.originalUrl === "/api/webhooks/square") {
+    if (
+      req.originalUrl === "/api/webhooks/square" ||
+      req.originalUrl === "/api/webhooks/resend" ||
+      req.originalUrl === "/api/webhooks/resend-marketing"
+    ) {
       req.rawBody = buf.toString("utf8");
     }
   },

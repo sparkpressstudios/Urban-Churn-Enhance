@@ -208,6 +208,13 @@ router.patch("/contacts/:id", async (req, res) => {
         return;
     }
 
+    const explicitResubscribe =
+        body.marketingStatus === "subscribed" &&
+        existing.marketingStatus !== "subscribed";
+    const explicitUnsubscribe =
+        body.marketingStatus === "unsubscribed" &&
+        existing.marketingStatus !== "unsubscribed";
+
     const [contact] = await db
         .update(emailContactsTable)
         .set({
@@ -221,12 +228,22 @@ router.patch("/contacts/:id", async (req, res) => {
             country: body.country ?? existing.country,
             customProperties: body.customProperties ?? existing.customProperties,
             marketingStatus: body.marketingStatus ?? existing.marketingStatus,
+            consentSource: explicitResubscribe
+                ? "admin_manual_opt_in"
+                : explicitUnsubscribe
+                  ? "admin_unsubscribe"
+                  : existing.consentSource,
+            consentAt: explicitResubscribe
+                ? new Date()
+                : explicitUnsubscribe
+                  ? null
+                  : existing.consentAt,
             updatedAt: new Date(),
         })
         .where(eq(emailContactsTable.id, id))
         .returning();
 
-    syncContactToResend(contact.id).catch((err) =>
+    syncContactToResend(contact.id, { allowResubscribe: explicitResubscribe }).catch((err) =>
         console.error("[EMAIL-MARKETING] Resend contact sync failed:", err),
     );
 
