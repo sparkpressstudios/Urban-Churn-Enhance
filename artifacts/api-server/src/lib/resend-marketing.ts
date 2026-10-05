@@ -168,18 +168,6 @@ export function verifyResendMarketingWebhook(payload: string, headers: {
     });
 }
 
-function buildResendContactProperties(contact: EmailContact): Record<string, string | number | null> {
-    const props: Record<string, string | number | null> = {
-        ...(contact.customProperties as Record<string, string | number | null>),
-    };
-    if (contact.address) props.address = contact.address;
-    if (contact.city) props.city = contact.city;
-    if (contact.state) props.state = contact.state;
-    if (contact.zip) props.zip = contact.zip;
-    if (contact.phone) props.phone = contact.phone;
-    return props;
-}
-
 export async function upsertResendContact(
     contact: EmailContact,
     opts: { allowResubscribe?: boolean } = {},
@@ -700,7 +688,7 @@ export async function syncCustomersToContacts(): Promise<{ imported: number; ski
             continue;
         }
 
-        const [created] = await db.insert(emailContactsTable).values({
+        await db.insert(emailContactsTable).values({
             email,
             firstName: customer.firstName,
             lastName: customer.lastName,
@@ -714,7 +702,7 @@ export async function syncCustomersToContacts(): Promise<{ imported: number; ski
             source: "customer_sync",
             consentSource: "customer_record_no_marketing_consent",
             consentAt: null,
-        }).returning();
+        });
         imported++;
     }
 
@@ -767,7 +755,7 @@ export async function syncInquiriesToContacts(): Promise<{ imported: number; ski
         }
 
         const nameParts = (inquiry.name || "").trim().split(/\s+/);
-        const [created] = await db.insert(emailContactsTable).values({
+        await db.insert(emailContactsTable).values({
             email,
             firstName: nameParts[0] || "",
             lastName: nameParts.slice(1).join(" "),
@@ -777,7 +765,7 @@ export async function syncInquiriesToContacts(): Promise<{ imported: number; ski
             consentSource: "inquiry_no_marketing_consent",
             consentAt: null,
             customProperties: { inquiryType: inquiry.type },
-        }).returning();
+        });
         imported++;
     }
 
