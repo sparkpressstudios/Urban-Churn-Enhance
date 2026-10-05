@@ -85,11 +85,11 @@ export function initScheduler() {
                     console.warn("[EMAIL-MARKETING] Resend webhook is not configured:", webhook.error || "unknown error");
                 }
 
-                const [customers, inquiries, square] = await Promise.all([
-                    syncCustomersToContacts(),
-                    syncInquiriesToContacts(),
-                    syncSquareCustomersToContacts(),
-                ]);
+                // Run sequentially because the same email can exist in more
+                // than one source and email_contacts enforces a unique address.
+                const customers = await syncCustomersToContacts();
+                const inquiries = await syncInquiriesToContacts();
+                const square = await syncSquareCustomersToContacts();
                 console.log("[EMAIL-MARKETING] Startup contact sync complete", {
                     customers,
                     inquiries,
