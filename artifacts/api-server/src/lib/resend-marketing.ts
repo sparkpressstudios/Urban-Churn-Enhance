@@ -46,8 +46,8 @@ function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const SYNC_CONCURRENCY = 4;
-const SYNC_DELAY_MS = 280;
+const SYNC_CONCURRENCY = 2;
+const SYNC_DELAY_MS = 500;
 
 async function mapWithConcurrency<T, R>(
     items: T[],
@@ -168,18 +168,6 @@ export function verifyResendMarketingWebhook(payload: string, headers: {
     });
 }
 
-function buildResendContactProperties(contact: EmailContact): Record<string, string | number | null> {
-    const props: Record<string, string | number | null> = {
-        ...(contact.customProperties as Record<string, string | number | null>),
-    };
-    if (contact.address) props.address = contact.address;
-    if (contact.city) props.city = contact.city;
-    if (contact.state) props.state = contact.state;
-    if (contact.zip) props.zip = contact.zip;
-    if (contact.phone) props.phone = contact.phone;
-    return props;
-}
-
 export async function upsertResendContact(
     contact: EmailContact,
     opts: { allowResubscribe?: boolean } = {},
@@ -189,7 +177,6 @@ export async function upsertResendContact(
     const profileFields = {
         firstName: contact.firstName || undefined,
         lastName: contact.lastName || undefined,
-        properties: buildResendContactProperties(contact),
     };
 
     // Never silently re-subscribe an existing Resend contact. We only send
@@ -693,6 +680,7 @@ export async function syncCustomersToContacts(): Promise<{ imported: number; ski
                     })
                     .where(eq(emailContactsTable.id, existing.id));
                 await syncContactToResend(existing.id);
+                await sleep(150);
                 suppressed++;
             } else {
                 skipped++;
@@ -700,7 +688,7 @@ export async function syncCustomersToContacts(): Promise<{ imported: number; ski
             continue;
         }
 
-        const [created] = await db.insert(emailContactsTable).values({
+        await db.insert(emailContactsTable).values({
             email,
             firstName: customer.firstName,
             lastName: customer.lastName,
@@ -714,8 +702,7 @@ export async function syncCustomersToContacts(): Promise<{ imported: number; ski
             source: "customer_sync",
             consentSource: "customer_record_no_marketing_consent",
             consentAt: null,
-        }).returning();
-        await syncContactToResend(created.id);
+        });
         imported++;
     }
 
@@ -759,6 +746,7 @@ export async function syncInquiriesToContacts(): Promise<{ imported: number; ski
                     })
                     .where(eq(emailContactsTable.id, existing.id));
                 await syncContactToResend(existing.id);
+                await sleep(150);
                 suppressed++;
             } else {
                 skipped++;
@@ -767,7 +755,7 @@ export async function syncInquiriesToContacts(): Promise<{ imported: number; ski
         }
 
         const nameParts = (inquiry.name || "").trim().split(/\s+/);
-        const [created] = await db.insert(emailContactsTable).values({
+        await db.insert(emailContactsTable).values({
             email,
             firstName: nameParts[0] || "",
             lastName: nameParts.slice(1).join(" "),
@@ -777,8 +765,7 @@ export async function syncInquiriesToContacts(): Promise<{ imported: number; ski
             consentSource: "inquiry_no_marketing_consent",
             consentAt: null,
             customProperties: { inquiryType: inquiry.type },
-        }).returning();
-        await syncContactToResend(created.id);
+        });
         imported++;
     }
 
@@ -829,7 +816,10 @@ export async function syncSquareCustomersToContacts(): Promise<{
                 customProperties: { squareCustomerId: customer.id },
             }).returning();
 
-            await syncContactToResend(created.id, { allowResubscribe: hasConsent });
+            if (hasConsent) {
+                await syncContactToResend(created.id, { allowResubscribe: true });
+                await sleep(150);
+            }
             imported++;
             if (hasConsent) subscribed++;
             else suppressed++;
@@ -904,8 +894,9 @@ export async function syncSquareCustomersToContacts(): Promise<{
             })
             .where(eq(emailContactsTable.id, existing.id));
 
-        if (stateChanged || !existing.resendContactId) {
+        if (stateChanged || (!existing.resendContactId && nextStatus === "subscribed")) {
             await syncContactToResend(existing.id, { allowResubscribe });
+            await sleep(150);
         }
 
         if (stateChanged) {
