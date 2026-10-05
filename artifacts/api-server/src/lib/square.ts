@@ -473,7 +473,11 @@ export async function listAllSquareCustomers(): Promise<SquareCustomerRecord[]> 
 
     const consentIds = await getSquareMarketingConsentIds(client);
     const customers: SquareCustomerRecord[] = [];
-    const page = await client.customers.list({ limit: 100 });
+    const page = await client.customers.list({
+        limit: 100,
+        sortField: "DEFAULT",
+        sortOrder: "ASC",
+    });
 
     for await (const customer of page) {
         const email = customer.emailAddress?.trim();
