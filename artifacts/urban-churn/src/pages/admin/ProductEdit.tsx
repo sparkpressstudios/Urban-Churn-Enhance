@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { api } from "@/lib/api";
-import { formatEasternDateTimeLocal } from "@/lib/utils";
+import { formatEasternDateTimeLocal, parseEasternDateTimeLocal } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -151,7 +151,7 @@ export default function AdminProductEdit() {
                 available: flavour.available,
                 heroPosition: flavour.heroPosition ?? null,
                 sortOrder: flavour.sortOrder,
-                publishedAt: flavour.publishedAt ? new Date(flavour.publishedAt).toISOString().slice(0, 16) : "",
+                publishedAt: flavour.publishedAt ? formatEasternDateTimeLocal(flavour.publishedAt) : "",
             });
         }
     }, [flavour]);
@@ -316,7 +316,11 @@ export default function AdminProductEdit() {
         const data = {
             ...form,
             slug: form.slug || form.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-            publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : undefined,
+            publishedAt: form.publishedAt
+                ? flavour?.publishedAt && form.publishedAt === formatEasternDateTimeLocal(flavour.publishedAt)
+                    ? new Date(flavour.publishedAt).toISOString()
+                    : parseEasternDateTimeLocal(form.publishedAt).toISOString()
+                : undefined,
         };
         if (isNew) {
             createFlavourMutation.mutate(data);

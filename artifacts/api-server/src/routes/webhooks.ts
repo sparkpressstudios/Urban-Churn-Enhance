@@ -257,8 +257,13 @@ router.post("/resend-marketing", async (req, res) => {
 // ── Resend Inbound Email Webhook ──
 // Receives email.received events from Resend when someone emails the wholesale address
 router.post("/resend", async (req, res) => {
-    // Verify Resend webhook signature if signing secret is configured
+    // Require a signing secret before accepting marketing or inbound email events.
     const resendSigningSecret = process.env.RESEND_WEBHOOK_SECRET;
+    if (!resendSigningSecret) {
+        console.error("[WEBHOOK] Resend signing secret is not configured");
+        res.status(503).json({ error: "Webhook is not configured" });
+        return;
+    }
     if (resendSigningSecret) {
         const svixId = req.headers["svix-id"] as string;
         const svixTimestamp = req.headers["svix-timestamp"] as string;
@@ -279,7 +284,11 @@ router.post("/resend", async (req, res) => {
             return;
         }
 
-        const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+        const rawBody = (req as any).rawBody as string | undefined;
+        if (!rawBody) {
+            res.status(401).json({ error: "Missing webhook body" });
+            return;
+        }
         const signedContent = `${svixId}.${svixTimestamp}.${rawBody}`;
 
         // Resend uses Svix — secret is base64-encoded after "whsec_" prefix

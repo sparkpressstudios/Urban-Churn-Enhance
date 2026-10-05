@@ -809,14 +809,28 @@ export async function syncInquiriesToContacts(): Promise<{ imported: number; ski
     return { imported, skipped, suppressed };
 }
 
-export async function syncSquareCustomersToContacts(): Promise<{
+type SquareContactSyncResult = {
     fetched: number;
     imported: number;
     skipped: number;
     updated: number;
     subscribed: number;
     suppressed: number;
-}> {
+};
+
+// Scheduled and manual syncs share one run in this single-replica process.
+let squareContactSyncInFlight: Promise<SquareContactSyncResult> | null = null;
+
+export function syncSquareCustomersToContacts(): Promise<SquareContactSyncResult> {
+    if (squareContactSyncInFlight) return squareContactSyncInFlight;
+
+    squareContactSyncInFlight = runSquareContactSync().finally(() => {
+        squareContactSyncInFlight = null;
+    });
+    return squareContactSyncInFlight;
+}
+
+async function runSquareContactSync(): Promise<SquareContactSyncResult> {
     const { listSquareMarketingCustomers } = await import("./square");
     const squareSubscribers = await listSquareMarketingCustomers();
     const existingContacts = await db.select().from(emailContactsTable);

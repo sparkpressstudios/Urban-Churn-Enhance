@@ -449,6 +449,7 @@ async function getSquareMarketingConsentIds(client: SquareClient): Promise<{
         }
     } catch (err) {
         console.warn("[SQUARE] Could not read customer groups for marketing consent:", err);
+        throw err;
     }
 
     try {
@@ -462,6 +463,7 @@ async function getSquareMarketingConsentIds(client: SquareClient): Promise<{
         }
     } catch (err) {
         console.warn("[SQUARE] Could not read customer segments for marketing consent:", err);
+        throw err;
     }
 
     return { groupIds, segmentIds, labels };
@@ -496,7 +498,7 @@ async function searchSquareMarketingCustomers(
 
     do {
         const request: any = {
-            limit: 100,
+            limit: 100n,
             query: { filter },
         };
         if (cursor) request.cursor = cursor;
@@ -520,7 +522,7 @@ async function searchSquareMarketingCustomers(
  */
 export async function listSquareMarketingCustomers(): Promise<SquareCustomerRecord[]> {
     const client = await getSquareClient();
-    if (!client) return [];
+    if (!client) throw new Error("Square is not configured; marketing audience cannot be reconciled");
 
     const consent = await getSquareMarketingConsentIds(client);
     console.log("[SQUARE] Marketing consent sources", {
@@ -530,8 +532,7 @@ export async function listSquareMarketingCustomers(): Promise<SquareCustomerReco
     });
 
     if (consent.groupIds.length === 0 && consent.segmentIds.length === 0) {
-        console.warn("[SQUARE] No explicit email-marketing subscriber group/segment was found");
-        return [];
+        throw new Error("No explicit Square email-marketing subscriber group/segment was found; audience cannot be reconciled");
     }
 
     const byId = new Map<string, SquareCustomerRecord>();

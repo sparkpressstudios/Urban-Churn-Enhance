@@ -22,7 +22,7 @@ import {
 } from "./email";
 import type { LocationInfo } from "./email";
 import {
-    ensureResendMarketingWebhook,
+    getResendMarketingWebhookSecret,
     repairLegacyImplicitMarketingConsent,
     syncSquareCustomersToContacts,
 } from "./resend-marketing";
@@ -74,23 +74,21 @@ function getEasternDayBounds() {
 export function initScheduler() {
     console.log("[SCHEDULER] Initializing scheduled jobs (tz: %s)...", BUSINESS_TZ);
 
-    // Marketing readiness: configure the signed Resend webhook and repair/sync
-    // legacy contacts once after boot without delaying HTTP startup.
+    // Check existing marketing configuration and repair legacy consent without
+    // creating provider credentials or importing Square contacts on every boot.
     setTimeout(() => {
         void (async () => {
             try {
-                const webhook = await ensureResendMarketingWebhook();
-                if (!webhook.configured) {
-                    console.warn("[EMAIL-MARKETING] Resend webhook is not configured:", webhook.error || "unknown error");
+                const webhookSecret = await getResendMarketingWebhookSecret();
+                if (!webhookSecret) {
+                    console.warn("[EMAIL-MARKETING] Resend marketing webhook signing secret is not configured");
                 }
 
                 const repair = await repairLegacyImplicitMarketingConsent();
                 console.log("[EMAIL-MARKETING] Legacy consent repair complete", repair);
 
-                const square = await syncSquareCustomersToContacts();
-                console.log("[EMAIL-MARKETING] Startup Square contact sync complete", square);
             } catch (err) {
-                console.error("[EMAIL-MARKETING] Startup contact sync failed:", err);
+                console.error("[EMAIL-MARKETING] Startup marketing readiness check failed:", err);
             }
         })();
     }, 1500);
@@ -122,15 +120,17 @@ export function initScheduler() {
         }
     });
 
-    // ── Marketing: pull current Square marketing-consent changes hourly ──
-    cron.schedule("17 * * * *", async () => {
+    // ── Marketing: pull Square marketing-consent changes once daily at 3:17 AM Eastern ──
+    cron.schedule("17 3 * * *", async () => {
         try {
             const result = await syncSquareCustomersToContacts();
-            console.log("[EMAIL-MARKETING] Hourly Square contact sync complete", result);
+            console.log("[EMAIL-MARKETING] Daily Square contact sync complete", result);
         } catch (err) {
-            console.error("[EMAIL-MARKETING] Hourly Square contact sync failed:", err);
+            console.error("[EMAIL-MARKETING] Daily Square contact sync failed:", err);
         }
     }, { timezone: BUSINESS_TZ });
+
+    console.log("[EMAIL-MARKETING] Square contact sync scheduled daily at 3:17 AM Eastern");
 
     // ── Job 3: Daily 7 AM Eastern — admin orders-closed reminder + customer pickup reminders ──
     cron.schedule("0 7 * * *", async () => {

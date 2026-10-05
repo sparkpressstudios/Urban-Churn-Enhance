@@ -9,7 +9,8 @@
     "build:railway": "pnpm --filter @workspace/urban-churn build && pnpm --filter @workspace/api-server build",
     "start": "pnpm --filter @workspace/api-server start",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "test:marketing-readiness": "node --test tests/marketing-readiness.test.cjs"
   },
   "private": true,
   "devDependencies": {
