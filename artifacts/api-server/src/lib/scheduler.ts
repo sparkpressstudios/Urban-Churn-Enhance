@@ -21,6 +21,12 @@ import {
     sendWindowClosingReport,
 } from "./email";
 import type { LocationInfo } from "./email";
+import {
+    ensureResendMarketingWebhook,
+    syncCustomersToContacts,
+    syncInquiriesToContacts,
+    syncSquareCustomersToContacts,
+} from "./resend-marketing";
 
 /** All scheduled jobs and date math use the business timezone */
 const BUSINESS_TZ = "America/New_York";
@@ -69,6 +75,32 @@ function getEasternDayBounds() {
 export function initScheduler() {
     console.log("[SCHEDULER] Initializing scheduled jobs (tz: %s)...", BUSINESS_TZ);
 
+    // Marketing readiness: configure the signed Resend webhook and repair/sync
+    // legacy contacts once after boot without delaying HTTP startup.
+    setTimeout(() => {
+        void (async () => {
+            try {
+                const webhook = await ensureResendMarketingWebhook();
+                if (!webhook.configured) {
+                    console.warn("[EMAIL-MARKETING] Resend webhook is not configured:", webhook.error || "unknown error");
+                }
+
+                const [customers, inquiries, square] = await Promise.all([
+                    syncCustomersToContacts(),
+                    syncInquiriesToContacts(),
+                    syncSquareCustomersToContacts(),
+                ]);
+                console.log("[EMAIL-MARKETING] Startup contact sync complete", {
+                    customers,
+                    inquiries,
+                    square,
+                });
+            } catch (err) {
+                console.error("[EMAIL-MARKETING] Startup contact sync failed:", err);
+            }
+        })();
+    }, 1500);
+
     // ── Job 1: Auto-advance window statuses (every 15 min) ──
     cron.schedule("*/15 * * * *", async () => {
         try {
@@ -95,6 +127,16 @@ export function initScheduler() {
             console.error("[SCHEDULER] Fulfillment report job failed:", err);
         }
     });
+
+    // ── Marketing: pull current Square marketing-consent changes hourly ──
+    cron.schedule("17 * * * *", async () => {
+        try {
+            const result = await syncSquareCustomersToContacts();
+            console.log("[EMAIL-MARKETING] Hourly Square contact sync complete", result);
+        } catch (err) {
+            console.error("[EMAIL-MARKETING] Hourly Square contact sync failed:", err);
+        }
+    }, { timezone: BUSINESS_TZ });
 
     // ── Job 3: Daily 7 AM Eastern — admin orders-closed reminder + customer pickup reminders ──
     cron.schedule("0 7 * * *", async () => {
