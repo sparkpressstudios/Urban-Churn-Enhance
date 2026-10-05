@@ -226,7 +226,11 @@ router.patch("/contacts/:id", async (req, res) => {
         .where(eq(emailContactsTable.id, id))
         .returning();
 
-    syncContactToResend(contact.id).catch((err) =>
+    const explicitResubscribe =
+        body.marketingStatus === "subscribed" &&
+        existing.marketingStatus !== "subscribed";
+
+    syncContactToResend(contact.id, { allowResubscribe: explicitResubscribe }).catch((err) =>
         console.error("[EMAIL-MARKETING] Resend contact sync failed:", err),
     );
 
