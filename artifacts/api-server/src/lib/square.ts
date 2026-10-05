@@ -419,26 +419,32 @@ export interface SquareCustomerRecord {
 function isSquareMarketingConsentName(name: string): boolean {
     const normalized = name.trim().toLowerCase();
     return (
-        normalized === "collected emails" ||
         normalized === "subscribed customers" ||
+        normalized === "subscribed customer" ||
         normalized === "email subscribers" ||
-        normalized === "email marketing" ||
-        normalized.includes("collected email")
+        normalized === "email subscriber" ||
+        normalized === "email marketing subscribers" ||
+        normalized === "customer sign-up screen" ||
+        normalized === "customer signup screen"
     );
 }
 
 async function getSquareMarketingConsentIds(client: SquareClient): Promise<{
-    groupIds: Set<string>;
-    segmentIds: Set<string>;
+    groupIds: string[];
+    segmentIds: string[];
+    labels: string[];
 }> {
-    const groupIds = new Set<string>();
-    const segmentIds = new Set<string>();
+    const groupIds: string[] = [];
+    const segmentIds: string[] = [];
+    const labels: string[] = [];
 
     try {
         const groups = await client.customers.groups.list({ limit: 50 });
         for await (const group of groups) {
-            if (group.id && isSquareMarketingConsentName(group.name || "")) {
-                groupIds.add(group.id);
+            const name = group.name || "";
+            if (group.id && isSquareMarketingConsentName(name)) {
+                groupIds.push(group.id);
+                labels.push(`group:${name}`);
             }
         }
     } catch (err) {
@@ -448,61 +454,114 @@ async function getSquareMarketingConsentIds(client: SquareClient): Promise<{
     try {
         const segments = await client.customers.segments.list({ limit: 50 });
         for await (const segment of segments) {
-            if (segment.id && isSquareMarketingConsentName(segment.name || "")) {
-                segmentIds.add(segment.id);
+            const name = segment.name || "";
+            if (segment.id && isSquareMarketingConsentName(name)) {
+                segmentIds.push(segment.id);
+                labels.push(`segment:${name}`);
             }
         }
     } catch (err) {
         console.warn("[SQUARE] Could not read customer segments for marketing consent:", err);
     }
 
-    return { groupIds, segmentIds };
+    return { groupIds, segmentIds, labels };
+}
+
+function squareCustomerToRecord(customer: any): SquareCustomerRecord | null {
+    const email = customer.emailAddress?.trim();
+    if (!email || !customer.id) return null;
+
+    const emailUnsubscribed = customer.preferences?.emailUnsubscribed === true;
+    return {
+        id: customer.id,
+        email: email.toLowerCase(),
+        firstName: customer.givenName || "",
+        lastName: customer.familyName || "",
+        phone: customer.phoneNumber || "",
+        address: customer.address?.addressLine1 || "",
+        city: customer.address?.locality || "",
+        state: customer.address?.administrativeDistrictLevel1 || "",
+        zip: customer.address?.postalCode || "",
+        marketingConsent: !emailUnsubscribed,
+        emailUnsubscribed,
+    };
+}
+
+async function searchSquareMarketingCustomers(
+    client: SquareClient,
+    filter: Record<string, unknown>,
+): Promise<SquareCustomerRecord[]> {
+    const records: SquareCustomerRecord[] = [];
+    let cursor: string | undefined;
+
+    do {
+        const request: any = {
+            limit: 100,
+            query: { filter },
+        };
+        if (cursor) request.cursor = cursor;
+
+        const response = await client.customers.search(request);
+        for (const customer of response.customers || []) {
+            const record = squareCustomerToRecord(customer);
+            if (record) records.push(record);
+        }
+        cursor = response.cursor || undefined;
+    } while (cursor);
+
+    return records;
 }
 
 /**
- * Paginate through all Square customers that have an email address.
+ * Return only Square customers with an explicit marketing-consent signal.
  *
- * Marketing consent is intentionally conservative. A customer is considered
- * opted in only when they are in a Square marketing-consent group/segment
- * (for example "Collected Emails" or "Subscribed Customers") and have not
- * unsubscribed. A receipt email alone is never treated as marketing consent.
+ * This deliberately avoids scanning or importing the full Customer Directory.
+ * Receipt/invoice/loyalty emails are not treated as marketing permission.
  */
-export async function listAllSquareCustomers(): Promise<SquareCustomerRecord[]> {
+export async function listSquareMarketingCustomers(): Promise<SquareCustomerRecord[]> {
     const client = await getSquareClient();
     if (!client) return [];
 
-    const consentIds = await getSquareMarketingConsentIds(client);
-    const customers: SquareCustomerRecord[] = [];
-    const page = await client.customers.list({
-        limit: 100,
-        sortField: "DEFAULT",
-        sortOrder: "ASC",
+    const consent = await getSquareMarketingConsentIds(client);
+    console.log("[SQUARE] Marketing consent sources", {
+        groupCount: consent.groupIds.length,
+        segmentCount: consent.segmentIds.length,
+        labels: consent.labels,
     });
 
-    for await (const customer of page) {
-        const email = customer.emailAddress?.trim();
-        if (!email || !customer.id) continue;
-
-        const emailUnsubscribed = customer.preferences?.emailUnsubscribed === true;
-        const hasConsentGroup = (customer.groupIds || []).some((id) => consentIds.groupIds.has(id));
-        const hasConsentSegment = (customer.segmentIds || []).some((id) => consentIds.segmentIds.has(id));
-        const marketingConsent = !emailUnsubscribed && (hasConsentGroup || hasConsentSegment);
-
-        customers.push({
-            id: customer.id,
-            email: email.toLowerCase(),
-            firstName: customer.givenName || "",
-            lastName: customer.familyName || "",
-            phone: customer.phoneNumber || "",
-            address: customer.address?.addressLine1 || "",
-            city: customer.address?.locality || "",
-            state: customer.address?.administrativeDistrictLevel1 || "",
-            zip: customer.address?.postalCode || "",
-            marketingConsent,
-            emailUnsubscribed,
-        });
+    if (consent.groupIds.length === 0 && consent.segmentIds.length === 0) {
+        console.warn("[SQUARE] No explicit email-marketing subscriber group/segment was found");
+        return [];
     }
 
+    const byId = new Map<string, SquareCustomerRecord>();
+
+    // Query each consent group independently so group and segment sources are
+    // unioned rather than combined as an AND filter.
+    for (const groupId of consent.groupIds) {
+        const records = await searchSquareMarketingCustomers(client, {
+            groupIds: { any: [groupId] },
+        });
+        for (const record of records) {
+            if (!record.emailUnsubscribed) byId.set(record.id, record);
+        }
+    }
+
+    // Square allows up to three segment IDs per filter. Query separately so
+    // all recognized subscriber segments are unioned safely.
+    for (const segmentId of consent.segmentIds) {
+        const records = await searchSquareMarketingCustomers(client, {
+            segmentIds: { any: [segmentId] },
+        });
+        for (const record of records) {
+            if (!record.emailUnsubscribed) byId.set(record.id, record);
+        }
+    }
+
+    const customers = Array.from(byId.values());
+    console.log("[SQUARE] Explicit marketing subscribers fetched", {
+        count: customers.length,
+    });
     return customers;
 }
 
