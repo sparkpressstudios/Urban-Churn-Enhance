@@ -25,7 +25,7 @@ export default function Privacy() {
                     <h1 className="text-4xl md:text-5xl font-black leading-none tracking-tight mb-4">
                         Privacy Policy
                     </h1>
-                    <p className="text-white/50 text-base">Last updated: April 17, 2026</p>
+                    <p className="text-white/50 text-base">Last updated: October 4, 2026</p>
                 </div>
             </section>
 
@@ -55,6 +55,7 @@ export default function Privacy() {
                             <li><strong>Submit a contact form or catering inquiry:</strong> Name, email, subject, and message content.</li>
                             <li><strong>Apply for a job:</strong> Name, email, phone, and application details.</li>
                             <li><strong>Update your profile:</strong> Address, city, state, and ZIP code.</li>
+                            <li><strong>Join our email list:</strong> Email address, optional first name, and your affirmative consent to receive Urban Churn marketing emails.</li>
                         </ul>
 
                         <h3>2.2 Information Collected Automatically</h3>
@@ -68,7 +69,7 @@ export default function Privacy() {
 
                         <h3>2.3 Information from Third Parties</h3>
                         <ul>
-                            <li><strong>Square:</strong> When you make a payment, Square may share transaction confirmation and payment status with us. We do not receive or store your full credit card number.</li>
+                            <li><strong>Square:</strong> When you make a payment, Square may share transaction confirmation, payment status, customer contact information you provided to us, and marketing-consent indicators associated with our Customer Directory. We do not receive or store your full credit card number.</li>
                             <li><strong>Migrated data:</strong> If you previously ordered through our old website (WooCommerce), we may have your name, email, phone, and order history from that platform.</li>
                         </ul>
 
@@ -78,6 +79,7 @@ export default function Privacy() {
                             <li><strong>Fulfill orders:</strong> Process and manage your pre-orders, bakery orders, gift card purchases, and event registrations.</li>
                             <li><strong>Manage your account:</strong> Create and maintain your customer account, authenticate logins, and process password resets.</li>
                             <li><strong>Communicate with you:</strong> Send order confirmations, pickup reminders, password reset emails, and respond to inquiries.</li>
+                            <li><strong>Send opted-in marketing:</strong> If you expressly subscribe, send occasional flavour announcements, events, offers, and other Urban Churn news. You can unsubscribe at any time using the link in a marketing email.</li>
                             <li><strong>Improve our services:</strong> Analyze usage patterns to enhance our Site, menu, and customer experience.</li>
                             <li><strong>Process payments:</strong> Facilitate transactions through our payment processor (Square).</li>
                             <li><strong>Ensure security:</strong> Detect and prevent fraud, unauthorized access, and other security threats.</li>
@@ -90,7 +92,7 @@ export default function Privacy() {
                             <li><strong>Service providers:</strong> Third-party vendors that help us operate our business, including:
                                 <ul>
                                     <li><strong>Square</strong> — payment processing and gift card management</li>
-                                    <li><strong>Resend</strong> — transactional email delivery (order confirmations, password resets)</li>
+                                    <li><strong>Resend</strong> — transactional email delivery and marketing email delivery for customers who have opted in</li>
                                     <li><strong>Neon (PostgreSQL)</strong> — secure cloud database hosting</li>
                                 </ul>
                             </li>
