@@ -32,6 +32,7 @@ import customerAuthRouter from "./customer-auth";
 import wholesalePortalRouter from "./wholesale-portal";
 import driverRouter from "./driver";
 import giftCardsRouter from "./gift-cards";
+import marketingRouter from "./marketing";
 import { requireAuth, requireAdmin, requireAdminOrManager } from "../middlewares/auth";
 import { requireStoreAccess } from "../middlewares/store-auth";
 
@@ -46,6 +47,7 @@ router.use("/customer", customerAuthRouter);
 router.use("/customer/wholesale", wholesalePortalRouter);
 router.use("/driver", driverRouter);
 router.use("/gift-cards", giftCardsRouter);
+router.use("/marketing", marketingRouter);
 router.use("/webhooks", webhooksRouter);
 
 // Public endpoint for Square app ID (needed by payment form)
