@@ -17,7 +17,11 @@ import {
     sendAdminWholesaleOrderAlert,
     sendWholesaleParseFailureAlert,
 } from "../lib/email";
-import { handleMarketingWebhookEvent } from "../lib/resend-marketing";
+import {
+    getResendMarketingWebhookSecret,
+    handleMarketingWebhookEvent,
+    verifyResendMarketingWebhook,
+} from "../lib/resend-marketing";
 
 const router: IRouter = Router();
 
@@ -208,6 +212,45 @@ router.post("/square", async (req, res) => {
     } catch (e: any) {
         console.error("[WEBHOOK] Error processing Square event:", e);
         res.status(500).json({ error: "Internal error" });
+    }
+});
+
+// Dedicated, signature-verified webhook for marketing analytics and opt-outs.
+// The webhook is created automatically through the Resend API on server startup.
+router.post("/resend-marketing", async (req, res) => {
+    const rawBody = (req as any).rawBody as string | undefined;
+    const svixId = req.headers["svix-id"] as string | undefined;
+    const svixTimestamp = req.headers["svix-timestamp"] as string | undefined;
+    const svixSignature = req.headers["svix-signature"] as string | undefined;
+
+    if (!rawBody || !svixId || !svixTimestamp || !svixSignature) {
+        res.status(401).json({ error: "Missing webhook signature" });
+        return;
+    }
+
+    const webhookSecret = await getResendMarketingWebhookSecret();
+    if (!webhookSecret) {
+        console.error("[RESEND-MARKETING] Webhook called before signing secret was configured");
+        res.status(503).json({ error: "Webhook is not configured" });
+        return;
+    }
+
+    try {
+        const event = verifyResendMarketingWebhook(
+            rawBody,
+            {
+                id: svixId,
+                timestamp: svixTimestamp,
+                signature: svixSignature,
+            },
+            webhookSecret,
+        );
+
+        await handleMarketingWebhookEvent(event, { resendEventId: svixId });
+        res.status(200).json({ received: true });
+    } catch (err) {
+        console.error("[RESEND-MARKETING] Invalid or failed webhook:", err);
+        res.status(401).json({ error: "Invalid webhook" });
     }
 });
 
