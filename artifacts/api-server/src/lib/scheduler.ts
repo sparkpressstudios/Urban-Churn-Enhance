@@ -23,8 +23,7 @@ import {
 import type { LocationInfo } from "./email";
 import {
     ensureResendMarketingWebhook,
-    syncCustomersToContacts,
-    syncInquiriesToContacts,
+    repairLegacyImplicitMarketingConsent,
     syncSquareCustomersToContacts,
 } from "./resend-marketing";
 
@@ -85,16 +84,11 @@ export function initScheduler() {
                     console.warn("[EMAIL-MARKETING] Resend webhook is not configured:", webhook.error || "unknown error");
                 }
 
-                // Run sequentially because the same email can exist in more
-                // than one source and email_contacts enforces a unique address.
-                const customers = await syncCustomersToContacts();
-                const inquiries = await syncInquiriesToContacts();
+                const repair = await repairLegacyImplicitMarketingConsent();
+                console.log("[EMAIL-MARKETING] Legacy consent repair complete", repair);
+
                 const square = await syncSquareCustomersToContacts();
-                console.log("[EMAIL-MARKETING] Startup contact sync complete", {
-                    customers,
-                    inquiries,
-                    square,
-                });
+                console.log("[EMAIL-MARKETING] Startup Square contact sync complete", square);
             } catch (err) {
                 console.error("[EMAIL-MARKETING] Startup contact sync failed:", err);
             }
