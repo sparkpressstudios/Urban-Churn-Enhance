@@ -26,6 +26,7 @@ import {
     repairLegacyImplicitMarketingConsent,
     syncSquareCustomersToContacts,
 } from "./resend-marketing";
+import { isSquareResendSyncEnabled } from "./square-resend-policy";
 
 /** All scheduled jobs and date math use the business timezone */
 const BUSINESS_TZ = "America/New_York";
@@ -131,6 +132,8 @@ export function initScheduler() {
     }, { timezone: BUSINESS_TZ });
 
     console.log("[EMAIL-MARKETING] Square contact sync scheduled daily at 3:17 AM Eastern");
+    console.log("[EMAIL-MARKETING] Square provider contact sync: %s",
+        isSquareResendSyncEnabled() ? "enabled" : "paused; new contacts stay in Neon");
 
     // ── Job 3: Daily 7 AM Eastern — admin orders-closed reminder + customer pickup reminders ──
     cron.schedule("0 7 * * *", async () => {

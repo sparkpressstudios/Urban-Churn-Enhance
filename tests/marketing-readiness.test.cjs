@@ -122,6 +122,7 @@ test("Current Square→DB→Resend suppression behavior is preserved in isolated
   const chunk = sliceBetween(source, "type SquareContactSyncResult =", "export async function scheduleMarketingCampaign(");
   const exports = compile(chunk, {
     db, emailContactsTable: table, eq: (_field,id) => ({id}),
+    isSquareResendSyncEnabled: () => true,
     syncContactToResend: async (id,opts={}) => syncs.push({id,...opts}), sleep: async () => {},
   }, { "./square": { listSquareMarketingCustomers: async () => list } });
   const result = await exports.syncSquareCustomersToContacts();
@@ -246,7 +247,7 @@ test("Overlapping scheduled/manual Square syncs share one run and clear after su
   let calls=0, resolveGate, rejectNext=false;
   let gate=new Promise(resolve=>{resolveGate=resolve});
   const exports=compile(chunk, {
-    db:{select:()=>({from:async()=>[]})},emailContactsTable:{},
+    db:{select:()=>({from:async()=>[]})},emailContactsTable:{}, isSquareResendSyncEnabled:()=>false,
     eq:()=>({}),syncContactToResend:async()=>{},sleep:async()=>{},
   },{"./square":{listSquareMarketingCustomers:async()=>{
     calls++; if(rejectNext){rejectNext=false;throw new Error("Fixture failure")};return gate;
@@ -264,6 +265,7 @@ test("Scheduler registers one daily Eastern Square run and does not import or pr
     "node-cron":{schedule:(expression,callback,options)=>{jobs.push({expression,callback,options})}},
     "@workspace/db":{db:{}}, "@workspace/db/schema":{}, "drizzle-orm":{},
     "./order-payment":{validForFulfillmentSql:()=>({})}, "./email":{},
+    "./square-resend-policy":{isSquareResendSyncEnabled:()=>false},
     "./resend-marketing":{
       getResendMarketingWebhookSecret:async()=>{readinessCalls++;return "fixture-existing-secret"},
       repairLegacyImplicitMarketingConsent:async()=>{repairCalls++;return {repaired:0,resendSuppressed:0}},
@@ -335,3 +337,227 @@ test("Resend contact unsubscribe updates only matched local contacts and preserv
   }
 });
 
+function squarePolicy(value) {
+  return compile(read("artifacts/api-server/src/lib/square-resend-policy.ts"), {
+    process: { env: value === undefined ? {} : { SQUARE_CONTACT_RESEND_SYNC_ENABLED: value } },
+  });
+}
+test("Square Resend sync is held by default and only explicit true enables it", () => {
+  for(const value of [undefined,"","false","TRUE","1","true "]) assert.equal(squarePolicy(value).isSquareResendSyncEnabled(),false);
+  assert.equal(squarePolicy("true").isSquareResendSyncEnabled(),true);
+  const held=squarePolicy();
+  for(const c of [
+    {source:"square_sync"},
+    {source:"customer_sync",customProperties:{squareCustomerId:"fixture-square-id"}},
+    {source:"manual",consentSource:"square_marketing_opt_in"},
+    {source:"manual",consentSource:"resend_unsubscribe",customProperties:{squareCustomerId:"fixture-square-id"}},
+  ]) assert.equal(held.isSquareContactHeldInNeon(c),true);
+  for(const c of [
+    {source:"manual",consentSource:"website_footer"},
+    {source:"customer_sync",customProperties:null},
+    {source:"manual",customProperties:{squareCustomerId:""}},
+  ]) assert.equal(held.isSquareContactHeldInNeon(c),false);
+});
+function contactUpsertFixture(policy=squarePolicy(),error=null) {
+  const calls=[];
+  const source=read("artifacts/api-server/src/lib/resend-marketing.ts");
+  const chunk=sliceBetween(source,"export async function upsertResendContact(","export async function ensureResendSegment(");
+  const exports=compile(chunk,{
+    isSquareContactHeldInNeon:policy.isSquareContactHeldInNeon,
+    resend:{contacts:{
+      update:async value=>{calls.push({action:"update",value});return error?{error}:{data:{id:value.id}}},
+      create:async value=>{calls.push({action:"create",value});return {data:{id:"fixture-created-id"}}},
+      get:async()=>{calls.push({action:"get"});return {data:null}},
+    }},
+  });
+  return {calls,upsert:exports.upsertResendContact};
+}
+test("Held Square contacts cannot be created, profile-updated or resubscribed", async () => {
+  const f=contactUpsertFixture();
+  for(const id of [null,"fixture-existing-id"]){
+    const c={...contact(1,"fixture@example.test","subscribed","website_footer"),source:"customer_sync",customProperties:{squareCustomerId:"fixture-square-id"},resendContactId:id};
+    const before=JSON.stringify(c);
+    assert.equal(await f.upsert(c,{allowResubscribe:true}),null);
+    assert.equal(JSON.stringify(c),before);
+  }
+  assert.equal(f.calls.length,0);
+});
+test("Existing held contacts can only receive safe unsubscribe, never profile fields or creation", async () => {
+  for(const status of ["unsubscribed","bounced","complained"]){
+    const f=contactUpsertFixture();
+    const c={...contact(1,"fixture@example.test",status,"square_marketing_opt_in"),resendContactId:"fixture-existing-id"};
+    assert.equal(await f.upsert(c,{allowResubscribe:true}),"fixture-existing-id");
+    assert.equal(f.calls.length,1);
+    assert.equal(f.calls[0].action,"update");
+    assert.deepEqual(Object.keys(f.calls[0].value).sort(),["id","unsubscribed"]);
+    assert.equal(f.calls[0].value.unsubscribed,true);
+    assert.equal(c.marketingStatus,status);
+    const missing={...c,resendContactId:null};
+    assert.equal(await f.upsert(missing),null);
+    assert.equal(f.calls.length,1);
+  }
+  const failed=contactUpsertFixture(squarePolicy(),{message:"Fixture missing provider contact"});
+  assert.equal(await failed.upsert({...contact(1,"fixture@example.test","unsubscribed","square_marketing_opt_in"),resendContactId:"fixture-deleted-id"}),null);
+  assert.deepEqual(failed.calls.map(c=>c.action),["update"]);
+});
+test("Unrelated contacts and explicitly enabled Square contacts retain normal provider sync", async () => {
+  const ordinary=contactUpsertFixture();
+  assert.equal(await ordinary.upsert({...contact(1,"fixture@example.test","subscribed","website_footer"),resendContactId:null}),"fixture-created-id");
+  assert.equal(ordinary.calls[0].action,"create");
+  const enabled=contactUpsertFixture(squarePolicy("true"));
+  assert.equal(await enabled.upsert({...contact(1,"fixture@example.test","subscribed","square_marketing_opt_in"),resendContactId:null}),"fixture-created-id");
+  assert.equal(enabled.calls[0].action,"create");
+});
+test("Neon-only daily import retains records and consent while allowing existing opt-out suppression", async () => {
+  const rows=[contact(1,"removed@example.test","subscribed","square_marketing_opt_in")];
+  const snapshot=rows.map(c=>({...c}));
+  const calls=[];
+  const db={
+    select:()=>({from:async()=>snapshot}),
+    insert:()=>({values:value=>({returning:async()=>{const c={...value,id:2,resendContactId:null};rows.push(c);return [c]}})}),
+    update:()=>({set:updates=>({where:async({id})=>Object.assign(rows.find(c=>c.id===id),updates)})}),
+  };
+  const source=read("artifacts/api-server/src/lib/resend-marketing.ts");
+  const chunk=sliceBetween(source,"type SquareContactSyncResult =","export async function scheduleMarketingCampaign(");
+  const exports=compile(chunk,{
+    db,emailContactsTable:{},eq:(_field,id)=>({id}),sleep:async()=>{},
+    isSquareResendSyncEnabled:()=>false,
+    syncContactToResend:async id=>calls.push({id,status:rows.find(c=>c.id===id).marketingStatus}),
+  },{"./square":{listSquareMarketingCustomers:async()=>[{id:"fixture-square",email:"new@example.test",firstName:"Fixture",lastName:"",phone:"",address:"",city:"",state:"",zip:""}]}});
+  const result=await exports.syncSquareCustomersToContacts();
+  assert.equal(rows.length,2);
+  assert.equal(rows[1].source,"square_sync");
+  assert.equal(rows[1].marketingStatus,"subscribed");
+  assert.equal(rows[1].consentSource,"square_marketing_opt_in");
+  assert.equal(rows[1].resendContactId,null);
+  assert.equal(rows[0].marketingStatus,"unsubscribed");
+  assert.equal(rows[0].consentSource,"square_marketing_opt_out_or_removed");
+  assert.equal(result.resendSyncEnabled,false);
+  assert.equal(result.resendDeferred,1);
+  assert.deepEqual(calls,[{id:1,status:"unsubscribed"}]);
+});
+function queryRows(rows) {
+  return {where(){return this},limit:async()=>rows,then:(resolve,reject)=>Promise.resolve(rows).then(resolve,reject)};
+}
+function holdFixture({local=[],linked=[],providerPages=[],enabled=false,listThrows=false}={}) {
+  const calls=[];
+  const contactsTable={},segmentsTable={};
+  const policy=squarePolicy(enabled?"true":undefined);
+  const db={select:projection=>({from:table=>{
+    if(table===segmentsTable)return queryRows([{resendSegmentId:"fixture-segment"}]);
+    return queryRows(Object.hasOwn(projection,"resendContactId")?linked:local);
+  }})};
+  const source=read("artifacts/api-server/src/lib/resend-marketing.ts");
+  const chunk=sliceBetween(source,"export async function getSquareResendHoldReason(","/** Best-effort sync after local contact");
+  const exports=compile(chunk,{
+    db,emailContactsTable:contactsTable,emailSegmentsTable:segmentsTable,
+    isSquareResendSyncEnabled:policy.isSquareResendSyncEnabled,
+    isSquareContactHeldInNeon:policy.isSquareContactHeldInNeon,
+    getSegmentContactIds:async()=>[1],eq:()=>({}),inArray:()=>({}),and:()=>({}),
+    resend:{contacts:{list:async options=>{
+      calls.push({action:"list",options});
+      if(listThrows)throw new Error("Fixture provider failure");
+      return providerPages.shift()||{data:{data:[],has_more:false}};
+    },segments:{add:async()=>{calls.push({action:"member-add"});throw new Error("Unexpected member-add")}}}},
+    ensureResendSegment:async()=>{calls.push({action:"ensure-segment"});return "fixture-segment"},
+    upsertResendContact:async()=>{calls.push({action:"upsert"});return null},
+    mapWithConcurrency:async()=>[],
+  });
+  return {calls,...exports};
+}
+test("Local held Square audience blocks member-add before any provider operation", async () => {
+  const f=holdFixture({local:[{source:"square_sync"}]});
+  const result=await f.syncSegmentMembersToResend(1);
+  assert.equal(result.held,true);
+  assert.match(result.error,/held in Neon/);
+  assert.equal(f.calls.length,0);
+});
+test("Stale provider segment cannot bypass Square hold and paginated membership is verified", async () => {
+  const f=holdFixture({
+    local:[{source:"manual",consentSource:"website_footer"}],
+    linked:[{source:"square_sync",email:"held@example.test",resendContactId:"fixture-held-id"}],
+    providerPages:[
+      {data:{data:[{id:"fixture-independent-id",email:"independent@example.test"}],has_more:true}},
+      {data:{data:[{id:"fixture-held-id",email:"held@example.test"}],has_more:false}},
+    ],
+  });
+  const result=await f.syncSegmentMembersToResend(1);
+  assert.equal(result.held,true);
+  assert.match(result.error,/still contains Square/);
+  assert.deepEqual(f.calls.map(c=>c.action),["list","list"]);
+  assert.equal(f.calls[1].options.after,"fixture-independent-id");
+});
+test("Campaign hold fails closed on unverifiable remote membership but permits unrelated audiences", async () => {
+  const inputs={local:[{source:"manual"}],linked:[{source:"square_sync",email:"held@example.test",resendContactId:"fixture-held-id"}]};
+  for(const providerPages of [[{error:{message:"Fixture denied"}}],[{data:{data:[],has_more:true}}]]){
+    const f=holdFixture({...inputs,providerPages});
+    assert.match(await f.getSquareResendHoldReason(1),/Cannot verify/);
+  }
+  const thrown=holdFixture({...inputs,listThrows:true});
+  assert.match(await thrown.getSquareResendHoldReason(1),/Cannot verify/);
+  const clear=holdFixture({...inputs,providerPages:[{data:{data:[{id:"fixture-independent-id",email:"independent@example.test"}],has_more:false}}]});
+  assert.equal(await clear.getSquareResendHoldReason(1),null);
+  const enabled=holdFixture({...inputs,enabled:true});
+  assert.equal(await enabled.getSquareResendHoldReason(1),null);
+  assert.equal(enabled.calls.length,0);
+});
+test("Held or empty eligible audience never reaches campaign state change or broadcast creation", async () => {
+  const source=read("artifacts/api-server/src/lib/resend-marketing.ts");
+  const chunk=sliceBetween(source,"export async function sendMarketingCampaign(","export async function handleMarketingWebhookEvent(");
+  for(const result of [{synced:0,failed:0,held:true,error:"Fixture Square hold"},{synced:0,failed:0}]){
+    const calls=[],campaigns={},templates={};
+    const db={
+      select:()=>({from:table=>queryRows(table===campaigns?[{id:1,segmentId:1,templateId:1}]:[{id:1,compiledHtml:"fixture"}])}),
+      update:()=>{calls.push("update");throw new Error("Unexpected campaign write")},
+    };
+    const exports=compile(chunk,{
+      resend:{broadcasts:{create:async()=>{calls.push("broadcast");throw new Error("Unexpected send")}}},
+      db,emailCampaignsTable:campaigns,emailTemplatesTable:templates,eq:()=>({}),
+      withMarketingComplianceFooter:value=>value,compileEmailDocument:()=>"",
+      syncSegmentMembersToResend:async()=>result,
+    });
+    const sent=await exports.sendMarketingCampaign(1);
+    assert.equal(sent.success,false);
+    assert.equal(calls.length,0);
+  }
+});
+test("Square contact hold does not disable transactional mail or signed webhook code", () => {
+  const transactional=read("artifacts/api-server/src/lib/email.ts");
+  const webhooks=read("artifacts/api-server/src/routes/webhooks.ts");
+  assert(!transactional.includes("SQUARE_CONTACT_RESEND_SYNC_ENABLED"));
+  assert(!transactional.includes("square-resend-policy"));
+  assert(!webhooks.includes("square-resend-policy"));
+});
+
+
+test("Held email blocks stale remote audience even with null or different saved provider ID", async () => {
+  for(const resendContactId of [null,"fixture-stale-provider-id"]){
+    const f=holdFixture({
+      local:[{source:"manual",consentSource:"website_footer"}],
+      linked:[{source:"customer_sync",consentSource:"resend_unsubscribe",customProperties:{squareCustomerId:"fixture-square-id"},email:" HELD@EXAMPLE.TEST ",resendContactId}],
+      providerPages:[{data:{data:[{id:"fixture-different-provider-id",email:"held@example.test"}],has_more:false}}],
+    });
+    assert.match(await f.getSquareResendHoldReason(1),/still contains Square/);
+    assert.deepEqual(f.calls.map(c=>c.action),["list"]);
+  }
+});
+test("Campaign rechecks held provenance after member sync and before any send-state write", async () => {
+  const source=read("artifacts/api-server/src/lib/resend-marketing.ts");
+  const chunk=sliceBetween(source,"export async function sendMarketingCampaign(","export async function handleMarketingWebhookEvent(");
+  const calls=[],campaigns={},templates={},segments={};
+  const db={
+    select:()=>({from:table=>queryRows(table===campaigns?[{id:1,segmentId:1,templateId:1}]:table===segments?[{id:1,resendSegmentId:"fixture-segment"}]:[{id:1,compiledHtml:"fixture"}])}),
+    update:()=>{calls.push("state-write");throw new Error("Unexpected send state")},
+  };
+  const exports=compile(chunk,{
+    resend:{broadcasts:{create:async()=>{calls.push("broadcast");throw new Error("Unexpected send")}}},
+    db,emailCampaignsTable:campaigns,emailTemplatesTable:templates,emailSegmentsTable:segments,eq:()=>({}),
+    withMarketingComplianceFooter:value=>value,compileEmailDocument:()=>"",
+    syncSegmentMembersToResend:async()=>{calls.push("member-sync");return {synced:1,failed:0}},
+    getSquareResendHoldReason:async()=>{calls.push("final-hold-check");return "Fixture Square provenance changed"},
+  });
+  const result=await exports.sendMarketingCampaign(1);
+  assert.equal(result.success,false);
+  assert.match(result.error,/provenance changed/);
+  assert.deepEqual(calls,["member-sync","final-hold-check"]);
+});

@@ -15,6 +15,10 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import { compileEmailDocument, type EmailDocument } from "./email-compiler";
 import { getSegmentContactIds } from "./email-segment-rules";
+import {
+    isSquareContactHeldInNeon,
+    isSquareResendSyncEnabled,
+} from "./square-resend-policy";
 
 const resend = process.env.RESEND_API_KEY
     ? new Resend(process.env.RESEND_API_KEY)
@@ -174,6 +178,22 @@ export async function upsertResendContact(
 ): Promise<string | null> {
     if (!resend) return null;
 
+    // During the hold, preserve provider suppression without creating a contact,
+    // changing their profile, or restoring their subscription.
+    if (isSquareContactHeldInNeon(contact)) {
+        if (!contact.resendContactId || contact.marketingStatus === "subscribed") return null;
+
+        const { data, error } = await resend.contacts.update({
+            id: contact.resendContactId,
+            unsubscribed: true,
+        });
+        if (error) {
+            console.error("[RESEND-MARKETING] held contact suppression failed:", error.message);
+            return null;
+        }
+        return data?.id ?? contact.resendContactId;
+    }
+
     const profileFields = {
         firstName: contact.firstName || undefined,
         lastName: contact.lastName || undefined,
@@ -261,8 +281,88 @@ export async function ensureResendSegment(segmentId: number): Promise<string | n
     return resendSegmentId;
 }
 
-export async function syncSegmentMembersToResend(segmentId: number): Promise<{ synced: number; failed: number }> {
+export async function getSquareResendHoldReason(
+    segmentId: number,
+    opts: { checkRemote?: boolean } = {},
+): Promise<string | null> {
+    if (isSquareResendSyncEnabled()) return null;
+
+    const contactIds = await getSegmentContactIds(segmentId);
+    const localMembers = contactIds.length ? await db
+        .select({
+            source: emailContactsTable.source,
+            consentSource: emailContactsTable.consentSource,
+            customProperties: emailContactsTable.customProperties,
+        })
+        .from(emailContactsTable)
+        .where(inArray(emailContactsTable.id, contactIds)) : [];
+
+    if (localMembers.some(isSquareContactHeldInNeon)) {
+        return "Square-imported contacts are being held in Neon. Choose an audience without those contacts.";
+    }
+    if (opts.checkRemote === false) return null;
+
+    const [segment] = await db
+        .select({ resendSegmentId: emailSegmentsTable.resendSegmentId })
+        .from(emailSegmentsTable)
+        .where(eq(emailSegmentsTable.id, segmentId))
+        .limit(1);
+    if (!segment?.resendSegmentId) return null;
+
+    const linkedContacts = await db
+        .select({
+            email: emailContactsTable.email,
+            source: emailContactsTable.source,
+            consentSource: emailContactsTable.consentSource,
+            customProperties: emailContactsTable.customProperties,
+            resendContactId: emailContactsTable.resendContactId,
+        })
+        .from(emailContactsTable);
+    const heldContacts = linkedContacts.filter(isSquareContactHeldInNeon);
+    const heldProviderIds = new Set(heldContacts
+        .map((contact) => contact.resendContactId)
+        .filter((id): id is string => !!id));
+    const heldEmails = new Set(heldContacts.map((contact) => contact.email.trim().toLowerCase()));
+    if (!heldContacts.length) return null;
+    if (!resend) return "Cannot verify the held Square audience while Resend is not configured.";
+
+    // Existing provider segments may still contain contacts no longer in the
+    // local segment. Verify membership before any member-add or broadcast.
+    let after: string | undefined;
+    try {
+        do {
+            const { data, error } = await resend.contacts.list({
+                segmentId: segment.resendSegmentId,
+                limit: 100,
+                ...(after ? { after } : {}),
+            });
+            if (error || !data) return "Cannot verify that the Resend audience excludes held Square contacts.";
+            if (data.data.some((contact) => heldProviderIds.has(contact.id) ||
+                heldEmails.has(contact.email.trim().toLowerCase()))) {
+                return "The Resend audience still contains Square contacts being held in Neon.";
+            }
+            if (!data.has_more) return null;
+
+            const next = data.data.at(-1)?.id;
+            if (!next || next === after) return "Cannot verify the complete Resend audience.";
+            after = next;
+        } while (after);
+    } catch {
+        return "Cannot verify that the Resend audience excludes held Square contacts.";
+    }
+    return null;
+}
+
+export async function syncSegmentMembersToResend(segmentId: number): Promise<{
+    synced: number;
+    failed: number;
+    held?: boolean;
+    error?: string;
+}> {
     if (!resend) return { synced: 0, failed: 0 };
+
+    const holdReason = await getSquareResendHoldReason(segmentId);
+    if (holdReason) return { synced: 0, failed: 0, held: true, error: holdReason };
 
     const resendSegmentId = await ensureResendSegment(segmentId);
     if (!resendSegmentId) return { synced: 0, failed: 0 };
@@ -402,9 +502,12 @@ export async function sendMarketingCampaign(campaignId: number): Promise<{
         compileEmailDocument(template.document as EmailDocument),
     );
 
-    const { synced, failed } = await syncSegmentMembersToResend(campaign.segmentId);
-    if (synced === 0 && failed > 0) {
-        return { success: false, error: "Failed to sync any contacts to Resend" };
+    const { synced, failed, held, error: holdError } = await syncSegmentMembersToResend(campaign.segmentId);
+    if (held) return { success: false, error: holdError };
+    if (synced === 0) {
+        return { success: false, error: failed > 0
+            ? "Failed to sync any contacts to Resend"
+            : "Campaign has no synced, eligible subscribers" };
     }
 
     const [segment] = await db
@@ -416,6 +519,11 @@ export async function sendMarketingCampaign(campaignId: number): Promise<{
     if (!segment?.resendSegmentId) {
         return { success: false, error: "Resend segment not available" };
     }
+
+    // Square reconciliation or an admin edit may have changed provenance while
+    // membership synchronization was running. Recheck before any send state.
+    const finalHoldReason = await getSquareResendHoldReason(campaign.segmentId);
+    if (finalHoldReason) return { success: false, error: finalHoldReason };
 
     await db
         .update(emailCampaignsTable)
@@ -816,6 +924,8 @@ type SquareContactSyncResult = {
     updated: number;
     subscribed: number;
     suppressed: number;
+    resendSyncEnabled: boolean;
+    resendDeferred: number;
 };
 
 // Scheduled and manual syncs share one run in this single-replica process.
@@ -846,6 +956,8 @@ async function runSquareContactSync(): Promise<SquareContactSyncResult> {
     let updated = 0;
     let subscribed = 0;
     let suppressed = 0;
+    const resendSyncEnabled = isSquareResendSyncEnabled();
+    let resendDeferred = 0;
 
     for (const customer of squareSubscribers) {
         const email = customer.email.toLowerCase().trim();
@@ -869,8 +981,12 @@ async function runSquareContactSync(): Promise<SquareContactSyncResult> {
             }).returning();
 
             contactsByEmail.set(email, created);
-            await syncContactToResend(created.id, { allowResubscribe: true });
-            await sleep(150);
+            if (resendSyncEnabled) {
+                await syncContactToResend(created.id, { allowResubscribe: true });
+                await sleep(150);
+            } else {
+                resendDeferred++;
+            }
             imported++;
             subscribed++;
             continue;
@@ -950,8 +1066,12 @@ async function runSquareContactSync(): Promise<SquareContactSyncResult> {
             !isHardSuppressed &&
             (statusChanged || (!existing.resendContactId && nextStatus === "subscribed"))
         ) {
-            await syncContactToResend(existing.id, { allowResubscribe });
-            await sleep(150);
+            if (resendSyncEnabled) {
+                await syncContactToResend(existing.id, { allowResubscribe });
+                await sleep(150);
+            } else {
+                resendDeferred++;
+            }
         }
 
         if (statusChanged && nextStatus === "subscribed") {
@@ -995,6 +1115,8 @@ async function runSquareContactSync(): Promise<SquareContactSyncResult> {
         updated,
         subscribed,
         suppressed,
+        resendSyncEnabled,
+        resendDeferred,
     };
 }
 

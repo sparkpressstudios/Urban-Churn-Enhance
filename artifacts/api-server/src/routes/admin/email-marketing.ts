@@ -37,6 +37,7 @@ import {
     getCampaignRecipientStats,
     getCampaignLinkStats,
     syncContactToResend,
+    getSquareResendHoldReason,
 } from "../../lib/resend-marketing";
 import { getSegmentContactIds } from "../../lib/email-segment-rules";
 
@@ -1157,6 +1158,9 @@ router.get("/campaigns/:id/precheck", async (req, res) => {
         }
     }
 
+    const squareHoldReason = campaign.segmentId
+        ? await getSquareResendHoldReason(campaign.segmentId, { checkRemote: false })
+        : null;
     const checks = [
         { id: "resend", label: "Resend API configured", ok: isResendMarketingConfigured(), required: true },
         { id: "subject", label: "Subject line set", ok: !!campaign.subject?.trim(), required: true },
@@ -1164,6 +1168,7 @@ router.get("/campaigns/:id/precheck", async (req, res) => {
         { id: "templatePublished", label: "Template published (recommended)", ok: templateStatus === "published", required: false },
         { id: "segment", label: "Segment selected", ok: !!campaign.segmentId, required: true },
         { id: "audience", label: "Audience has subscribed contacts", ok: audienceSubscribed > 0, required: true },
+        { id: "squareHold", label: squareHoldReason || "Audience respects the Square contact hold", ok: !squareHoldReason, required: true },
         { id: "from", label: "From email set", ok: !!(campaign.fromEmail || MARKETING_FROM_EMAIL), required: true },
     ];
 
