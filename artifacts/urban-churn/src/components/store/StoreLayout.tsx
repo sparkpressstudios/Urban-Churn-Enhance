@@ -3,6 +3,7 @@ import { useAuth } from "@/components/admin/AuthContext";
 import {
     LayoutDashboard,
     ShoppingBag,
+    Users,
     LogOut,
     Menu,
     X,
@@ -28,6 +29,7 @@ type NavItem = { href: string; label: string; icon: React.ElementType };
 const navItems: NavItem[] = [
     { href: "/store", label: "Dashboard", icon: LayoutDashboard },
     { href: "/store/orders", label: "Orders", icon: ShoppingBag },
+    { href: "/store/customers", label: "Customers", icon: Users },
 ];
 
 interface StoreLayoutProps {
