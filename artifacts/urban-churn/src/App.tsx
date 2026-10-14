@@ -77,6 +77,7 @@ const AdminInquiries = lazy(() => import("@/pages/admin/Inquiries"));
 // Code-split store portal pages
 const StoreDashboard = lazy(() => import("@/pages/store/Dashboard"));
 const StoreOrders = lazy(() => import("@/pages/store/Orders"));
+const StoreCustomers = lazy(() => import("@/pages/store/Customers"));
 const StoreOrderDetail = lazy(() => import("@/pages/store/OrderDetail"));
 
 // Code-split customer account pages
@@ -220,6 +221,16 @@ function Router() {
           <ProtectedRoute>
             <StoreProvider>
               <StoreOrders />
+            </StoreProvider>
+          </ProtectedRoute>
+        </Suspense>
+      </Route>
+
+      <Route path="/store/customers">
+        <Suspense fallback={<AdminFallback />}>
+          <ProtectedRoute>
+            <StoreProvider>
+              <StoreCustomers />
             </StoreProvider>
           </ProtectedRoute>
         </Suspense>
