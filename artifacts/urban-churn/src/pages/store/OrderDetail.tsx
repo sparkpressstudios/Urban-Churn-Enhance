@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import { StoreLayout } from "@/components/store/StoreLayout";
+import { OrderCustomerContactDialog, type OrderCustomerContact } from "@/components/OrderCustomerContactDialog";
 import { useStoreContext } from "@/components/store/StoreContext";
 import { storeApi } from "@/lib/store-api";
 import { formatEasternDate } from "@/lib/utils";
@@ -41,6 +42,7 @@ import {
     StickyNote,
     AlertTriangle,
     RotateCcw,
+    Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -62,6 +64,8 @@ export default function StoreOrderDetail() {
     const { selectedLocationId, setSelectedLocationId, showLocationSwitcher } = useStoreContext();
     const [noteText, setNoteText] = useState("");
     const [refundOpen, setRefundOpen] = useState(false);
+    const [editCustomerOpen, setEditCustomerOpen] = useState(false);
+    const [editCustomerError, setEditCustomerError] = useState("");
 
     const { data: order, isLoading } = useQuery({
         queryKey: ["store", "order", orderId, selectedLocationId],
@@ -76,6 +80,18 @@ export default function StoreOrderDetail() {
         queryClient.invalidateQueries({ queryKey: ["store", "orders"] });
         queryClient.invalidateQueries({ queryKey: ["store", "dashboard"] });
     };
+
+    const editCustomerMutation = useMutation({
+        mutationFn: (contact: OrderCustomerContact) =>
+            storeApi.updateOrderCustomer(orderId, contact, selectedLocationId ?? undefined),
+        onSuccess: () => {
+            toast.success("Order customer details updated");
+            setEditCustomerOpen(false);
+            setEditCustomerError("");
+            invalidateOrder();
+        },
+        onError: (error: Error) => setEditCustomerError(error.message || "Unable to save customer details"),
+    });
 
     const statusMutation = useMutation({
         mutationFn: (status: string) =>
@@ -171,6 +187,21 @@ export default function StoreOrderDetail() {
         );
     }
 
+    const customerDialog = (
+        <OrderCustomerContactDialog
+            open={editCustomerOpen}
+            onOpenChange={setEditCustomerOpen}
+            contact={{
+                customerName: order.customerName || "",
+                customerEmail: order.customerEmail || "",
+                customerPhone: order.customerPhone || "",
+            }}
+            isSaving={editCustomerMutation.isPending}
+            error={editCustomerError}
+            onSave={(contact) => editCustomerMutation.mutate(contact)}
+        />
+    );
+
     const items = order.items || [];
     const totalQty = items.reduce((s: number, i: any) => s + i.quantity, 0);
     const totalPickedUp = items.reduce((s: number, i: any) => s + i.pickedUpQuantity, 0);
@@ -262,7 +293,13 @@ export default function StoreOrderDetail() {
                     {/* Customer info */}
                     <Card className="bg-white border-gray-200" data-tour="store-order-customer">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-gray-800 text-sm">Customer</CardTitle>
+                            <CardTitle className="text-gray-800 text-sm flex items-center justify-between gap-2">
+                                Customer
+                                <Button variant="outline" size="sm" className="h-7 text-xs"
+                                    onClick={() => { setEditCustomerError(""); setEditCustomerOpen(true); }}>
+                                    <Pencil className="w-3 h-3 mr-1" /> Edit
+                                </Button>
+                            </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-2">
                             <div className="flex items-center gap-2 text-sm">
@@ -570,6 +607,7 @@ export default function StoreOrderDetail() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+            {customerDialog}
         </StoreLayout>
     );
 }
