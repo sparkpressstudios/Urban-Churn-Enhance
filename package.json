@@ -11,7 +11,8 @@
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "test:marketing-readiness": "node --test tests/marketing-readiness.test.cjs",
-    "test:customer-profile-edit": "node --test tests/customer-profile-edit.test.cjs"
+    "test:customer-profile-edit": "node --test tests/customer-profile-edit.test.cjs",
+    "test:preorder-availability": "node --test tests/preorder-availability.test.cjs"
   },
   "private": true,
   "devDependencies": {

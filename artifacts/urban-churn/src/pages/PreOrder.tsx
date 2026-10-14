@@ -23,6 +23,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import SEO from "@/components/SEO";
 import { api } from "@/lib/api";
+import { usePreorderAvailability } from "@/hooks/use-preorder-availability";
+import { preorderUnavailableMessage, selectPreorderWindows } from "@workspace/api-zod/preorder-availability";
 import { TAG_LABELS, TAG_CLASSES, formatHoursCompact } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useSquareCard, getCheckoutId, clearCheckoutId } from "@/hooks/useSquareCard";
@@ -322,12 +324,7 @@ export default function PreOrder() {
   const { data: allLocations = [] } = useQuery<ApiLocation[]>({ queryKey: ["public", "locations"], queryFn: () => api.getPublicLocations() });
   const { data: products = [] } = useQuery<ApiProduct[]>({ queryKey: ["public", "products"], queryFn: () => api.getPublicProducts() });
   const [selectedLocation, setSelectedLocation] = useState<ApiLocation | null>(loadLocation);
-  const { data: activePreOrders = [] } = useQuery<any[]>({
-    queryKey: ["active-pre-orders", selectedLocation?.id || null],
-    queryFn: () => api.getActivePreOrders(selectedLocation?.id),
-    staleTime: 60_000,
-  });
-
+  const { windows: activePreOrders, ready: availabilityReady, refetch: refreshAvailability } = usePreorderAvailability(selectedLocation?.id);
   const [step, setStep] = useState<Step>("shopping");
   const [cart, setCart] = useState<CartItem[]>(loadCart);
   const [cartOpen, setCartOpen] = useState(false);
@@ -341,14 +338,16 @@ export default function PreOrder() {
     enabled: cartFlavourIds.length > 0,
   });
   // Use filtered locations when cart has items, otherwise show all
-  const locations = cartFlavourIds.length > 0 && filteredLocations ? filteredLocations : allLocations;
+  const cartPreorderBlocked = cart.some(item => preorderUnavailableMessage(activePreOrders.find(po => po.flavourId === item.flavour.id)));
+  const locations = cart.length > 0 && (!availabilityReady || cartPreorderBlocked) ? []
+    : cartFlavourIds.length > 0 && filteredLocations ? filteredLocations : allLocations;
 
   // Clear selected location if it's no longer valid
   useEffect(() => {
-    if (selectedLocation && locations.length > 0 && !locations.find(l => l.id === selectedLocation.id)) {
+    if (availabilityReady && selectedLocation && filteredLocations && !locations.find(l => l.id === selectedLocation.id)) {
       setSelectedLocation(null);
     }
-  }, [locations, selectedLocation]);
+  }, [locations, selectedLocation, filteredLocations, availabilityReady]);
 
   // Open cart when navigated here via the navbar cart icon
   useEffect(() => {
@@ -459,7 +458,7 @@ export default function PreOrder() {
   const getFlavorStockStatus = useCallback((flavourId: number): "available" | "low" | "sold-out" => {
     const flavorProducts = products.filter((p) => p.flavourId === flavourId);
     if (flavorProducts.length === 0) return "available"; // no product entries = available
-    const allSoldOut = flavorProducts.every((p) => p.manageStock && p.stockQuantity <= 0 && !p.available);
+    const allSoldOut = flavorProducts.every((p) => p.manageStock && p.stockQuantity <= 0);
     if (allSoldOut) return "sold-out";
     const anyLow = flavorProducts.some((p) => p.manageStock && p.stockQuantity > 0 && p.stockQuantity <= p.lowStockThreshold);
     if (anyLow) return "low";
@@ -482,6 +481,7 @@ export default function PreOrder() {
   };
 
   const addToCart = (flavour: ApiFlavour, size: ApiSize, qty: number) => {
+    if (!availabilityReady || preorderUnavailableMessage(activePreOrders.find(po => po.flavourId === flavour.id))) return;
     const price = getEffectivePrice(flavour.id, size.id, size.price);
     const existing = cart.findIndex(
       (item) => item.flavour.id === flavour.id && item.size.id === size.id
@@ -603,6 +603,18 @@ export default function PreOrder() {
     if (!validate()) return;
     if (cart.length === 0) return;
     if (!selectedLocation) return;
+    // Recheck before tokenizing: cached/stale carts must not cross a closed cutoff.
+    const refreshed = await refreshAvailability();
+    if (refreshed.isError || !refreshed.data) {
+      setSubmitPaymentError("Unable to check preorder availability. Please try again.");
+      return;
+    }
+    const windows = selectPreorderWindows(refreshed.data);
+    const blocked = cart.find(item => preorderUnavailableMessage(windows.find(po => po.flavourId === item.flavour.id)));
+    if (blocked) {
+      setSubmitPaymentError("Preorders closed or not yet open: " + blocked.flavour.name + ". Remove this item to continue.");
+      return;
+    }
 
     setSubmitPaymentError("");
 
@@ -742,15 +754,13 @@ export default function PreOrder() {
   );
 
   // --- Build a map of flavourId → pre-order window for grouping ---
-  const preOrderWindowMap = useMemo(() => {
-    const map = new Map<number, { pickupDate: string | null; pickupEndDate: string | null; preOrderEnd: string | null; acceptingOrders: boolean }>();
-    for (const po of activePreOrders) {
-      if (po.flavourId) map.set(po.flavourId, { pickupDate: po.pickupDate, pickupEndDate: po.pickupEndDate, preOrderEnd: po.preOrderEnd, acceptingOrders: po.acceptingOrders ?? true });
-    }
-    return map;
-  }, [activePreOrders]);
+  const preOrderWindowMap = new Map(activePreOrders.map(po => [po.flavourId, po]));
+  const closedCartItem = cart.find(item => preorderUnavailableMessage(preOrderWindowMap.get(item.flavour.id)));
+  const cartAvailabilityError = !availabilityReady ? "Checking preorder availability. Please try again shortly." : closedCartItem
+    ? preorderUnavailableMessage(preOrderWindowMap.get(closedCartItem.flavour.id)) + ": " + closedCartItem.flavour.name + ". Remove this item to continue."
+    : null;
 
-  const fmtShort = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" });
+  const fmtShort = (d: string | Date) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" });
 
   // Group cart items by pickup key
   const cartGroups = useMemo(() => {
@@ -774,7 +784,7 @@ export default function PreOrder() {
       } else {
         const key = "ready-now";
         if (!groupMap.has(key)) {
-          const group = { key, label: "Ready for pickup", sublabel: null, isPreOrder: false, items: [] as { item: CartItem; index: number }[] };
+          const group = { key, label: availabilityReady ? "Ready for pickup" : "Checking availability", sublabel: null, isPreOrder: false, items: [] as { item: CartItem; index: number }[] };
           groupMap.set(key, group);
           groups.push(group);
         }
@@ -783,11 +793,12 @@ export default function PreOrder() {
     });
 
     return groups;
-  }, [cart, preOrderWindowMap]);
+  }, [cart, preOrderWindowMap, availabilityReady]);
 
   // --- Grouped cart list for checkout sidebar ---
   const GroupedCartList = () => (
     <div className="space-y-1">
+      {cartAvailabilityError && <p role="alert" className="p-3 text-sm text-amber-900">{cartAvailabilityError}</p>}
       {cartGroups.map((group) => (
         <div key={group.key}>
           {/* Group header — only show when there are multiple groups or pre-order items */}
@@ -847,7 +858,7 @@ export default function PreOrder() {
   // --- Confirmation screen ---
   if (step === "confirmation") {
     // Build pickup date range from active pre-order windows
-    const pickupWindow = activePreOrders.length > 0 ? activePreOrders[0] : null;
+    const pickupWindow = activePreOrders.find(po => confirmedOrder?.items.some(item => item.flavour.id === po.flavourId)) ?? null;
     const pickupDateStr = pickupWindow?.pickupDate
       ? new Date(pickupWindow.pickupDate).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "America/New_York" })
       : null;
@@ -1107,7 +1118,7 @@ export default function PreOrder() {
                     window.scrollTo({ top: 0, behavior: "smooth" });
                   }
                 }}
-                disabled={!selectedLocation}
+                disabled={!selectedLocation || !!cartAvailabilityError}
                 className="w-full bg-[#A1AB74] text-white py-3 rounded-full font-bold text-sm hover:bg-[#8a9360] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {step === "shopping" ? (selectedLocation ? "Proceed to Checkout →" : "Select a location to continue") : "Continue"}
@@ -1126,6 +1137,7 @@ export default function PreOrder() {
       </Sheet>
 
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-8 sm:py-12 overflow-x-hidden">
+        {cart.length > 0 && cartAvailabilityError && <p role="alert" className="mb-6 rounded-xl bg-amber-50 p-4 text-amber-900">{cartAvailabilityError}</p>}
         {/* Step 1: Shopping — Product Grid */}
         {step === "shopping" && (
           <div>
@@ -1136,6 +1148,7 @@ export default function PreOrder() {
               </div>
               {cart.length > 0 && (
                 <button
+                  disabled={!!cartAvailabilityError}
                   onClick={() => { setStep("location"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                   className="flex items-center gap-2 bg-[#A1AB74] text-white px-6 py-3 rounded-full font-bold text-sm hover:bg-[#8a9360] transition-colors shrink-0"
                 >
@@ -1177,7 +1190,7 @@ export default function PreOrder() {
                   const flavorStock = getFlavorStockStatus(flavor.id);
                   const flavorPreOrderWindow = preOrderWindowMap.get(flavor.id);
                   const preOrderClosed = flavorPreOrderWindow && !flavorPreOrderWindow.acceptingOrders;
-                  const isDisabled = !flavor.available || flavorStock === "sold-out" || !!preOrderClosed;
+                  const isDisabled = !availabilityReady || !flavor.available || flavorStock === "sold-out" || !!preOrderClosed;
                   const selectedSizeId = sizeSelections[flavor.id] || (sizes.length > 0 ? sizes[0].id : 0);
                   const selectedSize = sizes.find((s) => s.id === selectedSizeId) || sizes[0];
                   const qty = qtySelections[flavor.id] || 1;
@@ -1203,6 +1216,7 @@ export default function PreOrder() {
                           </span>
                           {/* Pre-order / Available now badge */}
                           {(() => {
+                            if (flavorStock === "sold-out") return null;
                             const poWindow = preOrderWindowMap.get(flavor.id);
                             if (poWindow?.pickupDate && poWindow.acceptingOrders) {
                               const start = fmtShort(poWindow.pickupDate);
@@ -1214,11 +1228,11 @@ export default function PreOrder() {
                                 </span>
                               );
                             }
-                            if (poWindow) {
+                            if (poWindow || !availabilityReady) {
                               return (
                                 <span className="absolute bottom-3 left-3 bg-gray-700/90 backdrop-blur-sm text-white text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
                                   <Clock className="w-3 h-3" />
-                                  Pre-Orders Closed
+                                  {availabilityReady ? preorderUnavailableMessage(poWindow) : "Checking availability"}
                                 </span>
                               );
                             }
@@ -1245,9 +1259,9 @@ export default function PreOrder() {
                               <span className="bg-gray-800 text-white text-sm font-bold px-4 py-2 rounded-full">Unavailable</span>
                             </div>
                           )}
-                          {preOrderClosed && (
+                          {preOrderClosed && flavorStock !== "sold-out" && (
                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                              <span className="bg-gray-800 text-white text-sm font-bold px-4 py-2 rounded-full">Pre-Orders Closed</span>
+                              <span className="bg-gray-800 text-white text-sm font-bold px-4 py-2 rounded-full">Preorders closed</span>
                             </div>
                           )}
                         </div>
@@ -1352,6 +1366,7 @@ export default function PreOrder() {
                   <p className="text-gray-500 text-sm mb-1">{cartCount} item{cartCount !== 1 ? "s" : ""} in cart</p>
                   <p className="text-3xl font-black text-gray-900 mb-4">${cartTotal.toFixed(2)}</p>
                   <button
+                    disabled={!!cartAvailabilityError}
                     onClick={() => { setStep("location"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                     className="flex items-center gap-2 bg-[#A1AB74] text-white px-8 py-3.5 rounded-full font-bold hover:bg-[#8a9360] transition-colors"
                   >
@@ -1420,6 +1435,7 @@ export default function PreOrder() {
         {step === "checkout" && (
           <div className="max-w-5xl mx-auto">
             <button
+              disabled={!!cartAvailabilityError}
               onClick={() => { setStep("location"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
               className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-6 text-sm"
             >
@@ -1700,6 +1716,7 @@ export default function PreOrder() {
                   type="submit"
                   disabled={
                     cart.length === 0 ||
+                    !!cartAvailabilityError ||
                     orderMutation.isPending ||
                     (paymentsRequired && !squareReady)
                   }
@@ -1776,6 +1793,7 @@ export default function PreOrder() {
                     ))}
                   </div>
                   <button
+                    disabled={!!cartAvailabilityError}
                     onClick={() => { setStep("location"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                     className="text-[#A1AB74] text-xs font-bold hover:underline shrink-0"
                   >

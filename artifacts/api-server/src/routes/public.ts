@@ -44,6 +44,8 @@ import { resolveOrderLineFromCatalog, assertOrderStockAvailable, findPaidOrderBy
 import { chargeBeforeOrderPersist, CheckoutPaymentError } from "../lib/checkout-payment";
 import { respondPaymentError } from "../lib/payment-errors";
 
+import { selectPreorderWindows, preorderState, preorderUnavailableMessage } from "@workspace/api-zod/preorder-availability";
+
 const router: IRouter = Router();
 
 // Public: list available flavours
@@ -129,7 +131,7 @@ router.get("/pre-order-locations", async (req, res) => {
             .from(locationsTable)
             .where(and(eq(locationsTable.active, true), eq(locationsTable.allowPreorderPickup, true)))
             .orderBy(asc(locationsTable.sortOrder));
-        res.set("Cache-Control", "public, max-age=120, stale-while-revalidate=60");
+        res.set("Cache-Control", "no-store");
         res.json(await attachHours(allLocations));
         return;
     }
@@ -141,24 +143,22 @@ router.get("/pre-order-locations", async (req, res) => {
             .from(locationsTable)
             .where(and(eq(locationsTable.active, true), eq(locationsTable.allowPreorderPickup, true)))
             .orderBy(asc(locationsTable.sortOrder));
-        res.set("Cache-Control", "public, max-age=120, stale-while-revalidate=60");
+        res.set("Cache-Control", "no-store");
         res.json(await attachHours(allLocations));
         return;
     }
 
-    // Find active pre-orders for these flavour IDs (within Eastern-scheduled window)
+    // A closed preorder must never fall back to unrestricted pickup locations.
     const now = new Date();
-    const activePreOrders = await db
-        .select({ id: productPreOrdersTable.id, flavourId: productPreOrdersTable.flavourId })
-        .from(productPreOrdersTable)
-        .where(
-            and(
-                inArray(productPreOrdersTable.flavourId, flavourIds),
-                inArray(productPreOrdersTable.status, ["open", "scheduled"]),
-                lte(productPreOrdersTable.preOrderStart, now),
-                sql`${productPreOrdersTable.preOrderEnd} > ${now}`,
-            ),
-        );
+    const configuredPreOrders = await db.select().from(productPreOrdersTable)
+        .where(inArray(productPreOrdersTable.flavourId, flavourIds));
+    const selectedPreOrders = selectPreorderWindows(configuredPreOrders, now.getTime());
+    res.set("Cache-Control", "no-store");
+    if (selectedPreOrders.some(po => preorderState(po, now.getTime()) !== "open")) {
+        res.json([]);
+        return;
+    }
+    const activePreOrders = selectedPreOrders;
 
     if (activePreOrders.length === 0) {
         // No active pre-orders, return all active pickup-eligible locations
@@ -167,7 +167,7 @@ router.get("/pre-order-locations", async (req, res) => {
             .from(locationsTable)
             .where(and(eq(locationsTable.active, true), eq(locationsTable.allowPreorderPickup, true)))
             .orderBy(asc(locationsTable.sortOrder));
-        res.set("Cache-Control", "public, max-age=120, stale-while-revalidate=60");
+        res.set("Cache-Control", "no-store");
         res.json(await attachHours(allLocations));
         return;
     }
@@ -215,7 +215,7 @@ router.get("/pre-order-locations", async (req, res) => {
             inArray(locationsTable.id, [...validLocationIds]),
         );
     } else if (validLocationIds !== null && validLocationIds.size === 0) {
-        res.set("Cache-Control", "public, max-age=120, stale-while-revalidate=60");
+        res.set("Cache-Control", "no-store");
         res.json([]);
         return;
     }
@@ -226,7 +226,7 @@ router.get("/pre-order-locations", async (req, res) => {
         .where(locConditions)
         .orderBy(asc(locationsTable.sortOrder));
 
-    res.set("Cache-Control", "public, max-age=120, stale-while-revalidate=60");
+    res.set("Cache-Control", "no-store");
     res.json(await attachHours(validLocations));
 });
 
@@ -366,6 +366,150 @@ router.post("/orders", async (req, res) => {
 
     const normalizedEmail = customerEmail.toLowerCase().trim();
 
+    // Generate order number
+    const orderNumber = `UC-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
+
+    // Calculate total
+    let totalCents = 0;
+    const orderItems: {
+        flavourName: string;
+        sizeName: string;
+        priceCents: number;
+        quantity: number;
+        productId: number | null;
+    }[] = [];
+
+    for (const item of items) {
+        const qty = item.quantity || 1;
+        if (!item.flavourName || !item.sizeName) {
+            res.status(400).json({ error: "Each item must include flavourName and sizeName" });
+            return;
+        }
+
+        const resolved = await resolveOrderLineFromCatalog(
+            item.flavourName,
+            item.sizeName,
+            item.productId ?? null,
+        );
+        if (!resolved) {
+            res.status(400).json({
+                error: `Product not found or unavailable: ${item.flavourName} (${item.sizeName})`,
+            });
+            return;
+        }
+
+        totalCents += resolved.priceCents * qty;
+        orderItems.push({
+            flavourName: resolved.flavourName,
+            sizeName: resolved.sizeName,
+            priceCents: resolved.priceCents,
+            quantity: qty,
+            productId: resolved.productId,
+        });
+    }
+
+    // Apply coupon if provided
+    let couponId: number | null = null;
+    let discountCents = 0;
+
+    // Check pre-order restrictions for standard products and capture per-flavour pickup dates
+    const now = new Date();
+    const configuredPreOrders = await db
+        .select({
+            id: productPreOrdersTable.id,
+            flavourId: productPreOrdersTable.flavourId,
+            flavourName: flavoursTable.name,
+            status: productPreOrdersTable.status,
+            preOrderStart: productPreOrdersTable.preOrderStart,
+            preOrderEnd: productPreOrdersTable.preOrderEnd,
+            pickupDate: productPreOrdersTable.pickupDate,
+        })
+        .from(productPreOrdersTable)
+        .innerJoin(flavoursTable, eq(productPreOrdersTable.flavourId, flavoursTable.id))
+        .where(inArray(flavoursTable.name, orderItems.map(item => item.flavourName)));
+    const selectedPreOrders = selectPreorderWindows(configuredPreOrders, now.getTime());
+    for (const window of selectedPreOrders) {
+        const message = preorderUnavailableMessage(window, now.getTime());
+        if (message) {
+            res.status(409).json({ error: message + ': ' + window.flavourName, code: "PREORDER_CLOSED" });
+            return;
+        }
+    }
+    const openPreOrders = selectedPreOrders.filter(po => preorderState(po, now.getTime()) === "open");
+
+    const pickupOverrideByPreOrder = new Map<number, Date>();
+    if (openPreOrders.length > 0) {
+        const overrideRows = await db
+            .select({
+                preOrderId: preOrderLocationsTable.preOrderId,
+                pickupStartDate: preOrderLocationsTable.pickupStartDate,
+            })
+            .from(preOrderLocationsTable)
+            .where(
+                and(
+                    inArray(
+                        preOrderLocationsTable.preOrderId,
+                        openPreOrders.map((po) => po.id),
+                    ),
+                    eq(preOrderLocationsTable.locationId, selectedLocationId),
+                ),
+            );
+
+        for (const row of overrideRows) {
+            if (row.pickupStartDate) {
+                pickupOverrideByPreOrder.set(row.preOrderId, row.pickupStartDate);
+            }
+        }
+    }
+
+    // Map flavour name → { windowId, pickupDate } (latest open window wins if dupes)
+    const flavourWindowMap = new Map<string, { id: number; pickupDate: Date }>();
+    for (const po of openPreOrders) {
+        flavourWindowMap.set(po.flavourName, {
+            id: po.id,
+            pickupDate: pickupOverrideByPreOrder.get(po.id) ?? po.pickupDate,
+        });
+    }
+
+    if (openPreOrders.length > 0) {
+        // Validate chosen location participates in every ordered flavour's pre-order window
+        const orderedPreOrderIds = Array.from(
+            new Set(
+                orderItems
+                    .map((it) => flavourWindowMap.get(it.flavourName)?.id)
+                    .filter((v): v is number => !!v),
+            ),
+        );
+        if (orderedPreOrderIds.length > 0) {
+            const junctionRows = await db
+                .select({
+                    preOrderId: preOrderLocationsTable.preOrderId,
+                    locationId: preOrderLocationsTable.locationId,
+                })
+                .from(preOrderLocationsTable)
+                .where(inArray(preOrderLocationsTable.preOrderId, orderedPreOrderIds));
+            const locationsByPreOrder = new Map<number, Set<number>>();
+            for (const row of junctionRows) {
+                if (!locationsByPreOrder.has(row.preOrderId)) {
+                    locationsByPreOrder.set(row.preOrderId, new Set());
+                }
+                locationsByPreOrder.get(row.preOrderId)!.add(row.locationId);
+            }
+            for (const item of orderItems) {
+                const window = flavourWindowMap.get(item.flavourName);
+                if (!window) continue;
+                const allowedLocs = locationsByPreOrder.get(window.id);
+                // If junction is empty for this window, treat as "all locations" (existing convention).
+                if (allowedLocs && allowedLocs.size > 0 && !allowedLocs.has(selectedLocationId)) {
+                    res.status(400).json({
+                        error: `"${item.flavourName}" is not available for pickup at the selected location during this pre-order window.`,
+                    });
+                    return;
+                }
+            }
+        }
+    }
+
     // ── Account handling ──
     // accountMode: "guest" (default) | "create" | "login"
     let customerId: number | null = null;
@@ -497,153 +641,6 @@ router.post("/orders", async (req, res) => {
         }
     }
 
-    // Generate order number  
-    const orderNumber = `UC-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
-
-    // Calculate total
-    let totalCents = 0;
-    const orderItems: {
-        flavourName: string;
-        sizeName: string;
-        priceCents: number;
-        quantity: number;
-        productId: number | null;
-    }[] = [];
-
-    for (const item of items) {
-        const qty = item.quantity || 1;
-        if (!item.flavourName || !item.sizeName) {
-            res.status(400).json({ error: "Each item must include flavourName and sizeName" });
-            return;
-        }
-
-        const resolved = await resolveOrderLineFromCatalog(
-            item.flavourName,
-            item.sizeName,
-            item.productId ?? null,
-        );
-        if (!resolved) {
-            res.status(400).json({
-                error: `Product not found or unavailable: ${item.flavourName} (${item.sizeName})`,
-            });
-            return;
-        }
-
-        totalCents += resolved.priceCents * qty;
-        orderItems.push({
-            flavourName: resolved.flavourName,
-            sizeName: resolved.sizeName,
-            priceCents: resolved.priceCents,
-            quantity: qty,
-            productId: resolved.productId,
-        });
-    }
-
-    // Apply coupon if provided
-    let couponId: number | null = null;
-    let discountCents = 0;
-
-    // Check pre-order restrictions for standard products and capture per-flavour pickup dates
-    const now = new Date();
-    const openPreOrders = await db
-        .select({
-            id: productPreOrdersTable.id,
-            flavourId: productPreOrdersTable.flavourId,
-            flavourName: flavoursTable.name,
-            pickupDate: productPreOrdersTable.pickupDate,
-        })
-        .from(productPreOrdersTable)
-        .innerJoin(flavoursTable, eq(productPreOrdersTable.flavourId, flavoursTable.id))
-        .where(
-            and(
-                eq(productPreOrdersTable.status, "open"),
-                lte(productPreOrdersTable.preOrderStart, now),
-                sql`${productPreOrdersTable.preOrderEnd} > ${now}`,
-            ),
-        );
-
-    const pickupOverrideByPreOrder = new Map<number, Date>();
-    if (openPreOrders.length > 0) {
-        const overrideRows = await db
-            .select({
-                preOrderId: preOrderLocationsTable.preOrderId,
-                pickupStartDate: preOrderLocationsTable.pickupStartDate,
-            })
-            .from(preOrderLocationsTable)
-            .where(
-                and(
-                    inArray(
-                        preOrderLocationsTable.preOrderId,
-                        openPreOrders.map((po) => po.id),
-                    ),
-                    eq(preOrderLocationsTable.locationId, selectedLocationId),
-                ),
-            );
-
-        for (const row of overrideRows) {
-            if (row.pickupStartDate) {
-                pickupOverrideByPreOrder.set(row.preOrderId, row.pickupStartDate);
-            }
-        }
-    }
-
-    // Map flavour name → { windowId, pickupDate } (latest open window wins if dupes)
-    const flavourWindowMap = new Map<string, { id: number; pickupDate: Date }>();
-    for (const po of openPreOrders) {
-        flavourWindowMap.set(po.flavourName, {
-            id: po.id,
-            pickupDate: pickupOverrideByPreOrder.get(po.id) ?? po.pickupDate,
-        });
-    }
-
-    if (openPreOrders.length > 0) {
-        const allowedFlavours = new Set(openPreOrders.map(p => p.flavourName));
-        for (const item of orderItems) {
-            if (!allowedFlavours.has(item.flavourName)) {
-                res.status(400).json({
-                    error: `"${item.flavourName} (${item.sizeName})" is not available for pre-order during the current window.`,
-                });
-                return;
-            }
-        }
-
-        // Validate chosen location participates in every ordered flavour's pre-order window
-        const orderedPreOrderIds = Array.from(
-            new Set(
-                orderItems
-                    .map((it) => flavourWindowMap.get(it.flavourName)?.id)
-                    .filter((v): v is number => !!v),
-            ),
-        );
-        if (orderedPreOrderIds.length > 0) {
-            const junctionRows = await db
-                .select({
-                    preOrderId: preOrderLocationsTable.preOrderId,
-                    locationId: preOrderLocationsTable.locationId,
-                })
-                .from(preOrderLocationsTable)
-                .where(inArray(preOrderLocationsTable.preOrderId, orderedPreOrderIds));
-            const locationsByPreOrder = new Map<number, Set<number>>();
-            for (const row of junctionRows) {
-                if (!locationsByPreOrder.has(row.preOrderId)) {
-                    locationsByPreOrder.set(row.preOrderId, new Set());
-                }
-                locationsByPreOrder.get(row.preOrderId)!.add(row.locationId);
-            }
-            for (const item of orderItems) {
-                const window = flavourWindowMap.get(item.flavourName);
-                if (!window) continue;
-                const allowedLocs = locationsByPreOrder.get(window.id);
-                // If junction is empty for this window, treat as "all locations" (existing convention).
-                if (allowedLocs && allowedLocs.size > 0 && !allowedLocs.has(selectedLocationId)) {
-                    res.status(400).json({
-                        error: `"${item.flavourName}" is not available for pickup at the selected location during this pre-order window.`,
-                    });
-                    return;
-                }
-            }
-        }
-    }
 
     if (couponCode) {
         const [coupon] = await db
@@ -744,6 +741,13 @@ router.post("/orders", async (req, res) => {
     let squareReceiptNumber: string | null = null;
     let paymentStatus: string | null = chargeCents > 0 ? null : "paid";
     let onlineSalesSquareLocationId: string | null = null;
+
+    // Async account/payment setup may cross the cutoff; check again before any charge.
+    const closedDuringCheckout = selectedPreOrders.find(window => preorderUnavailableMessage(window));
+    if (closedDuringCheckout) {
+        res.status(409).json({ error: "Preorders closed: " + closedDuringCheckout.flavourName, code: "PREORDER_CLOSED" });
+        return;
+    }
 
     if (chargeCents > 0 && sourceId) {
         try {
