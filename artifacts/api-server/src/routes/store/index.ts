@@ -362,6 +362,87 @@ router.get("/orders/:id", async (req, res) => {
     });
 });
 
+// ─── Correct contact details on an individual order ────────────────
+// Shared by the admin order view and location-scoped store staff view.
+// This intentionally does not modify a master customer or payment record.
+router.put("/orders/:id/customer", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        res.status(400).json({ error: "Invalid order ID" });
+        return;
+    }
+    const body = req.body;
+    const fields = ["customerName", "customerEmail", "customerPhone"];
+    if (!body || typeof body !== "object" || Array.isArray(body) ||
+        Object.keys(body).some((key) => !fields.includes(key))) {
+        res.status(400).json({ error: "Only customer name, email, and phone can be edited" });
+        return;
+    }
+    const { customerName, customerEmail, customerPhone } = body;
+    if (typeof customerName !== "string" || typeof customerEmail !== "string" ||
+        typeof customerPhone !== "string") {
+        res.status(400).json({ error: "Customer name, email, and phone must be strings" });
+        return;
+    }
+    const name = customerName.trim();
+    const email = customerEmail.trim().toLowerCase();
+    const phone = customerPhone.trim();
+    if (!name || name.length > 200 || !email || email.length > 254 ||
+        !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || phone.length > 40) {
+        res.status(400).json({ error: "Enter a valid customer name, email, and phone" });
+        return;
+    }
+
+    const conditions = [eq(ordersTable.id, id)];
+    if (req.storeLocationId) {
+        conditions.push(eq(ordersTable.locationId, req.storeLocationId));
+    }
+
+    try {
+        const updated = await db.transaction(async (tx) => {
+            const [original] = await tx.select({
+                customerName: ordersTable.customerName,
+                customerEmail: ordersTable.customerEmail,
+                customerPhone: ordersTable.customerPhone,
+            }).from(ordersTable).where(and(...conditions)).limit(1);
+
+            if (!original) return null;
+            const changes = fields.filter((key) =>
+                original[key as keyof typeof original] !==
+                ({ customerName: name, customerEmail: email, customerPhone: phone })[key as keyof typeof original],
+            );
+            if (changes.length === 0) return { id, customerName: name, customerEmail: email, customerPhone: phone };
+
+            const [order] = await tx.update(ordersTable)
+                .set({ customerName: name, customerEmail: email, customerPhone: phone, updatedAt: new Date() })
+                .where(and(...conditions))
+                .returning({
+                    id: ordersTable.id,
+                    customerName: ordersTable.customerName,
+                    customerEmail: ordersTable.customerEmail,
+                    customerPhone: ordersTable.customerPhone,
+                });
+            if (!order) return null;
+
+            await tx.insert(orderNotesTable).values({
+                orderId: id,
+                type: "system",
+                content: `Customer contact details corrected: ${changes.map((key) => key.replace("customer", "")).join(", ")}`,
+                author: req.user?.username || "Staff",
+            });
+            return order;
+        });
+        if (!updated) {
+            res.status(404).json({ error: "Order not found or access denied" });
+            return;
+        }
+        res.json(updated);
+    } catch (err) {
+        console.error("[store/orders customer update]", err);
+        res.status(500).json({ error: "Unable to update order customer" });
+    }
+});
+
 // ─── Update order status ───────────────────────────────────────────
 router.put("/orders/:id/status", async (req, res) => {
     const id = Number(req.params.id);
