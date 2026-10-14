@@ -29,7 +29,7 @@ export function parseCustomerEdit(input: unknown): { data?: CustomerEditData; er
         data[key] = key === "email" ? value.toLowerCase() : value;
     }
 
-    if ("email" in data && (!data.email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(data.email))) {
+    if ("email" in data && (!data.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))) {
         return { error: "Enter a valid email address" };
     }
     return { data };
