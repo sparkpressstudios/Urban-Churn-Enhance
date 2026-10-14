@@ -6,9 +6,11 @@ import {
     orderNotesTable,
     locationsTable,
     adminUsersTable,
+    customersTable,
 } from "@workspace/db/schema";
 import { eq, and, sql, desc, asc, or, ilike, gte, lte, count } from "drizzle-orm";
 import { refundPayment } from "../../lib/square";
+import { parseCustomerEdit } from "../../lib/customer-edit";
 
 const router: IRouter = Router();
 
@@ -16,6 +18,105 @@ const router: IRouter = Router();
 function locationCondition(storeLocationId: number | null | undefined) {
     return storeLocationId ? eq(ordersTable.locationId, storeLocationId) : undefined;
 }
+
+// A staff customer directory is scoped to people with orders at their own store.
+// Managers and admins can use the same view for all stores or filter by store.
+function customerLocationFilter(locationId: number | null | undefined) {
+    return locationId
+        ? sql`EXISTS (
+            SELECT 1 FROM ${ordersTable}
+            WHERE ${ordersTable.locationId} = ${locationId}
+            AND (${ordersTable.customerId} = ${customersTable.id}
+                 OR LOWER(${ordersTable.customerEmail}) = LOWER(${customersTable.email}))
+        )`
+        : undefined;
+}
+
+const customerSummary = {
+    id: customersTable.id,
+    firstName: customersTable.firstName,
+    lastName: customersTable.lastName,
+    email: customersTable.email,
+    phone: customersTable.phone,
+    address: customersTable.address,
+    city: customersTable.city,
+    state: customersTable.state,
+    zip: customersTable.zip,
+    country: customersTable.country,
+    hasAccount: customersTable.hasAccount,
+};
+
+router.get("/customers", async (req, res) => {
+    const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 120) : "";
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const filter = and(
+        customerLocationFilter(req.storeLocationId),
+        search ? or(
+            ilike(customersTable.email, `%${search}%`),
+            ilike(customersTable.firstName, `%${search}%`),
+            ilike(customersTable.lastName, `%${search}%`),
+            ilike(customersTable.phone, `%${search}%`),
+        ) : undefined,
+    );
+
+    const [total] = await db.select({ count: count() }).from(customersTable).where(filter);
+    const customers = await db.select(customerSummary)
+        .from(customersTable).where(filter)
+        .orderBy(desc(customersTable.updatedAt))
+        .limit(limit).offset(offset);
+    res.json({ data: customers, total: total.count, limit, offset });
+});
+
+router.put("/customers/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        res.status(400).json({ error: "Invalid customer ID" });
+        return;
+    }
+    const parsed = parseCustomerEdit(req.body);
+    if (!parsed.data) {
+        res.status(400).json({ error: parsed.error });
+        return;
+    }
+
+    const filter = and(eq(customersTable.id, id), customerLocationFilter(req.storeLocationId));
+    try {
+        const [existing] = await db.select({
+            email: customersTable.email, hasAccount: customersTable.hasAccount,
+        }).from(customersTable).where(filter).limit(1);
+        if (!existing) {
+            res.status(404).json({ error: "Customer not found or access denied" });
+            return;
+        }
+        if (existing.hasAccount && parsed.data.email !== undefined && parsed.data.email !== existing.email) {
+            res.status(409).json({ error: "Registered account emails require customer verification before changing" });
+            return;
+        }
+
+        const [updated] = await db.update(customersTable)
+            .set({ ...parsed.data, updatedAt: new Date() })
+            .where(filter)
+            .returning(customerSummary);
+        if (!updated) {
+            res.status(404).json({ error: "Customer not found or access denied" });
+            return;
+        }
+        console.info("[store/customer profile edit]", {
+            actorId: req.user?.userId,
+            customerId: id,
+            changedFields: Object.keys(parsed.data),
+        });
+        res.json(updated);
+    } catch (err: any) {
+        if (err?.code === "23505") {
+            res.status(409).json({ error: "A customer with that email already exists" });
+        } else {
+            console.error("[store/customers PUT]", err);
+            res.status(500).json({ error: "Unable to update customer" });
+        }
+    }
+});
 
 // ─── Dashboard stats ───────────────────────────────────────────────
 router.get("/dashboard", async (req, res) => {
