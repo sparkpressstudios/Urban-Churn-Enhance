@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
 import { formatEastern, formatEasternDate, formatEasternTime } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { OrderCustomerContactDialog, type OrderCustomerContact } from "@/components/OrderCustomerContactDialog";
 import { useTour } from "@/lib/tour";
 import { adminOrdersSteps } from "@/lib/tour/tour-steps";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,7 +36,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, Filter, MessageSquare, Send, RefreshCw, CreditCard, AlertTriangle, RotateCcw, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, Pencil, Filter, MessageSquare, Send, RefreshCw, CreditCard, AlertTriangle, RotateCcw, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 const statusColors: Record<string, string> = {
     pending: "bg-yellow-100 text-yellow-800",
@@ -60,6 +61,8 @@ export default function AdminOrders() {
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [noteText, setNoteText] = useState("");
     const [refundOrderId, setRefundOrderId] = useState<number | null>(null);
+    const [editCustomerOpen, setEditCustomerOpen] = useState(false);
+    const [editCustomerError, setEditCustomerError] = useState("");
 
     const { data: ordersResponse } = useQuery({
         queryKey: ["admin", "orders", filterStatus, debouncedSearch, page],
@@ -94,6 +97,19 @@ export default function AdminOrders() {
                 toast({ title: "Order updated, but Square sync failed", description: "You can retry the sync from the order detail.", variant: "destructive" });
             }
         },
+    });
+
+    const editCustomerMutation = useMutation({
+        mutationFn: (contact: OrderCustomerContact) =>
+            api.updateOrderCustomer(selectedOrderId!, contact),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+            queryClient.invalidateQueries({ queryKey: ["admin", "order", selectedOrderId] });
+            setEditCustomerOpen(false);
+            setEditCustomerError("");
+            toast({ title: "Order customer contact updated" });
+        },
+        onError: (error: Error) => setEditCustomerError(error.message || "Unable to save customer details"),
     });
 
     const retrySync = useMutation({
@@ -337,7 +353,7 @@ export default function AdminOrders() {
             {/* Order Detail Dialog */}
             <Dialog
                 open={!!selectedOrderId}
-                onOpenChange={() => setSelectedOrderId(null)}
+                onOpenChange={() => { setSelectedOrderId(null); setEditCustomerOpen(false); }}
             >
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
@@ -347,6 +363,13 @@ export default function AdminOrders() {
                     </DialogHeader>
                     {orderDetail && (
                         <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">Customer contact on this order</span>
+                                <Button type="button" variant="outline" size="sm"
+                                    onClick={() => { setEditCustomerError(""); setEditCustomerOpen(true); }}>
+                                    <Pencil className="w-3 h-3 mr-1" /> Edit Customer
+                                </Button>
+                            </div>
                             <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div>
                                     <span className="text-gray-500">Customer:</span>
@@ -526,6 +549,19 @@ export default function AdminOrders() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            <OrderCustomerContactDialog
+                open={editCustomerOpen && !!orderDetail && !!selectedOrderId}
+                onOpenChange={setEditCustomerOpen}
+                contact={{
+                    customerName: orderDetail?.customerName || "",
+                    customerEmail: orderDetail?.customerEmail || "",
+                    customerPhone: orderDetail?.customerPhone || "",
+                }}
+                isSaving={editCustomerMutation.isPending}
+                error={editCustomerError}
+                onSave={(contact) => editCustomerMutation.mutate(contact)}
+            />
 
             {/* Refund Confirmation Dialog */}
             <AlertDialog open={!!refundOrderId} onOpenChange={() => setRefundOrderId(null)}>
