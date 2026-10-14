@@ -95,6 +95,19 @@ export const storeApi = {
         });
     },
 
+    // Location-scoped customer directory for store staff
+    getCustomers: (params?: Record<string, string>) => {
+        const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+        return storeFetch(`/store/customers${qs}`);
+    },
+    updateCustomer: (id: number, data: Record<string, string>, locationId?: number) => {
+        const qs = locationId ? `?locationId=${locationId}` : "";
+        return storeFetch(`/store/customers/${id}${qs}`, {
+            method: "PUT",
+            body: JSON.stringify(data),
+        });
+    },
+
     // Locations (for manager location switcher)
     getLocations: () => storeFetch("/store/locations"),
 };
