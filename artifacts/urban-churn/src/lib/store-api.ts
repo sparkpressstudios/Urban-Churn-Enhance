@@ -42,6 +42,14 @@ export const storeApi = {
         return storeFetch(`/store/orders/${id}${qs}`);
     },
 
+    updateOrderCustomer: (id: number, data: { customerName: string; customerEmail: string; customerPhone: string }, locationId?: number) => {
+        const qs = locationId ? `?locationId=${locationId}` : "";
+        return storeFetch(`/store/orders/${id}/customer${qs}`, {
+            method: "PUT",
+            body: JSON.stringify(data),
+        });
+    },
+
     updateOrderStatus: (id: number, status: string, locationId?: number) => {
         const qs = locationId ? `?locationId=${locationId}` : "";
         return storeFetch(`/store/orders/${id}/status${qs}`, {
