@@ -388,7 +388,7 @@ router.put("/orders/:id/customer", async (req, res) => {
     const email = customerEmail.trim().toLowerCase();
     const phone = customerPhone.trim();
     if (!name || name.length > 200 || !email || email.length > 254 ||
-        !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || phone.length > 40) {
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || phone.length > 40) {
         res.status(400).json({ error: "Enter a valid customer name, email, and phone" });
         return;
     }
