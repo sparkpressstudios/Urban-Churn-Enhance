@@ -136,6 +136,10 @@ router.put("/:id", async (req, res) => {
             res.status(404).json({ error: "Customer not found" });
             return;
         }
+        // Preserve the stored spelling when the form resubmits the same address.
+        if (parsed.data.email === existing.email.trim().toLowerCase()) {
+            delete parsed.data.email;
+        }
         // Changing a registered customer's login email needs a verified account change flow.
         if (existing.hasAccount && parsed.data.email !== undefined &&
             parsed.data.email !== existing.email) {
