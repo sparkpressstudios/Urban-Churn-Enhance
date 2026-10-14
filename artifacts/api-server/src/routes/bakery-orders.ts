@@ -18,6 +18,8 @@ import {
     sendBakeryOrderConfirmation,
 } from "../lib/email";
 
+import { selectPreorderWindows, preorderState } from "@workspace/api-zod/preorder-availability";
+
 const router: IRouter = Router();
 
 // Upload setup for inspiration photos
@@ -300,6 +302,7 @@ router.get("/windows/active", async (_req, res) => {
         const preOrders = await db
             .select({
                 id: productPreOrdersTable.id,
+                status: productPreOrdersTable.status,
                 flavourId: productPreOrdersTable.flavourId,
                 flavourName: flavoursTable.name,
                 preOrderStart: productPreOrdersTable.preOrderStart,
@@ -309,21 +312,7 @@ router.get("/windows/active", async (_req, res) => {
             })
             .from(productPreOrdersTable)
             .leftJoin(flavoursTable, eq(productPreOrdersTable.flavourId, flavoursTable.id))
-            .where(
-                or(
-                    // Currently accepting orders: status=open and within the ordering window
-                    and(
-                        eq(productPreOrdersTable.status, "open"),
-                        lte(productPreOrdersTable.preOrderStart, now),
-                        gte(productPreOrdersTable.preOrderEnd, now),
-                    ),
-                    // Ordering window closed but pickup date hasn't passed — show "pre-orders closed"
-                    and(
-                        inArray(productPreOrdersTable.status, ["open", "closed"]),
-                        lt(productPreOrdersTable.preOrderEnd, now),
-                    ),
-                )
-            );
+            .where(inArray(productPreOrdersTable.status, ["open", "scheduled", "closed", "cancelled"]));
 
         const pickupOverrideByPreOrder = new Map<number, Date>();
         if (selectedLocationId && preOrders.length > 0) {
@@ -366,10 +355,11 @@ router.get("/windows/active", async (_req, res) => {
             }
         }
 
-        const result = preOrders
+        const result = selectPreorderWindows(preOrders, now.getTime())
             .filter((po) => po.flavourId !== null)
             .map((po) => ({
                 id: po.id,
+                status: po.status,
                 flavourId: po.flavourId,
                 flavourName: po.flavourName,
                 productIds: productsByFlavour[po.flavourId!] || [],
@@ -377,10 +367,10 @@ router.get("/windows/active", async (_req, res) => {
                 preOrderEnd: po.preOrderEnd,
                 pickupDate: pickupOverrideByPreOrder.get(po.id) ?? po.pickupDate,
                 pickupEndDate: po.pickupEndDate,
-                acceptingOrders: new Date(po.preOrderEnd) >= now,
-            }))
-            .filter((po) => po.acceptingOrders || new Date(po.pickupDate) >= now);
+                acceptingOrders: preorderState(po, now.getTime()) === "open",
+            }));
 
+        res.set("Cache-Control", "no-store");
         res.json(result);
     } catch (error) {
         console.error("[PRE-ORDERS] Active fetch failed:", error);

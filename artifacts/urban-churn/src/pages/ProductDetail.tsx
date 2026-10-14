@@ -18,6 +18,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import SEO from "@/components/SEO";
 import { api } from "@/lib/api";
+import { usePreorderAvailability } from "@/hooks/use-preorder-availability";
+import { preorderUnavailableMessage } from "@workspace/api-zod/preorder-availability";
 import { TAG_LABELS, TAG_CLASSES } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -106,12 +108,7 @@ export default function ProductDetail() {
     queryKey: ["public", "products"],
     queryFn: () => api.getPublicProducts(),
   });
-  const { data: activePreOrders = [] } = useQuery<any[]>({
-    queryKey: ["active-pre-orders"],
-    queryFn: () => api.getActivePreOrders(),
-    staleTime: 60_000,
-  });
-
+  const { windows: activePreOrders, ready: availabilityReady } = usePreorderAvailability();
   const flavor = flavors.find((f) => f.slug === slug);
 
   const [selectedSizeId, setSelectedSizeId] = useState<number | null>(null);
@@ -160,7 +157,7 @@ export default function ProductDetail() {
   const getFlavorStockStatus = (flavourId: number): "available" | "low" | "sold-out" => {
     const flavorProducts = products.filter((p) => p.flavourId === flavourId);
     if (flavorProducts.length === 0) return "available";
-    const allSoldOut = flavorProducts.every((p) => p.manageStock && p.stockQuantity <= 0 && !p.available);
+    const allSoldOut = flavorProducts.every((p) => p.manageStock && p.stockQuantity <= 0);
     if (allSoldOut) return "sold-out";
     const anyLow = flavorProducts.some((p) => p.manageStock && p.stockQuantity > 0 && p.stockQuantity <= p.lowStockThreshold);
     if (anyLow) return "low";
@@ -168,6 +165,7 @@ export default function ProductDetail() {
   };
 
   const addToCart = (flavour: ApiFlavour, size: ApiSize, quantity: number) => {
+    if (!availabilityReady || preorderUnavailableMessage(activePreOrders.find(po => po.flavourId === flavour.id))) return;
     const price = getEffectivePrice(flavour.id, size.id, size.price);
     const cart = loadCart();
     const existing = cart.findIndex(
@@ -236,7 +234,7 @@ export default function ProductDetail() {
   const flavorStock = getFlavorStockStatus(flavor.id);
   const flavorPreOrderWindow = activePreOrders.find((po: any) => po.flavourId === flavor.id);
   const preOrderClosed = flavorPreOrderWindow && !flavorPreOrderWindow.acceptingOrders;
-  const isDisabled = !flavor.available || flavorStock === "sold-out" || !!preOrderClosed;
+  const isDisabled = !availabilityReady || !flavor.available || flavorStock === "sold-out" || !!preOrderClosed;
   const productStock = selectedSize ? getProductStock(flavor.id, selectedSize.id) : { available: true, low: false, soldOut: false };
   const canAdd = !isDisabled && selectedSize && productStock.available;
 
@@ -259,7 +257,7 @@ export default function ProductDetail() {
             "@type": "Offer",
             price: flavor.basePrice,
             priceCurrency: "USD",
-            availability: flavor.available ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+            availability: !isDisabled ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
             url: `https://urbanchurn.com/pre-order/${flavor.slug}`,
           }
         }}
@@ -298,6 +296,7 @@ export default function ProductDetail() {
               </span>
               {/* Pre-order / Available now badge */}
               {(() => {
+                if (flavorStock === "sold-out") return null;
                 const poWindow = activePreOrders.find((po: any) => po.flavourId === flavor.id);
                 if (poWindow?.pickupDate && poWindow.acceptingOrders) {
                   const fmtShort = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" });
@@ -310,11 +309,11 @@ export default function ProductDetail() {
                     </span>
                   );
                 }
-                if (poWindow) {
+                if (poWindow || !availabilityReady) {
                   return (
                     <span className="absolute bottom-4 left-4 bg-gray-700/90 backdrop-blur-sm text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
                       <Clock className="w-3.5 h-3.5" />
-                      Pre-Orders Closed
+                      {availabilityReady ? preorderUnavailableMessage(poWindow) : "Checking availability"}
                     </span>
                   );
                 }
@@ -374,7 +373,7 @@ export default function ProductDetail() {
                           <Clock className="w-3.5 h-3.5 text-white" />
                         )}
                         <span className="text-white font-black text-xs tracking-widest uppercase">
-                          {isOpen ? "Pre-Order Now Open" : "Pre-Orders Closed"}
+                          {isOpen ? "Pre-Order Now Open" : "Preorders closed"}
                         </span>
                       </div>
                       {isOpen && daysLeft > 0 && (
@@ -530,7 +529,7 @@ export default function ProductDetail() {
 
               {isDisabled && (
                 <div className="mt-4 p-4 bg-gray-100 rounded-2xl text-center text-gray-500 font-medium">
-                  This flavor is currently unavailable.
+                  {!availabilityReady ? "Checking availability" : flavorStock === "sold-out" ? "Sold Out" : preorderUnavailableMessage(flavorPreOrderWindow) ?? "This flavor is currently unavailable."}
                 </div>
               )}
             </div>
