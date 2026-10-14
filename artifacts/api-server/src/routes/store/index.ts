@@ -112,6 +112,10 @@ router.put("/customers/:id", async (req, res) => {
             res.status(404).json({ error: "Customer not found or access denied" });
             return;
         }
+        // Preserve the stored spelling when the form resubmits the same address.
+        if (parsed.data.email === existing.email.trim().toLowerCase()) {
+            delete parsed.data.email;
+        }
         if (existing.hasAccount && parsed.data.email !== undefined && parsed.data.email !== existing.email) {
             res.status(409).json({ error: "Registered account emails require customer verification before changing" });
             return;
