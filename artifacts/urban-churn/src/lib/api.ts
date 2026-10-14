@@ -163,6 +163,8 @@ export const api = {
         return apiFetch(`/admin/orders${qs}`);
     },
     getOrder: (id: number) => apiFetch(`/admin/orders/${id}`),
+    updateOrderCustomer: (id: number, data: { customerName: string; customerEmail: string; customerPhone: string }) =>
+        apiFetch(`/store/orders/${id}/customer`, { method: "PUT", body: JSON.stringify(data) }),
     updateOrderStatus: (id: number, status: string) =>
         apiFetch(`/admin/orders/${id}/status`, {
             method: "PUT",

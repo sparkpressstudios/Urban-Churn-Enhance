@@ -34,6 +34,7 @@ export default function AdminCustomers() {
     const debouncedSearch = useDebounce(search);
     const [editing, setEditing] = useState<any | null>(null);
     const [form, setForm] = useState<Record<string, string>>({});
+    const [editError, setEditError] = useState("");
     const [showCreate, setShowCreate] = useState(false);
     const [createForm, setCreateForm] = useState<Record<string, string>>(EMPTY_CREATE_FORM);
     const [createError, setCreateError] = useState("");
@@ -50,7 +51,9 @@ export default function AdminCustomers() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
             setEditing(null);
+            setEditError("");
         },
+        onError: (error: Error) => setEditError(error.message || "Unable to save customer"),
     });
 
     const deleteMutation = useMutation({
@@ -73,6 +76,7 @@ export default function AdminCustomers() {
 
     const openEdit = (customer: any) => {
         setForm({
+            email: customer.email || "",
             firstName: customer.firstName || "",
             lastName: customer.lastName || "",
             phone: customer.phone || "",
@@ -82,6 +86,7 @@ export default function AdminCustomers() {
             zip: customer.zip || "",
             country: customer.country || "US",
         });
+        setEditError("");
         setEditing(customer);
     };
 
@@ -113,7 +118,7 @@ export default function AdminCustomers() {
                 <div className="relative max-w-sm" data-tour="admin-customers-search">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
-                        placeholder="Search by email..."
+                        placeholder="Search name, email or phone..."
                         className="pl-9"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
@@ -271,12 +276,19 @@ export default function AdminCustomers() {
                 </Dialog>
 
                 {/* Edit Dialog */}
-                <Dialog open={!!editing} onOpenChange={() => setEditing(null)}>
+                <Dialog open={!!editing} onOpenChange={() => { if (!updateMutation.isPending) { setEditing(null); setEditError(""); } }}>
                     <DialogContent className="max-w-md">
                         <DialogHeader>
                             <DialogTitle>Edit Customer</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-3">
+                            {editError && <p role="alert" className="text-sm text-red-600">{editError}</p>}
+                            <div>
+                                <Label className="text-xs">Email *</Label>
+                                <Input type="email" required value={form.email || ""}
+                                    onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                                {editing?.hasAccount && <p className="text-xs text-gray-500 mt-1">Registered account emails require customer verification to change.</p>}
+                            </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <Label className="text-xs">First Name</Label>
@@ -356,7 +368,7 @@ export default function AdminCustomers() {
                                     onClick={() =>
                                         updateMutation.mutate({ id: editing.id, data: form })
                                     }
-                                    disabled={updateMutation.isPending}
+                                    disabled={updateMutation.isPending || !form.email?.trim()}
                                     className="flex-1 bg-[#A1AB74] hover:bg-[#8B9563] text-white"
                                 >
                                     Save

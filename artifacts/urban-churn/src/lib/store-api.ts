@@ -42,6 +42,14 @@ export const storeApi = {
         return storeFetch(`/store/orders/${id}${qs}`);
     },
 
+    updateOrderCustomer: (id: number, data: { customerName: string; customerEmail: string; customerPhone: string }, locationId?: number) => {
+        const qs = locationId ? `?locationId=${locationId}` : "";
+        return storeFetch(`/store/orders/${id}/customer${qs}`, {
+            method: "PUT",
+            body: JSON.stringify(data),
+        });
+    },
+
     updateOrderStatus: (id: number, status: string, locationId?: number) => {
         const qs = locationId ? `?locationId=${locationId}` : "";
         return storeFetch(`/store/orders/${id}/status${qs}`, {
@@ -84,6 +92,19 @@ export const storeApi = {
         const qs = locationId ? `?locationId=${locationId}` : "";
         return storeFetch(`/store/orders/${orderId}/refund${qs}`, {
             method: "POST",
+        });
+    },
+
+    // Location-scoped customer directory for store staff
+    getCustomers: (params?: Record<string, string>) => {
+        const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+        return storeFetch(`/store/customers${qs}`);
+    },
+    updateCustomer: (id: number, data: Record<string, string>, locationId?: number) => {
+        const qs = locationId ? `?locationId=${locationId}` : "";
+        return storeFetch(`/store/customers/${id}${qs}`, {
+            method: "PUT",
+            body: JSON.stringify(data),
         });
     },
 
