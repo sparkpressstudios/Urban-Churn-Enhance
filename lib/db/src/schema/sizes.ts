@@ -7,6 +7,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { productKindEnum } from "./flavours";
 
 export const sizesTable = pgTable("sizes", {
     id: serial("id").primaryKey(),
@@ -16,6 +17,7 @@ export const sizesTable = pgTable("sizes", {
     price: numeric("price", { precision: 10, scale: 2 }).notNull(),
     description: text("description").notNull().default(""),
     sortOrder: integer("sort_order").notNull().default(0),
+    productKind: productKindEnum("product_kind").notNull().default("ice_cream"),
 });
 
 export const insertSizeSchema = createInsertSchema(sizesTable).omit({
