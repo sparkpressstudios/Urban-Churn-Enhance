@@ -36,6 +36,7 @@ type ApiFlavour = {
   emoji: string;
   basePrice: string;
   available: boolean;
+  productKind?: "ice_cream" | "cake";
 };
 
 type ApiSize = {
@@ -45,6 +46,7 @@ type ApiSize = {
   volumeOz: number;
   price: string;
   description: string;
+  productKind?: "ice_cream" | "cake";
 };
 
 type ApiProduct = {
@@ -110,7 +112,7 @@ export default function ProductDetail() {
   });
   const { windows: activePreOrders, ready: availabilityReady } = usePreorderAvailability();
   const flavor = flavors.find((f) => f.slug === slug);
-  const flavorSizes = flavor ? sizesForFlavour(flavor.id, sizes, products) : sizes;
+  const flavorSizes = flavor ? sizesForFlavour(flavor, sizes, products) : [];
 
   const [selectedSizeId, setSelectedSizeId] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
@@ -145,7 +147,7 @@ export default function ProductDetail() {
 
   const getProductStock = (flavourId: number, sizeId: number) => {
     const p = stockMap.get(`${flavourId}-${sizeId}`);
-    if (!p) return { available: true, low: false, soldOut: false };
+    if (!p) return { available: false, low: false, soldOut: false };
     const soldOut = p.manageStock && p.stockQuantity <= 0;
     const low = p.manageStock && p.stockQuantity > 0 && p.stockQuantity <= p.lowStockThreshold;
     return { available: p.available && !soldOut, low, soldOut };

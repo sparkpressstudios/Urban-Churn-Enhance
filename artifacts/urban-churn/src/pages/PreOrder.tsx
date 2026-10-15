@@ -59,6 +59,7 @@ type ApiFlavour = {
   emoji: string;
   basePrice: string;
   available: boolean;
+  productKind?: "ice_cream" | "cake";
 };
 
 type ApiSize = {
@@ -68,6 +69,7 @@ type ApiSize = {
   volumeOz: number;
   price: string;
   description: string;
+  productKind?: "ice_cream" | "cake";
 };
 
 type ApiLocation = {
@@ -468,7 +470,7 @@ export default function PreOrder() {
   // Check if a specific flavor+size combo is available and its stock status
   const getProductStock = (flavourId: number, sizeId: number) => {
     const p = stockMap.get(`${flavourId}-${sizeId}`);
-    if (!p) return { available: true, low: false, soldOut: false };
+    if (!p) return { available: false, low: false, soldOut: false };
     const soldOut = p.manageStock && p.stockQuantity <= 0;
     const low = p.manageStock && p.stockQuantity > 0 && p.stockQuantity <= p.lowStockThreshold;
     return { available: p.available && !soldOut, low, soldOut };
@@ -1191,7 +1193,7 @@ export default function PreOrder() {
                   const flavorPreOrderWindow = preOrderWindowMap.get(flavor.id);
                   const preOrderClosed = flavorPreOrderWindow && !flavorPreOrderWindow.acceptingOrders;
                   const isDisabled = !availabilityReady || !flavor.available || flavorStock === "sold-out" || !!preOrderClosed;
-                  const flavorSizes = sizesForFlavour(flavor.id, sizes, products);
+                  const flavorSizes = sizesForFlavour(flavor, sizes, products);
                   const defaultSize = flavorSizes.find((s) => getProductStock(flavor.id, s.id).available) || flavorSizes[0];
                   const selectedSizeId = sizeSelections[flavor.id] || (defaultSize ? defaultSize.id : 0);
                   const selectedSize = flavorSizes.find((s) => s.id === selectedSizeId) || flavorSizes[0];
