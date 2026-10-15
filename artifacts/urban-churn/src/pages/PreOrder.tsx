@@ -25,7 +25,7 @@ import SEO from "@/components/SEO";
 import { api } from "@/lib/api";
 import { usePreorderAvailability } from "@/hooks/use-preorder-availability";
 import { preorderUnavailableMessage, selectPreorderWindows } from "@workspace/api-zod/preorder-availability";
-import { TAG_LABELS, TAG_CLASSES, formatHoursCompact } from "@/lib/utils";
+import { TAG_LABELS, TAG_CLASSES, formatHoursCompact, sizesForFlavour, sizeSubtitle } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useSquareCard, getCheckoutId, clearCheckoutId } from "@/hooks/useSquareCard";
 import GiftCardSection from "@/components/GiftCardSection";
@@ -1191,8 +1191,10 @@ export default function PreOrder() {
                   const flavorPreOrderWindow = preOrderWindowMap.get(flavor.id);
                   const preOrderClosed = flavorPreOrderWindow && !flavorPreOrderWindow.acceptingOrders;
                   const isDisabled = !availabilityReady || !flavor.available || flavorStock === "sold-out" || !!preOrderClosed;
-                  const selectedSizeId = sizeSelections[flavor.id] || (sizes.length > 0 ? sizes[0].id : 0);
-                  const selectedSize = sizes.find((s) => s.id === selectedSizeId) || sizes[0];
+                  const flavorSizes = sizesForFlavour(flavor.id, sizes, products);
+                  const defaultSize = flavorSizes.find((s) => getProductStock(flavor.id, s.id).available) || flavorSizes[0];
+                  const selectedSizeId = sizeSelections[flavor.id] || (defaultSize ? defaultSize.id : 0);
+                  const selectedSize = flavorSizes.find((s) => s.id === selectedSizeId) || flavorSizes[0];
                   const qty = qtySelections[flavor.id] || 1;
                   const productStock = selectedSize ? getProductStock(flavor.id, selectedSize.id) : { available: true, low: false, soldOut: false };
                   const canAdd = !isDisabled && selectedSize && productStock.available;
@@ -1277,11 +1279,11 @@ export default function PreOrder() {
                           <p className="text-gray-500 text-sm line-clamp-2">{flavor.description}</p>
                         </Link>
 
-                        {!isDisabled && sizes.length > 0 && (
+                        {!isDisabled && flavorSizes.length > 0 && (
                           <>
                             {/* Size selector */}
                             <div className="flex gap-1.5 mb-3">
-                              {sizes.map((size) => {
+                              {flavorSizes.map((size) => {
                                 const sizeStock = getProductStock(flavor.id, size.id);
                                 return (
                                   <button
@@ -1296,7 +1298,7 @@ export default function PreOrder() {
                                       }`}
                                   >
                                     <div>{size.name}</div>
-                                    <div className={selectedSizeId === size.id ? "text-white/80" : "text-gray-400"}>{size.volumeOz}oz</div>
+                                    <div className={selectedSizeId === size.id ? "text-white/80" : "text-gray-400"}>{sizeSubtitle(size)}</div>
                                   </button>
                                 );
                               })}

@@ -265,3 +265,34 @@ export function getOpenStatus(hours: ApiHour[]): { isOpen: boolean; label: strin
   }
   return { isOpen: false, label: "Closed" };
 }
+
+/** Sizes that this flavour actually sells. Falls back to all sizes if no variants exist. */
+export function sizesForFlavour<T extends { id: number }>(
+  flavourId: number,
+  allSizes: T[],
+  products: {
+    flavourId: number;
+    sizeId: number;
+    available?: boolean;
+    manageStock?: boolean;
+    stockQuantity?: number;
+  }[],
+): T[] {
+  const flavourProducts = products.filter((p) => p.flavourId === flavourId);
+  const purchasable = flavourProducts.filter((p) => {
+    if (p.available === false) return false;
+    if (p.manageStock && (p.stockQuantity ?? 0) <= 0) return false;
+    return true;
+  });
+  const sizeIds = new Set(
+    (purchasable.length > 0 ? purchasable : flavourProducts).map((p) => p.sizeId),
+  );
+  if (sizeIds.size === 0) return allSizes;
+  return allSizes.filter((s) => sizeIds.has(s.id));
+}
+
+/** Pint/half-gallon show ounces; cakes and other non-volume sizes show their description. */
+export function sizeSubtitle(size: { volumeOz: number; description?: string | null }): string {
+  if (size.volumeOz > 0) return `${size.volumeOz}oz`;
+  return size.description || "";
+}
