@@ -18,7 +18,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import SEO from "@/components/SEO";
 import { api } from "@/lib/api";
-import { TAG_LABELS, TAG_CLASSES } from "@/lib/utils";
+import { TAG_LABELS, TAG_CLASSES, sizesForFlavour, sizeSubtitle } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL;
@@ -113,6 +113,7 @@ export default function ProductDetail() {
   });
 
   const flavor = flavors.find((f) => f.slug === slug);
+  const flavorSizes = flavor ? sizesForFlavour(flavor.id, sizes, products) : sizes;
 
   const [selectedSizeId, setSelectedSizeId] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
@@ -135,10 +136,6 @@ export default function ProductDetail() {
     return () => window.removeEventListener("uc-cart-update", update);
   }, []);
 
-  // Once sizes load, default to first
-  const effectiveSizeId = selectedSizeId ?? (sizes.length > 0 ? sizes[0].id : 0);
-  const selectedSize = sizes.find((s) => s.id === effectiveSizeId);
-
   // Stock lookup
   const stockMap = new Map<string, ApiProduct>();
   products.forEach((p) => stockMap.set(`${p.flavourId}-${p.sizeId}`, p));
@@ -156,6 +153,13 @@ export default function ProductDetail() {
     const low = p.manageStock && p.stockQuantity > 0 && p.stockQuantity <= p.lowStockThreshold;
     return { available: p.available && !soldOut, low, soldOut };
   };
+
+  // Once sizes load, default to the first size this flavour actually sells
+  const defaultSize = flavor
+    ? flavorSizes.find((s) => getProductStock(flavor.id, s.id).available) || flavorSizes[0]
+    : flavorSizes[0];
+  const effectiveSizeId = selectedSizeId ?? (defaultSize ? defaultSize.id : 0);
+  const selectedSize = flavorSizes.find((s) => s.id === effectiveSizeId);
 
   const getFlavorStockStatus = (flavourId: number): "available" | "low" | "sold-out" => {
     const flavorProducts = products.filter((p) => p.flavourId === flavourId);
@@ -431,7 +435,7 @@ export default function ProductDetail() {
                 );
               })()}
 
-              {!isDisabled && sizes.length > 0 && (
+              {!isDisabled && flavorSizes.length > 0 && (
                 <div className="space-y-6">
                   {/* Size selector */}
                   <div>
@@ -439,7 +443,7 @@ export default function ProductDetail() {
                       Size
                     </h3>
                     <div className="flex gap-2">
-                      {sizes.map((size) => {
+                      {flavorSizes.map((size) => {
                         const sizeStock = getProductStock(flavor.id, size.id);
                         return (
                           <button
@@ -460,8 +464,8 @@ export default function ProductDetail() {
                                 : "text-gray-400"
                                 }`}
                             >
-                              {size.volumeOz}oz
-                              {size.description && ` · ${size.description}`}
+                              {sizeSubtitle(size)}
+                              {size.volumeOz > 0 && size.description ? ` · ${size.description}` : ""}
                             </div>
                           </button>
                         );

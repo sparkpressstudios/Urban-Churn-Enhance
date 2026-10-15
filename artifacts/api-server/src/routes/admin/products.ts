@@ -9,6 +9,22 @@ import { eq, and, asc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
+function isCakeSize(size: { name: string; slug: string }): boolean {
+    return /cake/i.test(size.slug) || /cake/i.test(size.name);
+}
+
+function isIceCreamCakeFlavour(name: string): boolean {
+    return /ice\s*cream\s*cake/i.test(name);
+}
+
+function sizesForFlavourGenerate<T extends { name: string; slug: string }>(
+    flavourName: string,
+    allSizes: T[],
+): T[] {
+    const cakeFlavour = isIceCreamCakeFlavour(flavourName);
+    return allSizes.filter((s) => (cakeFlavour ? isCakeSize(s) : !isCakeSize(s)));
+}
+
 // List all products with flavour + size info
 router.get("/", async (_req, res) => {
     const products = await db
@@ -146,7 +162,7 @@ router.post("/generate", async (_req, res) => {
 
     let created = 0;
     for (const f of allFlavours) {
-        for (const s of allSizes) {
+        for (const s of sizesForFlavourGenerate(f.name, allSizes)) {
             await db
                 .insert(productsTable)
                 .values({
@@ -173,7 +189,7 @@ router.post("/generate/:flavourId", async (req, res) => {
 
     const allSizes = await db.select().from(sizesTable);
     let created = 0;
-    for (const s of allSizes) {
+    for (const s of sizesForFlavourGenerate(flavour.name, allSizes)) {
         const [product] = await db
             .insert(productsTable)
             .values({
