@@ -265,3 +265,62 @@ export function getOpenStatus(hours: ApiHour[]): { isOpen: boolean; label: strin
   }
   return { isOpen: false, label: "Closed" };
 }
+
+export type ProductKind = "ice_cream" | "cake";
+
+export function inferProductKind(
+  name?: string | null,
+  explicit?: string | null,
+  slug?: string | null,
+): ProductKind {
+  if (explicit === "cake" || explicit === "ice_cream") return explicit;
+  const haystack = `${name || ""} ${slug || ""}`;
+  if (/ice\s*cream\s*cake/i.test(haystack) || /ice-cream-cake/i.test(haystack)) return "cake";
+  return "ice_cream";
+}
+
+export function inferSizeProductKind(
+  name?: string | null,
+  explicit?: string | null,
+  slug?: string | null,
+): ProductKind {
+  if (explicit === "cake" || explicit === "ice_cream") return explicit;
+  const haystack = `${name || ""} ${slug || ""}`;
+  if (/cake/i.test(haystack)) return "cake";
+  return "ice_cream";
+}
+
+/** Sizes this flavour actually sells. Ice cream never shows cake sizes, and cakes never show pint/half-gallon. */
+export function sizesForFlavour<T extends { id: number; name?: string; slug?: string; productKind?: string | null }>(
+  flavour: { id: number; name?: string; slug?: string; productKind?: string | null },
+  allSizes: T[],
+  products: {
+    flavourId: number;
+    sizeId: number;
+    available?: boolean;
+    manageStock?: boolean;
+    stockQuantity?: number;
+  }[],
+): T[] {
+  const kind = inferProductKind(flavour.name, flavour.productKind, flavour.slug);
+  const kindSizes = allSizes.filter(
+    (s) => inferSizeProductKind(s.name, s.productKind, s.slug) === kind,
+  );
+  const flavourProducts = products.filter((p) => p.flavourId === flavour.id);
+  const sellable = flavourProducts.filter((p) => {
+    if (p.available === false) return false;
+    if (p.manageStock && (p.stockQuantity ?? 0) <= 0) return false;
+    return true;
+  });
+  const sellableIds = new Set(sellable.map((p) => p.sizeId));
+  const matches = kindSizes.filter((s) => sellableIds.has(s.id));
+  if (matches.length > 0) return matches;
+  if (flavourProducts.length === 0) return kindSizes;
+  return [];
+}
+
+/** Pint/half-gallon show ounces; cakes and other non-volume sizes show their description. */
+export function sizeSubtitle(size: { volumeOz: number; description?: string | null }): string {
+  if (size.volumeOz > 0) return `${size.volumeOz}oz`;
+  return size.description || "";
+}

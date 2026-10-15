@@ -54,6 +54,7 @@ const emptyForm = {
     htmlContent: "",
     imageUrl: "",
     tag: "classic",
+    productKind: "ice_cream" as "ice_cream" | "cake",
     emoji: "🍦",
     basePrice: "7.00",
     available: true,
@@ -69,6 +70,7 @@ const emptySizeForm = {
     price: "7.00",
     description: "",
     sortOrder: 0,
+    productKind: "ice_cream" as "ice_cream" | "cake",
 };
 
 export default function AdminProductEdit() {
@@ -146,6 +148,7 @@ export default function AdminProductEdit() {
                 htmlContent: flavour.htmlContent || "",
                 imageUrl: flavour.imageUrl || "",
                 tag: flavour.tag,
+                productKind: flavour.productKind === "cake" ? "cake" : "ice_cream",
                 emoji: flavour.emoji,
                 basePrice: flavour.basePrice,
                 available: flavour.available,
@@ -331,7 +334,11 @@ export default function AdminProductEdit() {
 
     // Sizes already used by this flavour
     const usedSizeIds = new Set(variations.map((v: any) => v.sizeId));
-    const availableSizes = allSizes.filter((s: any) => !usedSizeIds.has(s.id));
+    const availableSizes = allSizes.filter((s: any) => {
+        if (usedSizeIds.has(s.id)) return false;
+        const sizeKind = s.productKind === "cake" || /cake/i.test(s.slug) || /cake/i.test(s.name) ? "cake" : "ice_cream";
+        return sizeKind === form.productKind;
+    });
 
     const isSaving = createFlavourMutation.isPending || updateFlavourMutation.isPending;
 
@@ -786,6 +793,19 @@ export default function AdminProductEdit() {
                                     />
                                     <label className="text-sm font-medium">Available</label>
                                 </div>
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium">Product type</label>
+                                    <Select value={form.productKind} onValueChange={(v) => updateField("productKind", v)}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ice_cream">Ice cream (pint / half gallon)</SelectItem>
+                                            <SelectItem value="cake">Ice cream cake</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-gray-400">Cakes only offer cake sizes. Ice cream only offers pint and half gallon.</p>
+                                </div>
                             </CardContent>
                         </Card>
 
@@ -882,6 +902,7 @@ export default function AdminProductEdit() {
                                                 price: s.price,
                                                 description: s.description || "",
                                                 sortOrder: s.sortOrder,
+                                                productKind: s.productKind === "cake" ? "cake" : "ice_cream",
                                             });
                                         }}
                                     >
@@ -939,6 +960,21 @@ export default function AdminProductEdit() {
                                         onChange={(e) => setSizeForm(p => ({ ...p, price: e.target.value }))}
                                         placeholder="7.00"
                                     />
+                                </div>
+                                <div className="space-y-1 col-span-2">
+                                    <label className="text-xs text-gray-500">Used for</label>
+                                    <Select
+                                        value={sizeForm.productKind}
+                                        onValueChange={(v) => setSizeForm((p) => ({ ...p, productKind: v as "ice_cream" | "cake" }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ice_cream">Ice cream</SelectItem>
+                                            <SelectItem value="cake">Ice cream cake</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
                             <div className="flex gap-2">

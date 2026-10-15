@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { flavoursTable, productsTable } from "@workspace/db/schema";
+import { productKindEnum, flavoursTable, productsTable } from "@workspace/db/schema";
 import { eq, asc, desc, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -17,12 +17,22 @@ const FLAVOUR_TAG_VALUES = [
 
 type FlavourTag = (typeof FLAVOUR_TAG_VALUES)[number];
 const FLAVOUR_TAGS: ReadonlySet<FlavourTag> = new Set(FLAVOUR_TAG_VALUES);
+const productKindValues = new Set(productKindEnum.enumValues);
 
 function parseBasePrice(value: unknown): string | undefined {
     if (value === undefined) return undefined;
     const normalized = String(value).trim().replace(/^\$/, "");
     if (!normalized) return undefined;
     return normalized;
+}
+
+function parseProductKind(value: unknown): "ice_cream" | "cake" | undefined {
+    if (value === undefined || value === null || value === "") return undefined;
+    const normalized = String(value).trim();
+    if (!normalized) return undefined;
+    return productKindValues.has(normalized as (typeof productKindEnum.enumValues)[number])
+        ? (normalized as "ice_cream" | "cake")
+        : undefined;
 }
 
 function parsePublishedAt(value: unknown): Date | undefined {
@@ -107,6 +117,7 @@ router.post("/", async (req, res) => {
             heroPosition,
             sortOrder,
             publishedAt,
+            productKind,
         } = req.body;
 
         const normalizedBasePrice = parseBasePrice(basePrice);
@@ -127,6 +138,12 @@ router.post("/", async (req, res) => {
             return;
         }
 
+        const normalizedProductKind = parseProductKind(productKind);
+        if (productKind !== undefined && normalizedProductKind === undefined) {
+            res.status(400).json({ error: "productKind must be ice_cream or cake" });
+            return;
+        }
+
         const [flavour] = await db
             .insert(flavoursTable)
             .values({
@@ -136,6 +153,7 @@ router.post("/", async (req, res) => {
                 htmlContent: htmlContent ?? "",
                 imageUrl: imageUrl ?? null,
                 tag: normalizedTag.value ?? "classic",
+                productKind: normalizedProductKind ?? "ice_cream",
                 emoji: emoji ?? "🍦",
                 basePrice: normalizedBasePrice ?? "7.00",
                 available: available ?? true,
@@ -208,6 +226,7 @@ router.put("/:id", async (req, res) => {
             heroPosition,
             sortOrder,
             publishedAt,
+            productKind,
         } = req.body;
 
         const normalizedBasePrice = parseBasePrice(basePrice);
@@ -228,6 +247,12 @@ router.put("/:id", async (req, res) => {
             return;
         }
 
+        const normalizedProductKind = parseProductKind(productKind);
+        if (productKind !== undefined && normalizedProductKind === undefined) {
+            res.status(400).json({ error: "productKind must be ice_cream or cake" });
+            return;
+        }
+
         const [flavour] = await db
             .update(flavoursTable)
             .set({
@@ -237,6 +262,7 @@ router.put("/:id", async (req, res) => {
                 ...(htmlContent !== undefined && { htmlContent }),
                 ...(imageUrl !== undefined && { imageUrl }),
                 ...(normalizedTag.value !== undefined && { tag: normalizedTag.value }),
+                ...(normalizedProductKind !== undefined && { productKind: normalizedProductKind }),
                 ...(emoji !== undefined && { emoji }),
                 ...(normalizedBasePrice !== undefined && { basePrice: normalizedBasePrice }),
                 ...(available !== undefined && { available }),
@@ -306,6 +332,7 @@ router.post("/:id/duplicate", async (req, res) => {
             htmlContent: source.htmlContent,
             imageUrl: source.imageUrl,
             tag: source.tag,
+            productKind: source.productKind,
             emoji: source.emoji,
             basePrice: source.basePrice,
             available: false, // start as inactive

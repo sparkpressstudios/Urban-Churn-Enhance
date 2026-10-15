@@ -25,7 +25,7 @@ import SEO from "@/components/SEO";
 import { api } from "@/lib/api";
 import { usePreorderAvailability } from "@/hooks/use-preorder-availability";
 import { preorderUnavailableMessage, selectPreorderWindows } from "@workspace/api-zod/preorder-availability";
-import { TAG_LABELS, TAG_CLASSES, formatHoursCompact } from "@/lib/utils";
+import { TAG_LABELS, TAG_CLASSES, formatHoursCompact, sizesForFlavour, sizeSubtitle } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useSquareCard, getCheckoutId, clearCheckoutId } from "@/hooks/useSquareCard";
 import GiftCardSection from "@/components/GiftCardSection";
@@ -59,6 +59,7 @@ type ApiFlavour = {
   emoji: string;
   basePrice: string;
   available: boolean;
+  productKind?: "ice_cream" | "cake";
 };
 
 type ApiSize = {
@@ -68,6 +69,7 @@ type ApiSize = {
   volumeOz: number;
   price: string;
   description: string;
+  productKind?: "ice_cream" | "cake";
 };
 
 type ApiLocation = {
@@ -468,7 +470,7 @@ export default function PreOrder() {
   // Check if a specific flavor+size combo is available and its stock status
   const getProductStock = (flavourId: number, sizeId: number) => {
     const p = stockMap.get(`${flavourId}-${sizeId}`);
-    if (!p) return { available: true, low: false, soldOut: false };
+    if (!p) return { available: false, low: false, soldOut: false };
     const soldOut = p.manageStock && p.stockQuantity <= 0;
     const low = p.manageStock && p.stockQuantity > 0 && p.stockQuantity <= p.lowStockThreshold;
     return { available: p.available && !soldOut, low, soldOut };
@@ -1191,8 +1193,10 @@ export default function PreOrder() {
                   const flavorPreOrderWindow = preOrderWindowMap.get(flavor.id);
                   const preOrderClosed = flavorPreOrderWindow && !flavorPreOrderWindow.acceptingOrders;
                   const isDisabled = !availabilityReady || !flavor.available || flavorStock === "sold-out" || !!preOrderClosed;
-                  const selectedSizeId = sizeSelections[flavor.id] || (sizes.length > 0 ? sizes[0].id : 0);
-                  const selectedSize = sizes.find((s) => s.id === selectedSizeId) || sizes[0];
+                  const flavorSizes = sizesForFlavour(flavor, sizes, products);
+                  const defaultSize = flavorSizes.find((s) => getProductStock(flavor.id, s.id).available) || flavorSizes[0];
+                  const selectedSizeId = sizeSelections[flavor.id] || (defaultSize ? defaultSize.id : 0);
+                  const selectedSize = flavorSizes.find((s) => s.id === selectedSizeId) || flavorSizes[0];
                   const qty = qtySelections[flavor.id] || 1;
                   const productStock = selectedSize ? getProductStock(flavor.id, selectedSize.id) : { available: true, low: false, soldOut: false };
                   const canAdd = !isDisabled && selectedSize && productStock.available;
@@ -1277,11 +1281,11 @@ export default function PreOrder() {
                           <p className="text-gray-500 text-sm line-clamp-2">{flavor.description}</p>
                         </Link>
 
-                        {!isDisabled && sizes.length > 0 && (
+                        {!isDisabled && flavorSizes.length > 0 && (
                           <>
                             {/* Size selector */}
                             <div className="flex gap-1.5 mb-3">
-                              {sizes.map((size) => {
+                              {flavorSizes.map((size) => {
                                 const sizeStock = getProductStock(flavor.id, size.id);
                                 return (
                                   <button
@@ -1296,7 +1300,7 @@ export default function PreOrder() {
                                       }`}
                                   >
                                     <div>{size.name}</div>
-                                    <div className={selectedSizeId === size.id ? "text-white/80" : "text-gray-400"}>{size.volumeOz}oz</div>
+                                    <div className={selectedSizeId === size.id ? "text-white/80" : "text-gray-400"}>{sizeSubtitle(size)}</div>
                                   </button>
                                 );
                               })}

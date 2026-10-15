@@ -23,6 +23,13 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Trash2, Search, ExternalLink, Pencil, Copy, DollarSign } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -47,7 +54,7 @@ export default function AdminProductList() {
     const [tab, setTab] = useState("products");
     const [sizeDialogOpen, setSizeDialogOpen] = useState(false);
     const [editingSize, setEditingSize] = useState<any>(null);
-    const [sizeForm, setSizeForm] = useState({ name: "", slug: "", volumeOz: 16, price: "7.00", description: "", sortOrder: 0 });
+    const [sizeForm, setSizeForm] = useState({ name: "", slug: "", volumeOz: 16, price: "7.00", description: "", sortOrder: 0, productKind: "ice_cream" as "ice_cream" | "cake" });
     const [bulkEditOpen, setBulkEditOpen] = useState(false);
     const [bulkPrices, setBulkPrices] = useState<Record<number, string>>({});
 
@@ -199,7 +206,7 @@ export default function AdminProductList() {
 
     const openNewSize = () => {
         setEditingSize(null);
-        setSizeForm({ name: "", slug: "", volumeOz: 16, price: "7.00", description: "", sortOrder: sizes.length });
+        setSizeForm({ name: "", slug: "", volumeOz: 16, price: "7.00", description: "", sortOrder: sizes.length, productKind: "ice_cream" });
         setSizeDialogOpen(true);
     };
 
@@ -212,6 +219,7 @@ export default function AdminProductList() {
             price: size.price,
             description: size.description || "",
             sortOrder: size.sortOrder,
+            productKind: size.productKind === "cake" ? "cake" : "ice_cream",
         });
         setSizeDialogOpen(true);
     };
@@ -391,6 +399,7 @@ export default function AdminProductList() {
                                         <TableHead>Slug</TableHead>
                                         <TableHead>Volume (oz)</TableHead>
                                         <TableHead>Price</TableHead>
+                                        <TableHead>Used for</TableHead>
                                         <TableHead>Description</TableHead>
                                         <TableHead>Sort</TableHead>
                                         <TableHead className="w-24">Actions</TableHead>
@@ -403,6 +412,7 @@ export default function AdminProductList() {
                                             <TableCell className="text-gray-500 text-sm">{s.slug}</TableCell>
                                             <TableCell>{s.volumeOz} oz</TableCell>
                                             <TableCell className="font-medium">${s.price}</TableCell>
+                                            <TableCell className="text-sm text-gray-500">{s.productKind === "cake" ? "Cake" : "Ice cream"}</TableCell>
                                             <TableCell className="text-sm text-gray-500 max-w-[200px] truncate">{s.description || "—"}</TableCell>
                                             <TableCell>{s.sortOrder}</TableCell>
                                             <TableCell>
@@ -481,6 +491,18 @@ export default function AdminProductList() {
                                 <Label>Price ($)</Label>
                                 <Input value={sizeForm.price} onChange={(e) => setSizeForm({ ...sizeForm, price: e.target.value })} placeholder="7.00" />
                             </div>
+                        </div>
+                        <div className="space-y-1">
+                            <Label>Used for</Label>
+                            <Select value={sizeForm.productKind} onValueChange={(v) => setSizeForm({ ...sizeForm, productKind: v as "ice_cream" | "cake" })}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ice_cream">Ice cream (pint / half gallon)</SelectItem>
+                                    <SelectItem value="cake">Ice cream cake</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="space-y-1">
                             <Label>Description</Label>
