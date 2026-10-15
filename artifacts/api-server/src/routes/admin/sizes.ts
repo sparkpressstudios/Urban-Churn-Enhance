@@ -16,7 +16,7 @@ router.get("/", async (_req, res) => {
 
 // Create size
 router.post("/", async (req, res) => {
-    const { name, slug, volumeOz, price, description, sortOrder } = req.body;
+    const { name, slug, volumeOz, price, description, sortOrder, productKind } = req.body;
 
     if (!name || !slug || volumeOz === undefined || price === undefined) {
         res.status(400).json({ error: "name, slug, volumeOz, and price are required" });
@@ -33,6 +33,7 @@ router.post("/", async (req, res) => {
                 price: String(price),
                 description: description ?? "",
                 sortOrder: sortOrder != null ? Number(sortOrder) : 0,
+                productKind: productKind === "cake" ? "cake" : "ice_cream",
             })
             .returning();
 
@@ -51,7 +52,7 @@ router.post("/", async (req, res) => {
 // Update size
 router.put("/:id", async (req, res) => {
     const id = Number(req.params.id);
-    const { name, slug, volumeOz, price, description, sortOrder } = req.body;
+    const { name, slug, volumeOz, price, description, sortOrder, productKind } = req.body;
 
     try {
         const [size] = await db
@@ -63,6 +64,7 @@ router.put("/:id", async (req, res) => {
                 ...(price !== undefined && { price: String(price) }),
                 ...(description !== undefined && { description }),
                 ...(sortOrder !== undefined && { sortOrder: Number(sortOrder) }),
+                ...(productKind !== undefined && { productKind: productKind === "cake" ? "cake" : "ice_cream" }),
             })
             .where(eq(sizesTable.id, id))
             .returning();

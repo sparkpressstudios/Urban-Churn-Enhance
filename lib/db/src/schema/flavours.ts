@@ -21,6 +21,8 @@ export const flavourTagEnum = pgEnum("flavour_tag", [
     "coming-soon",
 ]);
 
+export const productKindEnum = pgEnum("product_kind", ["ice_cream", "cake"]);
+
 export const flavoursTable = pgTable("flavours", {
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
@@ -29,6 +31,7 @@ export const flavoursTable = pgTable("flavours", {
     htmlContent: text("html_content").notNull().default(""),
     imageUrl: text("image_url"),
     tag: flavourTagEnum("tag").notNull().default("classic"),
+    productKind: productKindEnum("product_kind").notNull().default("ice_cream"),
     emoji: text("emoji").notNull().default("🍦"),
     basePrice: numeric("base_price", { precision: 10, scale: 2 })
         .notNull()
