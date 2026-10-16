@@ -8,7 +8,12 @@ export default function GiftCards() {
       <Navbar />
       <SEO
         title="Gift Cards | Urban Churn"
-        description="Send a digital gift card to someone special. Redeemable at all Urban Churn locations."
+        description="Send a digital gift card to someone special. Redeemable at all Urban Churn locations in Carlisle, Mechanicsburg, and Harrisburg, PA."
+        canonical="/gift-cards"
+        breadcrumbs={[
+          { name: "Home", url: "/" },
+          { name: "Gift Cards", url: "/gift-cards" },
+        ]}
       />
       <main className="flex-1 pt-16">
         <iframe

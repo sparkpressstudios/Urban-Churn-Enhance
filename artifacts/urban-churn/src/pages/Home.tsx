@@ -4,7 +4,8 @@ import { useRef, useState, useCallback } from "react";
 import { motion, useScroll, useTransform, useMotionTemplate } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import SEO from "@/components/SEO";
+import SEO, { websiteJsonLd } from "@/components/SEO";
+import OptimizedImage from "@/components/OptimizedImage";
 import HomeStoryScroll from "@/components/HomeStoryScroll";
 import RotatingFlavoursShowcase from "@/components/RotatingFlavoursShowcase";
 import { api } from "@/lib/api";
@@ -69,8 +70,8 @@ function CraftedSection() {
             className="absolute inset-[-30px] transition-transform duration-300 ease-out will-change-transform"
             style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(1.08)` }}
           >
-            <img
-              src={`${BASE}images/uc-crafted-bg.jpg`}
+            <OptimizedImage
+              src="uc-crafted-bg.jpg"
               alt="Fresh scoops with toppings"
               className="w-full h-full object-cover"
             />
@@ -120,8 +121,18 @@ export default function Home() {
   const heroBlur = useTransform(heroProgress, [0, 0.06, 0.18], [4, 2, 0]);
   // Phase 2: video fully visible until sticky releases and page scrolls naturally
 
-  const { data: apiFlavours = [] } = useQuery({ queryKey: ["public", "flavours"], queryFn: () => api.getPublicFlavours() });
-  const { data: rotatingFlavours = [] } = useQuery<any[]>({ queryKey: ["public", "rotating-flavours"], queryFn: () => api.getPublicRotatingFlavours() });
+  const { data: apiFlavours = [] } = useQuery({
+    queryKey: ["public", "flavours"],
+    queryFn: () => api.getPublicFlavours(),
+    staleTime: 5 * 60_000,
+    placeholderData: [],
+  });
+  const { data: rotatingFlavours = [] } = useQuery<any[]>({
+    queryKey: ["public", "rotating-flavours"],
+    queryFn: () => api.getPublicRotatingFlavours(),
+    staleTime: 5 * 60_000,
+    placeholderData: [],
+  });
 
   // Pre-order feature slots — admin assigns heroPosition 1 (main), 2–5 (smaller cards)
   // Only show products that actually exist in the API with a set heroPosition
@@ -142,12 +153,14 @@ export default function Home() {
         description="Urban Churn crafts super premium ice cream with 16% butterfat local PA dairy, no artificial colors or flavors. Pre-order limited batch flavors for pickup in Carlisle, Mechanicsburg & Harrisburg, PA."
         keywords="craft ice cream, premium ice cream, natural ingredients ice cream, no artificial colors, local PA dairy, pre-order ice cream, Urban Churn, Central PA ice cream, handcrafted ice cream, limited batch ice cream"
         canonical="/"
-        jsonLd={{
+        jsonLd={[
+          websiteJsonLd,
+          {
           "@context": "https://schema.org",
           "@type": "Organization",
           name: "Urban Churn",
           url: "https://urbanchurn.com",
-          logo: "https://urbanchurn.com/images/logo.png",
+          logo: "https://urbanchurn.com/images/uc-logo-black.png",
           description: "Craft ice cream creamery in Central PA — unique flavors, natural ingredients, no artificial colors or flavors. Super premium 16% butterfat ice cream made with local PA dairy.",
           foundingLocation: { "@type": "Place", name: "Carlisle, Pennsylvania" },
           areaServed: { "@type": "State", name: "Pennsylvania" },
@@ -163,7 +176,7 @@ export default function Home() {
               { "@type": "Offer", itemOffered: { "@type": "Product", name: "Custom Cakes", description: "Custom ice cream cakes and baked cakes" } }
             ]
           }
-        }}
+        }]}
       />
 
       <div className="relative text-white bg-[#111118]">
@@ -182,7 +195,7 @@ export default function Home() {
                 playsInline
                 style={{ filter: useMotionTemplate`blur(${heroBlur}px)` }}
                 className="absolute inset-0 w-full h-full object-cover"
-                poster={`${BASE}images/uc-photo-1.jpg`}
+                poster={`${BASE}images/uc-photo-1.webp`}
               >
                 <source src={`${BASE}videos/hero-bg.mp4`} type="video/mp4" />
               </motion.video>

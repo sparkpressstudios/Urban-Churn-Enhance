@@ -1,6 +1,7 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import SEO from "@/components/SEO";
+import OptimizedImage from "@/components/OptimizedImage";
 import RotatingPhotoStrip from "@/components/RotatingPhotoStrip";
 import RotatingFlavoursShowcase from "@/components/RotatingFlavoursShowcase";
 import { Link } from "wouter";
@@ -107,7 +108,7 @@ export default function Locations() {
       {/* Hero */}
       <section className="bg-[#111118] text-white pt-36 pb-20 md:pt-44 md:pb-24 relative overflow-hidden">
         <div className="absolute inset-0 opacity-40">
-          <img src={`${BASE}images/uc-locations-hero.jpg`} alt="Urban Churn ice cream shop locations in Central Pennsylvania" className="w-full h-full object-cover object-center" />
+          <OptimizedImage src="uc-locations-hero.jpg" alt="Urban Churn ice cream shop locations in Central Pennsylvania" className="w-full h-full object-cover object-center" />
           <div className="absolute inset-0 bg-[#111118]/40" />
         </div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-8">

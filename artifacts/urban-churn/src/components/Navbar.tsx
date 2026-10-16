@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import OptimizedImage from "@/components/OptimizedImage";
 
 const BASE = import.meta.env.BASE_URL;
 const CART_STORAGE_KEY = "uc-cart";
@@ -34,7 +35,8 @@ export default function Navbar() {
   const { data: announcement } = useQuery({
     queryKey: ["public", "announcement"],
     queryFn: () => api.getPublicAnnouncement(),
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const openCart = useCallback(() => {
@@ -139,7 +141,7 @@ export default function Navbar() {
       <nav className={`fixed left-0 right-0 z-50 border-b transition-all duration-300 ${needsDarkNav ? 'top-0 backdrop-blur-xl bg-white/95 border-black/[0.08] shadow-lg shadow-black/5' : scrolled ? 'top-0 backdrop-blur-xl bg-white/90 border-black/[0.08] shadow-lg shadow-black/5' : announcement?.enabled && announcement.text ? 'top-[41px] bg-transparent border-transparent' : 'top-0 bg-transparent border-transparent'}`}>
         <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-8 py-4">
           <Link href="/">
-            <img src={`${BASE}images/uc-logo-black.png`} alt="Urban Churn" className={`h-11 transition-all duration-300 ${useLight ? 'brightness-0 invert' : ''}`} />
+            <OptimizedImage src="uc-logo-black.png" alt="Urban Churn" width={176} height={38} priority className={`h-11 w-auto transition-all duration-300 ${useLight ? 'brightness-0 invert' : ''}`} />
           </Link>
 
           {/* Desktop nav links */}

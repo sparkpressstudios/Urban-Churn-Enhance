@@ -3,20 +3,36 @@
     "short_name": "Urban Churn",
     "description": "Craft ice cream creamery — unique flavors, natural ingredients, nothing fake. Pre-order online for pickup in Central PA.",
     "start_url": "/",
+    "scope": "/",
     "display": "standalone",
+    "orientation": "portrait-primary",
     "background_color": "#111118",
     "theme_color": "#111118",
+    "categories": ["food", "shopping"],
+    "lang": "en-US",
     "icons": [
         {
-            "src": "/favicon.ico",
-            "sizes": "48x48",
-            "type": "image/x-icon"
+            "src": "/favicon-32.png",
+            "sizes": "32x32",
+            "type": "image/png"
         },
         {
-            "src": "/opengraph.jpg",
-            "sizes": "1200x630",
-            "type": "image/jpeg",
+            "src": "/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
             "purpose": "any"
+        },
+        {
+            "src": "/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png",
+            "purpose": "maskable"
         }
     ]
 }
