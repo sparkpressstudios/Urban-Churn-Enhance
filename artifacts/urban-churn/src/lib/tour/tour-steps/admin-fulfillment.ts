@@ -12,7 +12,13 @@ export const adminFulfillmentSteps: Step[] = [
         target: '[data-tour="admin-fulfillment-filters"]',
         title: "Filters",
         content:
-            "Filter by location, date range, and flavor to see exactly what needs to be prepared.",
+            "Filter by location, date range, flavor, and pre-order window to see exactly what needs to be prepared.",
+    },
+    {
+        target: '[data-tour="admin-fulfillment-export"]',
+        title: "Export",
+        content:
+            "Download a CSV for Google Sheets or Excel — order detail for pickup coordination, or a production summary for churn planning.",
     },
     {
         target: '[data-tour="admin-fulfillment-churn-tab"]',
