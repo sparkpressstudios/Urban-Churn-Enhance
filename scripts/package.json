@@ -6,6 +6,7 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "seed": "tsx ./src/seed.ts",
+    "update-hours": "tsx ./src/update-hours.ts",
     "import-customers": "tsx ./src/import-customers.ts",
     "enrich-from-wp-xml": "tsx ./src/enrich-customers-from-wp-xml.ts",
     "import-wp-flavours": "tsx ./src/import-wp-flavours.ts",

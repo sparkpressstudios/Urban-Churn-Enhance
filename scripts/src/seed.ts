@@ -284,24 +284,21 @@ async function seed() {
         const isHarrisburg = loc.slug === "harrisburg";
         const isLouise = loc.slug === "louise-drive";
         return dayNames.map((_, dayIndex) => {
-            // UC Harrisburg: Fri 2-9pm, Sat 12-9pm, all others closed
+            // UC Harrisburg: Mon-Thu 2-9pm, Fri-Sat 12-9pm, Sun closed
             if (isHarrisburg) {
-                if (dayIndex === 5) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "14:00", closeTime: "21:00", isClosed: false };
-                if (dayIndex === 6) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "12:00", closeTime: "21:00", isClosed: false };
-                return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "00:00", closeTime: "00:00", isClosed: true };
-            }
-            // Louise Drive: Mon-Fri 7:30am-9pm, Sat 9am-9pm, Sun Closed
-            if (isLouise) {
                 if (dayIndex === 0) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "00:00", closeTime: "00:00", isClosed: true };
-                if (dayIndex === 6) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "09:00", closeTime: "21:00", isClosed: false };
-                return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "07:30", closeTime: "21:00", isClosed: false };
+                if (dayIndex === 5 || dayIndex === 6) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "12:00", closeTime: "21:00", isClosed: false };
+                return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "14:00", closeTime: "21:00", isClosed: false };
             }
-            // Carlisle Pike & Carlisle Shop: Mon-Thu 2-9pm, Fri 2-10pm, Sat 12-10pm, Sun 12-8pm
-            if (dayIndex === 0) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "12:00", closeTime: "20:00", isClosed: false };
-            if (dayIndex >= 1 && dayIndex <= 4) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "14:00", closeTime: "21:00", isClosed: false };
-            if (dayIndex === 5) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "14:00", closeTime: "22:00", isClosed: false };
-            // Saturday
-            return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "12:00", closeTime: "22:00", isClosed: false };
+            // Louise Drive: Mon-Fri 7:30am-10pm, Sat 9am-10pm, Sun 9am-9pm
+            if (isLouise) {
+                if (dayIndex === 0) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "09:00", closeTime: "21:00", isClosed: false };
+                if (dayIndex === 6) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "09:00", closeTime: "22:00", isClosed: false };
+                return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "07:30", closeTime: "22:00", isClosed: false };
+            }
+            // Carlisle Pike & Carlisle Shop: Mon-Sat 11am-10pm, Sun 11am-9pm
+            if (dayIndex === 0) return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "11:00", closeTime: "21:00", isClosed: false };
+            return { locationId: loc.id, dayOfWeek: dayIndex, openTime: "11:00", closeTime: "22:00", isClosed: false };
         });
     });
 
